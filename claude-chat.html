@@ -1046,7 +1046,7 @@
   async function playVoice(btn) {
     const idx = parseInt(btn.dataset.index);
     const msg = (idx >= 0 && currentId) ? chats[currentId]?.messages[idx] : null;
-    const text = msg?.en || '';
+    const text = msg?.en || parseAiReply(msg?.content || '').en;
     if (!text) { setStatus('没有英文内容可播放', 'err'); return; }
     if (!elKey) { setStatus('请先在左下角设置语音 Key', 'err'); return; }
 
