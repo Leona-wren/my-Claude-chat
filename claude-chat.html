@@ -7,41 +7,22 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  /* ── 皮肤：暖灰（默认）── */
+  /* ── 皮肤：自然绿（默认）── */
   body.skin-warm {
-    --bg: #EDEAE4;
-    --sidebar: #E0DCD5;
-    --bubble-user: #C8C2B8;
-    --bubble-ai: #F0EDE8;
-    --text: #3A3530;
-    --text-soft: #7A746D;
-    --accent: #8B7355;
-    --border: #D4CFC8;
-    --input-bg: #F0EDE8;
-    --hover: #D8D3CC;
-    --active: #CEC8C0;
+    --bg: #F5F2ED;
+    --sidebar: #EDEAE3;
+    --bubble-user: #C8D5B9;
+    --bubble-ai: #FFFFFF;
+    --text: #2E2E2A;
+    --text-soft: #8A8A7A;
+    --accent: #6B8F5E;
+    --border: #DDD9D0;
+    --input-bg: #FFFFFF;
+    --hover: #E5E2D8;
+    --active: #D8D9C8;
   }
 
-  /* ── 皮肤：WhatsApp ── */
-  body.skin-whatsapp { color-scheme: light; }
-  body.skin-whatsapp .sidebar { color: #E9EDF0; }
-  body.skin-whatsapp .chat-item { color: #E9EDF0; }
-  body.skin-whatsapp .sidebar-btn { color: #B2BEC3; border-color: rgba(255,255,255,0.2); }
-  body.skin-whatsapp .sidebar-header h1 { color: #FFFFFF; }
-  body.skin-whatsapp .new-chat-btn { background: #128C7E; color: white; }
-  body.skin-whatsapp {
-    --bg: #ECE5DD;
-    --sidebar: #075E54;
-    --bubble-user: #DCF8C6;
-    --bubble-ai: #FFFFFF;
-    --text: #111B21;
-    --text-soft: #667781;
-    --accent: #25D366;
-    --border: #D1D7DB;
-    --input-bg: #FFFFFF;
-    --hover: #F0F2F5;
-    --active: #D9FDD3;
-  }
+
 
   /* ── 皮肤：墨夜 ── */
   body.skin-dark {
@@ -77,7 +58,7 @@
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: 'Georgia', serif;
+    font-family: -apple-system, 'Helvetica Neue', sans-serif;
     height: 100dvh;
     display: flex;
     overflow: hidden;
@@ -218,10 +199,9 @@
 
   .skin-dot:hover { transform: scale(1.15); }
   .skin-dot.selected { border-color: var(--accent); }
-  .skin-dot.dot-warm { background: #EDEAE4; box-shadow: inset 0 0 0 1px #C8C2B8; }
+  .skin-dot.dot-warm { background: #C8D5B9; box-shadow: inset 0 0 0 1px #6B8F5E; }
   .skin-dot.dot-dark { background: #1A1A1F; box-shadow: inset 0 0 0 1px #9E8FD4; }
   .skin-dot.dot-wa { background: #25D366; box-shadow: inset 0 0 0 1px #128C7E; }
-  .skin-dot.dot-whatsapp { background: #25D366; box-shadow: inset 0 0 0 1px #075E54; }
 
   .skin-label {
     font-size: 11px;
@@ -344,8 +324,8 @@
   .msg.ai   { align-self: flex-start; align-items: flex-start; }
 
   .bubble {
-    padding: 11px 15px;
-    border-radius: 18px;
+    padding: 12px 16px;
+    border-radius: 20px;
     font-size: 15px;
     line-height: 1.65;
     white-space: pre-wrap;
@@ -354,13 +334,13 @@
 
   .msg.user .bubble {
     background: var(--bubble-user);
-    border-bottom-right-radius: 4px;
+    border-bottom-right-radius: 5px;
   }
 
   .msg.ai .bubble {
     background: var(--bubble-ai);
-    border-bottom-left-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border-bottom-left-radius: 5px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   }
 
   /* 思考链展示 */
@@ -467,7 +447,7 @@
     outline: none;
     resize: none;
     font-size: 15px;
-    font-family: 'Georgia', serif;
+    font-family: -apple-system, 'Helvetica Neue', sans-serif;
     color: var(--text);
     line-height: 1.6;
     max-height: 130px;
@@ -597,10 +577,9 @@
   <div class="sidebar-footer">
     <div class="skin-label">外观</div>
     <div class="skin-row">
-      <div class="skin-dot dot-warm selected" title="暖灰" onclick="setSkin('warm')"></div>
+      <div class="skin-dot dot-warm selected" title="自然绿" onclick="setSkin('warm')"></div>
       <div class="skin-dot dot-dark" title="墨夜" onclick="setSkin('dark')"></div>
       <div class="skin-dot dot-wa" title="WhatsApp" onclick="setSkin('wa')"></div>
-      <div class="skin-dot dot-whatsapp" title="WhatsApp" onclick="setSkin('whatsapp')"></div>
     </div>
     <button class="sidebar-btn" onclick="openMemory()">🧠 记忆设置</button>
     <button class="sidebar-btn" onclick="openKey()">🔑 API Key</button>
