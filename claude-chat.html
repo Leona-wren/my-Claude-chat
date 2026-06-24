@@ -850,9 +850,9 @@
       area.innerHTML = `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
       return;
     }
-    chat.messages.forEach(m => {
+    chat.messages.forEach((m, i) => {
       if (m.role === 'thinking') renderThinking(m.content, false);
-      else renderMsg(m.role === 'assistant' ? 'ai' : m.role, m.content, false);
+      else renderMsg(m.role === 'assistant' ? 'ai' : m.role, m, false, i);
     });
     area.scrollTop = area.scrollHeight;
   }
@@ -880,7 +880,7 @@
     };
   }
 
-  function renderMsg(role, text, animate = true) {
+  function renderMsg(role, msgOrText, animate = true, msgIndex = -1) {
     const area = document.getElementById('chatArea');
     const hint = document.getElementById('emptyHint');
     if (hint) hint.remove();
@@ -889,23 +889,22 @@
     if (!animate) div.style.animation = 'none';
 
     if (role === 'ai' || role === 'assistant') {
-      const parsed = parseAiReply(text);
-      const hasVoice = !!parsed.en;
-      const uid = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+      const msg = typeof msgOrText === 'object' ? msgOrText : null;
+      const rawText = msg ? msg.content : msgOrText;
+      const en = msg?.en ?? parseAiReply(rawText).en;
+      const zh = msg?.zh ?? parseAiReply(rawText).zh;
+      const hasVoice = !!en && !!elKey;
       div.innerHTML = `
         <div class="bubble">
-          ${parsed.en ? `<div class="bubble-en">${escHtml(parsed.en)}</div>` : ''}
-          <div class="bubble-zh">${escHtml(parsed.zh || text)}</div>
+          ${en ? `<div class="bubble-en">${escHtml(en)}</div>` : ''}
+          <div class="bubble-zh">${escHtml(zh || rawText)}</div>
         </div>
-        ${hasVoice ? `<button class="play-btn" id="${uid}" onclick="playVoice(this)">
+        ${hasVoice ? `<button class="play-btn" data-index="${msgIndex}" onclick="playVoice(this)">
           <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
         </button>` : ''}
         <div class="msg-time">${nowStr()}</div>`;
-      if (hasVoice) {
-        const btn = div.querySelector('.play-btn');
-        if (btn) btn._enText = parsed.en;
-      }
     } else {
+      const text = typeof msgOrText === 'object' ? msgOrText.content : msgOrText;
       div.innerHTML = `<div class="bubble">${escHtml(text)}</div><div class="msg-time">${nowStr()}</div>`;
     }
 
@@ -969,8 +968,10 @@
     let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。每次回复用以下固定格式，不要加任何额外说明：\n\n[EN]\n（英文回复，自然口语，带情绪，不超过4句）\n\n[ZH]\n（完全相同意思的中文版，自然流畅）\n\n思考过程如果有，也请用中文。';
     if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
 
-    // 构建发送给API的messages（过滤掉thinking记录）
-    const apiMessages = chat.messages.filter(m => m.role !== 'thinking');
+    // 构建发送给API的messages（过滤掉thinking记录，只保留role和content）
+    const apiMessages = chat.messages
+      .filter(m => m.role !== 'thinking')
+      .map(({ role, content }) => ({ role, content }));
 
     const body = {
       model,
@@ -1023,9 +1024,11 @@
         renderThinking(thinkingText);
       }
 
-      chat.messages.push({ role: 'assistant', content: replyText });
+      const parsed = parseAiReply(replyText);
+      chat.messages.push({ role: 'assistant', content: replyText, en: parsed.en, zh: parsed.zh });
       save();
-      renderMsg('ai', replyText);
+      const aiIdx = chat.messages.length - 1;
+      renderMsg('ai', chat.messages[aiIdx], true, aiIdx);
 
     } catch (e) {
       removeTyping();
@@ -1041,7 +1044,9 @@
 
   // ── 语音 ─────────────────────────────────────────────
   async function playVoice(btn) {
-    const text = btn._enText || '';
+    const idx = parseInt(btn.dataset.index);
+    const msg = (idx >= 0 && currentId) ? chats[currentId]?.messages[idx] : null;
+    const text = msg?.en || '';
     if (!text) { setStatus('没有英文内容可播放', 'err'); return; }
     if (!elKey) { setStatus('请先在左下角设置语音 Key', 'err'); return; }
 
