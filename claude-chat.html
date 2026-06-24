@@ -664,11 +664,15 @@
       <div class="skin-dot dot-dark" title="墨夜" onclick="setSkin('dark')"></div>
       <div class="skin-dot dot-wa" title="WhatsApp" onclick="setSkin('wa')"></div>
     </div>
+    <button class="sidebar-btn" onclick="exportChats()">💾 导出聊天记录</button>
+    <button class="sidebar-btn" onclick="document.getElementById('importFile').click()">📂 导入聊天记录</button>
     <button class="sidebar-btn" onclick="openMemory()">🧠 记忆设置</button>
     <button class="sidebar-btn" onclick="openKey()">🔑 API Key</button>
     <button class="sidebar-btn" onclick="openElKey()">🔊 语音 Key</button>
   </div>
 </div>
+
+<input type="file" id="importFile" accept=".json" style="display:none" onchange="importChats(event)">
 
 <!-- MAIN -->
 <div class="main">
@@ -1195,6 +1199,53 @@
   document.querySelectorAll('.modal-overlay').forEach(el => {
     el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
   });
+
+  // ── EXPORT / IMPORT ──────────────────────────────────
+  function exportChats() {
+    const data = { chats, chatOrder, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'claude-chat-export-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importChats(e) {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      let data;
+      try { data = JSON.parse(evt.target.result); } catch (_) {
+        setStatus('导入失败：文件不是合法 JSON', 'err');
+        return;
+      }
+      if (!data.chats || typeof data.chats !== 'object' ||
+          !Array.isArray(data.chatOrder)) {
+        setStatus('导入失败：缺少 chats 或 chatOrder 字段', 'err');
+        return;
+      }
+      const count = data.chatOrder.filter(id => data.chats[id]).length;
+      if (count === 0) {
+        setStatus('导入失败：文件内没有有效对话', 'err');
+        return;
+      }
+      if (!confirm(`导入后将覆盖本地全部聊天记录（共 ${chatOrder.length} 条），无法撤销。\n\n文件中包含 ${count} 条对话，确认导入？`)) return;
+      chats = data.chats;
+      chatOrder = data.chatOrder;
+      currentId = null;
+      save();
+      renderSidebar();
+      document.getElementById('chatArea').innerHTML =
+        `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
+      setStatus('导入成功，共 ' + count + ' 条对话 ✓', 'ok');
+      setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 3000);
+    };
+    reader.readAsText(file);
+  }
 
   // ── UTILS ────────────────────────────────────────────
   function save() {
