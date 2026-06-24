@@ -899,7 +899,7 @@
           ${en ? `<div class="bubble-en">${escHtml(en)}</div>` : ''}
           <div class="bubble-zh">${escHtml(zh || rawText)}</div>
         </div>
-        ${hasVoice ? `<button class="play-btn" data-index="${msgIndex}" onclick="playVoice(this)">
+        ${hasVoice ? `<button class="play-btn" data-msg-id="${msg?.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
           <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
         </button>` : ''}
         <div class="msg-time">${nowStr()}</div>`;
@@ -1025,7 +1025,7 @@
       }
 
       const parsed = parseAiReply(replyText);
-      chat.messages.push({ role: 'assistant', content: replyText, en: parsed.en, zh: parsed.zh });
+      chat.messages.push({ role: 'assistant', content: replyText, en: parsed.en, zh: parsed.zh, id: 'msg_' + Date.now() });
       save();
       const aiIdx = chat.messages.length - 1;
       renderMsg('ai', chat.messages[aiIdx], true, aiIdx);
@@ -1044,8 +1044,10 @@
 
   // ── 语音 ─────────────────────────────────────────────
   async function playVoice(btn) {
+    const msgId = btn.dataset.msgId;
     const idx = parseInt(btn.dataset.index);
-    const msg = (idx >= 0 && currentId) ? chats[currentId]?.messages[idx] : null;
+    const messages = chats[currentId]?.messages || [];
+    const msg = (msgId ? messages.find(m => m.id === msgId) : null) ?? messages[idx] ?? null;
     const text = msg?.en || parseAiReply(msg?.content || '').en;
     if (!text) { setStatus('没有英文内容可播放', 'err'); return; }
     if (!elKey) { setStatus('请先在左下角设置语音 Key', 'err'); return; }
