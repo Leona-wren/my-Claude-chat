@@ -762,6 +762,29 @@
   const EL_VOICE = '0qHbGTWOPgPUvThY4Te6';
   let currentAudio = null;
   let currentSkin = localStorage.getItem('claude_skin') || 'warm';
+  let audioDB = null;
+
+  (function openAudioDB() {
+    const req = indexedDB.open('claude_audio', 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('audio', { keyPath: 'key' });
+    req.onsuccess = e => { audioDB = e.target.result; };
+  })();
+
+  function getAudio(key) {
+    return new Promise(resolve => {
+      if (!audioDB) return resolve(null);
+      const req = audioDB.transaction('audio').objectStore('audio').get(key);
+      req.onsuccess = e => resolve(e.target.result?.blob || null);
+      req.onerror = () => resolve(null);
+    });
+  }
+
+  function putAudio(key, blob) {
+    if (!audioDB) return;
+    try {
+      audioDB.transaction('audio', 'readwrite').objectStore('audio').put({ key, blob });
+    } catch (_) {}
+  }
 
   // Init
   applySkin(currentSkin);
@@ -1065,9 +1088,30 @@
 
     btn.classList.add('playing', 'was-playing');
     btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> 播放中…';
-    setStatus('生成语音中…');
+
+    const audioKey = msgId ? `${currentId}_${msgId}` : null;
+
+    function playBlob(blob) {
+      const url = URL.createObjectURL(blob);
+      currentAudio = new Audio(url);
+      currentAudio.play();
+      setStatus('');
+      currentAudio.onended = () => {
+        btn.classList.remove('playing', 'was-playing');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 再听';
+        currentAudio = null;
+        URL.revokeObjectURL(url);
+      };
+    }
 
     try {
+      // 优先读缓存
+      if (audioKey) {
+        const cached = await getAudio(audioKey);
+        if (cached) { playBlob(cached); return; }
+      }
+
+      setStatus('生成语音中…');
       const elUrl = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`;
       const res = await fetch(elUrl, {
         method: 'POST',
@@ -1091,17 +1135,8 @@
       }
 
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      currentAudio = new Audio(url);
-      currentAudio.play();
-      setStatus('');
-
-      currentAudio.onended = () => {
-        btn.classList.remove('playing', 'was-playing');
-        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 再听';
-        currentAudio = null;
-        URL.revokeObjectURL(url);
-      };
+      if (audioKey) putAudio(audioKey, blob);
+      playBlob(blob);
 
     } catch (e) {
       setStatus('语音网络错误：' + e.message, 'err');
