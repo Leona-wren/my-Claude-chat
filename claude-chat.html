@@ -897,10 +897,14 @@
           ${parsed.en ? `<div class="bubble-en">${escHtml(parsed.en)}</div>` : ''}
           <div class="bubble-zh">${escHtml(parsed.zh || text)}</div>
         </div>
-        ${hasVoice ? `<button class="play-btn" id="${uid}" onclick="playVoice(this, ${JSON.stringify(parsed.en)})">
+        ${hasVoice ? `<button class="play-btn" id="${uid}" onclick="playVoice(this)">
           <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
         </button>` : ''}
         <div class="msg-time">${nowStr()}</div>`;
+      if (hasVoice) {
+        const btn = div.querySelector('.play-btn');
+        if (btn) btn._enText = parsed.en;
+      }
     } else {
       div.innerHTML = `<div class="bubble">${escHtml(text)}</div><div class="msg-time">${nowStr()}</div>`;
     }
@@ -1036,8 +1040,10 @@
   }
 
   // ── 语音 ─────────────────────────────────────────────
-  async function playVoice(btn, text) {
-    if (!elKey) { setStatus('请先设置 ElevenLabs Key', 'err'); return; }
+  async function playVoice(btn) {
+    const text = btn._enText || '';
+    if (!text) { setStatus('没有英文内容可播放', 'err'); return; }
+    if (!elKey) { setStatus('请先在左下角设置语音 Key', 'err'); return; }
 
     // 如果正在播放，停止
     if (currentAudio) {
