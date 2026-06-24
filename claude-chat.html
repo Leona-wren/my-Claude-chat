@@ -296,6 +296,10 @@
   let history = [];
   let isLoading = false;
 
+  // Use a CORS proxy to bypass browser restrictions
+  const PROXY = 'https://corsproxy.io/?url=';
+  const API_URL = 'https://api.anthropic.com/v1/messages';
+
   function saveKey() {
     const val = document.getElementById('apiKey').value.trim();
     if (!val.startsWith('sk-ant-')) {
@@ -385,7 +389,7 @@
     addTyping();
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch(PROXY + encodeURIComponent(API_URL), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
