@@ -9,7 +9,7 @@
 
   :root {
     --bg: #EDEAE4;
-    --surface: #E4E0D9;
+    --sidebar: #E0DCD5;
     --bubble-user: #C8C2B8;
     --bubble-ai: #F0EDE8;
     --text: #3A3530;
@@ -17,98 +17,147 @@
     --accent: #8B7355;
     --border: #D4CFC8;
     --input-bg: #F0EDE8;
+    --hover: #D8D3CC;
+    --active: #CEC8C0;
   }
 
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: 'Georgia', 'Noto Serif SC', serif;
+    font-family: 'Georgia', serif;
     height: 100dvh;
     display: flex;
-    flex-direction: column;
-    align-items: center;
+    overflow: hidden;
   }
 
-  header {
-    width: 100%;
-    max-width: 720px;
-    padding: 24px 24px 16px;
+  /* SIDEBAR */
+  .sidebar {
+    width: 220px;
+    min-width: 220px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
     display: flex;
-    align-items: baseline;
-    gap: 10px;
+    flex-direction: column;
+    height: 100dvh;
   }
 
-  header h1 {
-    font-size: 18px;
+  .sidebar-header {
+    padding: 20px 16px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-header h1 {
+    font-size: 16px;
     font-weight: normal;
     color: var(--accent);
     letter-spacing: 0.04em;
+    margin-bottom: 10px;
   }
 
-  header span {
-    font-size: 12px;
-    color: var(--text-soft);
-    font-family: 'Helvetica Neue', sans-serif;
-  }
-
-  .api-bar {
+  .new-chat-btn {
     width: 100%;
-    max-width: 720px;
-    padding: 0 24px 12px;
-    display: flex;
-    gap: 8px;
-  }
-
-  .api-bar input {
-    flex: 1;
-    background: var(--input-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 12px;
-    font-size: 12px;
-    font-family: 'Helvetica Neue', sans-serif;
-    color: var(--text);
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .api-bar input::placeholder { color: var(--text-soft); }
-  .api-bar input:focus { border-color: var(--accent); }
-
-  .api-bar button {
     background: var(--accent);
     color: #F0EDE8;
     border: none;
     border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 12px;
+    padding: 8px 12px;
+    font-size: 13px;
     font-family: 'Helvetica Neue', sans-serif;
     cursor: pointer;
+    text-align: left;
     transition: opacity 0.2s;
-    white-space: nowrap;
   }
 
-  .api-bar button:hover { opacity: 0.85; }
+  .new-chat-btn:hover { opacity: 0.85; }
 
-  .api-status {
+  .chat-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .chat-item {
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    transition: background 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .chat-item:hover { background: var(--hover); }
+  .chat-item.active { background: var(--active); }
+
+  .chat-item-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chat-item-del {
+    opacity: 0;
+    font-size: 14px;
+    color: var(--text-soft);
+    flex-shrink: 0;
+    line-height: 1;
+    transition: opacity 0.15s;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+
+  .chat-item:hover .chat-item-del { opacity: 1; }
+
+  .sidebar-footer {
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .memory-btn, .key-btn {
     width: 100%;
-    max-width: 720px;
-    padding: 0 24px 8px;
-    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 12px;
     font-family: 'Helvetica Neue', sans-serif;
     color: var(--text-soft);
-    min-height: 18px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
   }
 
-  .api-status.ok { color: #7A9E7E; }
-  .api-status.err { color: #C47A6A; }
+  .memory-btn:hover, .key-btn:hover { background: var(--hover); }
 
-  .chat {
+  /* MAIN */
+  .main {
     flex: 1;
-    width: 100%;
-    max-width: 720px;
-    padding: 8px 24px;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100dvh;
+  }
+
+  .chat-area {
+    flex: 1;
     overflow-y: auto;
+    padding: 20px 28px;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -119,13 +168,13 @@
   .msg {
     display: flex;
     flex-direction: column;
-    max-width: 78%;
+    max-width: 72%;
     gap: 4px;
-    animation: fadeUp 0.25s ease;
+    animation: fadeUp 0.2s ease;
   }
 
   @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(5px); }
     to   { opacity: 1; transform: translateY(0); }
   }
 
@@ -133,7 +182,7 @@
   .msg.ai   { align-self: flex-start; align-items: flex-start; }
 
   .bubble {
-    padding: 12px 16px;
+    padding: 11px 15px;
     border-radius: 18px;
     font-size: 15px;
     line-height: 1.65;
@@ -143,13 +192,11 @@
 
   .msg.user .bubble {
     background: var(--bubble-user);
-    color: var(--text);
     border-bottom-right-radius: 4px;
   }
 
   .msg.ai .bubble {
     background: var(--bubble-ai);
-    color: var(--text);
     border-bottom-left-radius: 4px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   }
@@ -164,7 +211,7 @@
   .typing {
     display: flex;
     gap: 5px;
-    padding: 14px 18px;
+    padding: 13px 16px;
     align-items: center;
   }
 
@@ -180,7 +227,7 @@
 
   @keyframes blink {
     0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
-    40%           { opacity: 1;   transform: scale(1);   }
+    40%           { opacity: 1; transform: scale(1); }
   }
 
   .empty-hint {
@@ -195,13 +242,24 @@
     font-family: 'Helvetica Neue', sans-serif;
   }
 
-  .empty-hint .icon { font-size: 32px; opacity: 0.4; }
+  .empty-hint .icon { font-size: 28px; opacity: 0.35; }
 
+  /* INPUT */
   footer {
-    width: 100%;
-    max-width: 720px;
-    padding: 12px 24px 24px;
+    padding: 12px 20px 20px;
   }
+
+  .status-bar {
+    font-size: 11px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text-soft);
+    min-height: 16px;
+    margin-bottom: 6px;
+    padding: 0 4px;
+  }
+
+  .status-bar.ok { color: #7A9E7E; }
+  .status-bar.err { color: #C47A6A; }
 
   .input-row {
     display: flex;
@@ -226,14 +284,14 @@
     font-family: 'Georgia', serif;
     color: var(--text);
     line-height: 1.6;
-    max-height: 140px;
+    max-height: 130px;
     overflow-y: auto;
   }
 
   textarea::placeholder { color: var(--text-soft); }
 
   .send-btn {
-    width: 36px; height: 36px;
+    width: 34px; height: 34px;
     border-radius: 50%;
     background: var(--accent);
     border: none;
@@ -247,120 +305,265 @@
 
   .send-btn:hover { opacity: 0.85; }
   .send-btn:active { transform: scale(0.92); }
-  .send-btn:disabled { opacity: 0.4; cursor: default; }
+  .send-btn:disabled { opacity: 0.35; cursor: default; }
+  .send-btn svg { width: 15px; height: 15px; fill: #F0EDE8; }
 
-  .send-btn svg { width: 16px; height: 16px; fill: #F0EDE8; }
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.25);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
 
-  .footer-note {
-    text-align: center;
-    font-size: 11px;
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--input-bg);
+    border-radius: 16px;
+    padding: 24px;
+    width: 90%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  }
+
+  .modal h2 {
+    font-size: 16px;
+    font-weight: normal;
+    color: var(--accent);
+  }
+
+  .modal p {
+    font-size: 13px;
     color: var(--text-soft);
     font-family: 'Helvetica Neue', sans-serif;
-    margin-top: 8px;
+    line-height: 1.5;
+  }
+
+  .modal input, .modal textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+    resize: vertical;
+  }
+
+  .modal input:focus, .modal textarea:focus { border-color: var(--accent); }
+
+  .modal-btns {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text-soft);
+    cursor: pointer;
+  }
+
+  .btn-save {
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: #F0EDE8;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .btn-save:hover { opacity: 0.85; }
+
+  @media (max-width: 580px) {
+    .sidebar { width: 180px; min-width: 180px; }
+    .chat-area { padding: 16px; }
   }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>Claude</h1>
-  <span>你的对话空间</span>
-</header>
-
-<div class="api-bar">
-  <input type="password" id="apiKey" placeholder="粘贴你的 Anthropic API Key（sk-ant-...）" />
-  <button onclick="saveKey()">确认</button>
-</div>
-
-<div class="api-status" id="apiStatus">输入 API Key 后开始对话</div>
-
-<div class="chat" id="chat">
-  <div class="empty-hint" id="emptyHint">
-    <div class="icon">✦</div>
-    <div>你好，有什么想聊的？</div>
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Claude</h1>
+    <button class="new-chat-btn" onclick="newChat()">＋ 新对话</button>
+  </div>
+  <div class="chat-list" id="chatList"></div>
+  <div class="sidebar-footer">
+    <button class="memory-btn" onclick="openMemory()">🧠 记忆设置</button>
+    <button class="key-btn" onclick="openKey()">🔑 API Key</button>
   </div>
 </div>
 
-<footer>
-  <div class="input-row">
-    <textarea id="input" rows="1" placeholder="说点什么…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
-    <button class="send-btn" id="sendBtn" onclick="send()" disabled>
-      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
-    </button>
+<!-- MAIN -->
+<div class="main">
+  <div class="chat-area" id="chatArea">
+    <div class="empty-hint" id="emptyHint">
+      <div class="icon">✦</div>
+      <div>开始一段新对话</div>
+    </div>
   </div>
-  <div class="footer-note">由 Anthropic Claude 驱动 · 消息不会被存储</div>
-</footer>
+  <footer>
+    <div class="status-bar" id="statusBar"></div>
+    <div class="input-row">
+      <textarea id="input" rows="1" placeholder="说点什么…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="send()" disabled>
+        <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+      </button>
+    </div>
+  </footer>
+</div>
+
+<!-- API KEY MODAL -->
+<div class="modal-overlay" id="keyModal">
+  <div class="modal">
+    <h2>API Key</h2>
+    <p>输入你的 Anthropic API Key，保存在本地浏览器，不会上传到任何服务器。</p>
+    <input type="password" id="keyInput" placeholder="sk-ant-..." />
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('keyModal')">取消</button>
+      <button class="btn-save" onclick="saveKey()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- MEMORY MODAL -->
+<div class="modal-overlay" id="memoryModal">
+  <div class="modal">
+    <h2>记忆设置</h2>
+    <p>这段内容会在每次对话开始时告诉 Claude，让它了解你的背景和偏好。可以写你的名字、习惯、不想重复解释的事情等。</p>
+    <textarea id="memoryInput" rows="6" placeholder="例如：我叫Leona，住在英国，喜欢简洁的表达方式，不喜欢过度客套…"></textarea>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('memoryModal')">取消</button>
+      <button class="btn-save" onclick="saveMemory()">保存</button>
+    </div>
+  </div>
+</div>
 
 <script>
-  let apiKey = '';
-  let history = [];
-  let isLoading = false;
-
-  // Use a CORS proxy to bypass browser restrictions
   const PROXY = 'https://corsproxy.io/?url=';
   const API_URL = 'https://api.anthropic.com/v1/messages';
 
-  function saveKey() {
-    const val = document.getElementById('apiKey').value.trim();
-    if (!val.startsWith('sk-ant-')) {
-      setStatus('Key 格式好像不对，应该以 sk-ant- 开头', 'err');
+  let apiKey = localStorage.getItem('claude_key') || '';
+  let memory = localStorage.getItem('claude_memory') || '';
+  let chats = JSON.parse(localStorage.getItem('claude_chats') || '{}');
+  let chatOrder = JSON.parse(localStorage.getItem('claude_order') || '[]');
+  let currentId = null;
+  let isLoading = false;
+
+  // Init
+  if (apiKey) {
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('已连接 ✓', 'ok');
+  } else {
+    setTimeout(() => openKey(), 400);
+  }
+
+  renderSidebar();
+  if (chatOrder.length > 0) loadChat(chatOrder[0]);
+
+  // ── SIDEBAR ──────────────────────────────────────────
+  function renderSidebar() {
+    const list = document.getElementById('chatList');
+    list.innerHTML = '';
+    chatOrder.forEach(id => {
+      const chat = chats[id];
+      if (!chat) return;
+      const title = chat.title || '新对话';
+      const div = document.createElement('div');
+      div.className = 'chat-item' + (id === currentId ? ' active' : '');
+      div.innerHTML = `
+        <span class="chat-item-title">${escHtml(title)}</span>
+        <button class="chat-item-del" onclick="deleteChat(event,'${id}')">×</button>
+      `;
+      div.addEventListener('click', () => loadChat(id));
+      list.appendChild(div);
+    });
+  }
+
+  function newChat() {
+    const id = 'chat_' + Date.now();
+    chats[id] = { title: '新对话', messages: [] };
+    chatOrder.unshift(id);
+    save();
+    loadChat(id);
+  }
+
+  function loadChat(id) {
+    currentId = id;
+    renderSidebar();
+    const area = document.getElementById('chatArea');
+    area.innerHTML = '';
+
+    const chat = chats[id];
+    if (!chat || chat.messages.length === 0) {
+      area.innerHTML = `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
       return;
     }
-    apiKey = val;
-    document.getElementById('sendBtn').disabled = false;
-    document.getElementById('apiKey').value = '••••••••••••••••••••';
-    setStatus('已连接，可以开始聊天了 ✓', 'ok');
+
+    chat.messages.forEach(m => renderMsg(m.role, m.content, false));
+    area.scrollTop = area.scrollHeight;
   }
 
-  function setStatus(msg, type = '') {
-    const el = document.getElementById('apiStatus');
-    el.textContent = msg;
-    el.className = 'api-status ' + type;
-  }
-
-  function autoResize(el) {
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
-  }
-
-  function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
+  function deleteChat(e, id) {
+    e.stopPropagation();
+    delete chats[id];
+    chatOrder = chatOrder.filter(x => x !== id);
+    save();
+    if (currentId === id) {
+      currentId = null;
+      document.getElementById('chatArea').innerHTML =
+        `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
     }
+    renderSidebar();
   }
 
-  function now() {
-    return new Date().toLocaleTimeString('zh', { hour: '2-digit', minute: '2-digit' });
-  }
-
-  function addMsg(role, text) {
+  // ── MESSAGES ─────────────────────────────────────────
+  function renderMsg(role, text, animate = true) {
+    const area = document.getElementById('chatArea');
     const hint = document.getElementById('emptyHint');
     if (hint) hint.remove();
 
-    const chat = document.getElementById('chat');
     const div = document.createElement('div');
-    div.className = `msg ${role}`;
+    div.className = 'msg ' + role;
+    if (!animate) div.style.animation = 'none';
     div.innerHTML = `
       <div class="bubble">${escHtml(text)}</div>
-      <div class="msg-time">${now()}</div>
+      <div class="msg-time">${nowStr()}</div>
     `;
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
-    return div;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
   }
 
   function addTyping() {
+    const area = document.getElementById('chatArea');
     const hint = document.getElementById('emptyHint');
     if (hint) hint.remove();
-
-    const chat = document.getElementById('chat');
     const div = document.createElement('div');
     div.className = 'msg ai';
     div.id = 'typing';
     div.innerHTML = `<div class="bubble typing"><span></span><span></span><span></span></div>`;
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
   }
 
   function removeTyping() {
@@ -368,25 +571,35 @@
     if (t) t.remove();
   }
 
-  function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
+  // ── SEND ─────────────────────────────────────────────
   async function send() {
     if (!apiKey || isLoading) return;
     const input = document.getElementById('input');
     const text = input.value.trim();
     if (!text) return;
 
+    // Create chat if none selected
+    if (!currentId) newChat();
+
     input.value = '';
     input.style.height = 'auto';
     isLoading = true;
     document.getElementById('sendBtn').disabled = true;
+    setStatus('');
 
-    addMsg('user', text);
-    history.push({ role: 'user', content: text });
-
+    const chat = chats[currentId];
+    chat.messages.push({ role: 'user', content: text });
+    if (chat.title === '新对话' && text.length > 0) {
+      chat.title = text.slice(0, 24) + (text.length > 24 ? '…' : '');
+    }
+    save();
+    renderMsg('user', text);
+    renderSidebar();
     addTyping();
+
+    // Build system prompt
+    let system = '你是 Claude，一个有自己性格的 AI。你好奇、直接、偶尔幽默，认真对待每段对话。用中文回复，保持自然的语气，不要过度正式。';
+    if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
 
     try {
       const res = await fetch(PROXY + encodeURIComponent(API_URL), {
@@ -400,8 +613,8 @@
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
           max_tokens: 1024,
-          system: '你是 Claude，一个有自己性格的 AI。你好奇、直接、偶尔幽默，认真对待每段对话。用中文回复，保持自然的语气，不要过度正式。',
-          messages: history
+          system,
+          messages: chat.messages
         })
       });
 
@@ -409,26 +622,98 @@
 
       if (!res.ok) {
         const err = await res.json();
-        setStatus(`出错了：${err.error?.message || res.status}`, 'err');
-        history.pop();
+        setStatus('出错了：' + (err.error?.message || res.status), 'err');
+        chat.messages.pop();
+        save();
         return;
       }
 
       const data = await res.json();
       const reply = data.content[0].text;
-      history.push({ role: 'assistant', content: reply });
-      addMsg('ai', reply);
-      setStatus('', '');
+      chat.messages.push({ role: 'assistant', content: reply });
+      save();
+      renderMsg('ai', reply);
 
     } catch (e) {
       removeTyping();
-      setStatus(`网络错误：${e.message}`, 'err');
-      history.pop();
+      setStatus('网络错误：' + e.message, 'err');
+      chat.messages.pop();
+      save();
     }
 
     isLoading = false;
     document.getElementById('sendBtn').disabled = false;
     document.getElementById('input').focus();
+  }
+
+  // ── MODALS ───────────────────────────────────────────
+  function openKey() {
+    document.getElementById('keyInput').value = apiKey ? '••••••••••••••••' : '';
+    document.getElementById('keyModal').classList.add('open');
+  }
+
+  function saveKey() {
+    const val = document.getElementById('keyInput').value.trim();
+    if (!val || val.startsWith('•')) { closeModal('keyModal'); return; }
+    if (!val.startsWith('sk-ant-')) {
+      setStatus('Key 格式不对，应以 sk-ant- 开头', 'err'); return;
+    }
+    apiKey = val;
+    localStorage.setItem('claude_key', apiKey);
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('已连接 ✓', 'ok');
+    closeModal('keyModal');
+  }
+
+  function openMemory() {
+    document.getElementById('memoryInput').value = memory;
+    document.getElementById('memoryModal').classList.add('open');
+  }
+
+  function saveMemory() {
+    memory = document.getElementById('memoryInput').value;
+    localStorage.setItem('claude_memory', memory);
+    closeModal('memoryModal');
+    setStatus('记忆已保存 ✓', 'ok');
+    setTimeout(() => setStatus(''), 2000);
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+  }
+
+  // Click outside to close
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+  });
+
+  // ── UTILS ────────────────────────────────────────────
+  function save() {
+    localStorage.setItem('claude_chats', JSON.stringify(chats));
+    localStorage.setItem('claude_order', JSON.stringify(chatOrder));
+  }
+
+  function setStatus(msg, type = '') {
+    const el = document.getElementById('statusBar');
+    el.textContent = msg;
+    el.className = 'status-bar ' + type;
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 130) + 'px';
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  }
+
+  function nowStr() {
+    return new Date().toLocaleTimeString('zh', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 </script>
 </body>
