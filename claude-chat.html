@@ -852,7 +852,7 @@
     }
     chat.messages.forEach(m => {
       if (m.role === 'thinking') renderThinking(m.content, false);
-      else renderMsg(m.role, m.content, false);
+      else renderMsg(m.role === 'assistant' ? 'ai' : m.role, m.content, false);
     });
     area.scrollTop = area.scrollHeight;
   }
@@ -888,7 +888,7 @@
     div.className = 'msg ' + role;
     if (!animate) div.style.animation = 'none';
 
-    if (role === 'ai') {
+    if (role === 'ai' || role === 'assistant') {
       const parsed = parseAiReply(text);
       const hasVoice = !!parsed.en;
       const uid = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
@@ -1062,7 +1062,7 @@
 
     try {
       const elUrl = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`;
-      const res = await fetch(PROXY + encodeURIComponent(elUrl), {
+      const res = await fetch('https://corsproxy.io/?' + encodeURIComponent(elUrl), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
