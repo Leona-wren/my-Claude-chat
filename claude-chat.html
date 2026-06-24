@@ -1062,7 +1062,7 @@
 
     try {
       const elUrl = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`;
-      const res = await fetch('https://corsproxy.io/?' + encodeURIComponent(elUrl), {
+      const res = await fetch(elUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
