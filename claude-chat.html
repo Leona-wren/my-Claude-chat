@@ -9,20 +9,62 @@
 
   /* ── 皮肤：自然绿（默认）── */
   body.skin-warm {
-    --bg: #F5F2ED;
-    --sidebar: #EDEAE3;
-    --bubble-user: #C8D5B9;
+    --bg: #EDE8E0;
+    --sidebar: #FFFFFF;
+    --bubble-user: #5C7A4E;
+    --bubble-user-text: #FFFFFF;
     --bubble-ai: #FFFFFF;
-    --text: #2E2E2A;
-    --text-soft: #8A8A7A;
-    --accent: #6B8F5E;
-    --border: #DDD9D0;
+    --text: #2A2A25;
+    --text-soft: #9A9A8A;
+    --accent: #5C7A4E;
+    --border: #E2DDD5;
     --input-bg: #FFFFFF;
-    --hover: #E5E2D8;
-    --active: #D8D9C8;
+    --hover: #F4F1EC;
+    --active: #E8EAD8;
   }
 
-
+  /* 自然绿专属覆盖 */
+  body.skin-warm .sidebar {
+    border-right: none;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.07);
+  }
+  body.skin-warm .sidebar-header { border-bottom: none; padding-bottom: 8px; }
+  body.skin-warm .sidebar-header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0; }
+  body.skin-warm .new-chat-btn { border-radius: 12px; padding: 10px 14px; font-size: 14px; font-weight: 500; color: #fff; }
+  body.skin-warm .chat-item { border-radius: 12px; padding: 10px 12px; font-size: 13.5px; }
+  body.skin-warm .chat-area { padding: 24px 32px; gap: 12px; }
+  body.skin-warm .msg { max-width: 68%; gap: 5px; }
+  body.skin-warm .bubble { padding: 13px 18px; border-radius: 22px; font-size: 14.5px; line-height: 1.7; box-shadow: none; }
+  body.skin-warm .msg.user .bubble {
+    background: var(--bubble-user);
+    color: #fff;
+    border-bottom-right-radius: 6px;
+    box-shadow: 0 2px 8px rgba(92,122,78,0.28);
+  }
+  body.skin-warm .msg.ai .bubble {
+    background: #fff;
+    border-bottom-left-radius: 6px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  body.skin-warm footer { padding: 8px 20px 20px; }
+  body.skin-warm .input-row {
+    border-radius: 20px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.10);
+    border: 1px solid rgba(0,0,0,0.05);
+    padding: 12px 12px 12px 20px;
+  }
+  body.skin-warm .input-row:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 4px 20px rgba(92,122,78,0.18);
+  }
+  body.skin-warm .send-btn { width: 38px; height: 38px; box-shadow: 0 2px 8px rgba(92,122,78,0.35); }
+  body.skin-warm .send-btn svg { fill: #fff; }
+  body.skin-warm .sidebar-btn { border-radius: 10px; }
+  body.skin-warm .topbar { background: #F7F5F1; border-bottom: 1px solid var(--border); padding: 10px 24px; }
+  body.skin-warm .modal { border-radius: 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.14); }
+  body.skin-warm .empty-hint { font-size: 15px; gap: 10px; }
+  body.skin-warm .empty-hint .icon { font-size: 32px; opacity: 0.22; }
+  body.skin-warm .msg-time { opacity: 0.55; }
 
   /* ── 皮肤：墨夜 ── */
   body.skin-dark {
@@ -199,7 +241,7 @@
 
   .skin-dot:hover { transform: scale(1.15); }
   .skin-dot.selected { border-color: var(--accent); }
-  .skin-dot.dot-warm { background: #C8D5B9; box-shadow: inset 0 0 0 1px #6B8F5E; }
+  .skin-dot.dot-warm { background: #5C7A4E; box-shadow: inset 0 0 0 2px #3d5435; }
   .skin-dot.dot-dark { background: #1A1A1F; box-shadow: inset 0 0 0 1px #9E8FD4; }
   .skin-dot.dot-wa { background: #25D366; box-shadow: inset 0 0 0 1px #128C7E; }
 
@@ -319,6 +361,22 @@
     from { opacity: 0; transform: translateY(5px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+
+  @keyframes bubblePop {
+    0%   { opacity: 0; transform: scale(0.88) translateY(6px); }
+    60%  { transform: scale(1.03) translateY(-1px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  body.skin-warm .msg { animation: bubblePop 0.28s cubic-bezier(0.34,1.56,0.64,1) both; }
+  body.skin-warm .msg.user .bubble:active { transform: scale(0.97); transition: transform 0.1s; }
+  body.skin-warm .send-btn { transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s; }
+  body.skin-warm .send-btn:hover:not(:disabled) { transform: scale(1.08); box-shadow: 0 4px 14px rgba(92,122,78,0.45); }
+  body.skin-warm .send-btn:active:not(:disabled) { transform: scale(0.93); }
+  body.skin-warm .new-chat-btn { transition: opacity 0.2s, transform 0.15s; }
+  body.skin-warm .new-chat-btn:hover { opacity: 1; transform: translateY(-1px); box-shadow: 0 3px 10px rgba(92,122,78,0.22); }
+  body.skin-warm .chat-item { transition: background 0.15s, transform 0.12s; }
+  body.skin-warm .chat-item:hover { transform: translateX(2px); }
 
   .msg.user { align-self: flex-end; align-items: flex-end; }
   .msg.ai   { align-self: flex-start; align-items: flex-start; }
@@ -563,6 +621,31 @@
     .sidebar { width: 180px; min-width: 180px; }
     .chat-area { padding: 14px; }
   }
+
+  /* 语音播放按钮 */
+  .play-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 6px;
+    padding: 4px 10px 4px 8px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-soft);
+    font-size: 12px;
+    font-family: 'Helvetica Neue', sans-serif;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+  }
+  .play-btn:hover { background: var(--hover); color: var(--text); }
+  .play-btn.playing { color: var(--accent); border-color: var(--accent); }
+  .play-btn svg { width: 12px; height: 12px; fill: currentColor; flex-shrink: 0; }
+
+  /* AI气泡里英文+中文分区 */
+  .bubble-en { font-size: 14.5px; line-height: 1.7; }
+  .bubble-zh { font-size: 13px; color: var(--text-soft); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); line-height: 1.65; }
 </style>
 </head>
 <body class="skin-warm">
@@ -583,6 +666,7 @@
     </div>
     <button class="sidebar-btn" onclick="openMemory()">🧠 记忆设置</button>
     <button class="sidebar-btn" onclick="openKey()">🔑 API Key</button>
+    <button class="sidebar-btn" onclick="openElKey()">🔊 语音 Key</button>
   </div>
 </div>
 
@@ -649,6 +733,20 @@
   </div>
 </div>
 
+
+<!-- EL KEY MODAL -->
+<div class="modal-overlay" id="elModal">
+  <div class="modal">
+    <h2>语音 Key</h2>
+    <p>输入你的 ElevenLabs API Key，保存在本地浏览器。没有 Key 则不显示播放按钮。</p>
+    <input type="password" id="elKeyInput" placeholder="sk_..." />
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('elModal')">取消</button>
+      <button class="btn-save" onclick="saveElKey()">保存</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const PROXY = 'https://corsproxy.io/?url=';
   const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -660,6 +758,9 @@
   let currentId = null;
   let isLoading = false;
   let thinkingOn = false;
+  let elKey = localStorage.getItem('el_key') || '';
+  const EL_VOICE = '0qHbGTWOPgPUvThY4Te6';
+  let currentAudio = null;
   let currentSkin = localStorage.getItem('claude_skin') || 'warm';
 
   // Init
@@ -770,6 +871,15 @@
   }
 
   // ── MESSAGES ─────────────────────────────────────────
+  function parseAiReply(text) {
+    const enMatch = text.match(/\[EN\]\s*([\s\S]*?)(?=\[ZH\]|$)/);
+    const zhMatch = text.match(/\[ZH\]\s*([\s\S]*?)$/);
+    return {
+      en: enMatch ? enMatch[1].trim() : '',
+      zh: zhMatch ? zhMatch[1].trim() : text.trim()
+    };
+  }
+
   function renderMsg(role, text, animate = true) {
     const area = document.getElementById('chatArea');
     const hint = document.getElementById('emptyHint');
@@ -777,7 +887,24 @@
     const div = document.createElement('div');
     div.className = 'msg ' + role;
     if (!animate) div.style.animation = 'none';
-    div.innerHTML = `<div class="bubble">${escHtml(text)}</div><div class="msg-time">${nowStr()}</div>`;
+
+    if (role === 'ai') {
+      const parsed = parseAiReply(text);
+      const hasVoice = elKey && parsed.en;
+      const uid = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+      div.innerHTML = `
+        <div class="bubble">
+          ${parsed.en ? `<div class="bubble-en">${escHtml(parsed.en)}</div>` : ''}
+          ${parsed.zh ? `<div class="bubble-zh">${escHtml(parsed.zh)}</div>` : escHtml(text)}
+        </div>
+        ${hasVoice ? `<button class="play-btn" id="${uid}" onclick="playVoice(this, ${JSON.stringify(parsed.en)})">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
+        </button>` : ''}
+        <div class="msg-time">${nowStr()}</div>`;
+    } else {
+      div.innerHTML = `<div class="bubble">${escHtml(text)}</div><div class="msg-time">${nowStr()}</div>`;
+    }
+
     area.appendChild(div);
     area.scrollTop = area.scrollHeight;
   }
@@ -835,7 +962,7 @@
     renderSidebar();
     addTyping();
 
-    let system = '你是 Claude，一个有自己性格的 AI。你好奇、直接、偶尔幽默，认真对待每段对话。用中文回复，保持自然的语气，不要过度正式。如果开启了思考链，思考过程也请用中文。如果你有思考过程，也请用中文思考。';
+    let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。每次回复用以下固定格式，不要加任何额外说明：\n\n[EN]\n（英文回复，自然口语，带情绪，不超过4句）\n\n[ZH]\n（完全相同意思的中文版，自然流畅）\n\n思考过程如果有，也请用中文。';
     if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
 
     // 构建发送给API的messages（过滤掉thinking记录）
@@ -908,6 +1035,67 @@
     document.getElementById('input').focus();
   }
 
+  // ── 语音 ─────────────────────────────────────────────
+  async function playVoice(btn, text) {
+    if (!elKey) { setStatus('请先设置 ElevenLabs Key', 'err'); return; }
+
+    // 如果正在播放，停止
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+      document.querySelectorAll('.play-btn.playing').forEach(b => {
+        b.classList.remove('playing');
+        b.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
+      });
+      if (btn.classList.contains('was-playing')) { btn.classList.remove('was-playing'); return; }
+    }
+
+    btn.classList.add('playing', 'was-playing');
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> 播放中…';
+    setStatus('生成语音中…');
+
+    try {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': elKey
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_turbo_v2_5',
+          voice_settings: { stability: 0.4, similarity_boost: 0.75, style: 0.45, use_speaker_boost: true }
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        setStatus('语音出错：' + (err.detail?.message || res.status), 'err');
+        btn.classList.remove('playing', 'was-playing');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      currentAudio = new Audio(url);
+      currentAudio.play();
+      setStatus('');
+
+      currentAudio.onended = () => {
+        btn.classList.remove('playing', 'was-playing');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 再听';
+        currentAudio = null;
+        URL.revokeObjectURL(url);
+      };
+
+    } catch (e) {
+      setStatus('语音网络错误：' + e.message, 'err');
+      btn.classList.remove('playing', 'was-playing');
+      btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
+    }
+  }
+
   // ── MODALS ───────────────────────────────────────────
   function openKey() {
     document.getElementById('keyInput').value = apiKey ? '••••••••••••••••' : '';
@@ -938,6 +1126,21 @@
     setTimeout(() => setStatus(''), 2000);
   }
 
+
+  function openElKey() {
+    document.getElementById('elKeyInput').value = elKey ? '••••••••••••••••' : '';
+    document.getElementById('elModal').classList.add('open');
+  }
+
+  function saveElKey() {
+    const val = document.getElementById('elKeyInput').value.trim();
+    if (!val || val.startsWith('•')) { closeModal('elModal'); return; }
+    elKey = val;
+    localStorage.setItem('el_key', elKey);
+    closeModal('elModal');
+    setStatus('语音 Key 已保存 ✓', 'ok');
+    setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2000);
+  }
   function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
   document.querySelectorAll('.modal-overlay').forEach(el => {
