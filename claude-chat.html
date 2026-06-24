@@ -7,7 +7,8 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  :root {
+  /* ── 皮肤：暖灰（默认）── */
+  body.skin-warm {
     --bg: #EDEAE4;
     --sidebar: #E0DCD5;
     --bubble-user: #C8C2B8;
@@ -21,6 +22,58 @@
     --active: #CEC8C0;
   }
 
+  /* ── 皮肤：WhatsApp ── */
+  body.skin-whatsapp { color-scheme: light; }
+  body.skin-whatsapp .sidebar { color: #E9EDF0; }
+  body.skin-whatsapp .chat-item { color: #E9EDF0; }
+  body.skin-whatsapp .sidebar-btn { color: #B2BEC3; border-color: rgba(255,255,255,0.2); }
+  body.skin-whatsapp .sidebar-header h1 { color: #FFFFFF; }
+  body.skin-whatsapp .new-chat-btn { background: #128C7E; color: white; }
+  body.skin-whatsapp {
+    --bg: #ECE5DD;
+    --sidebar: #075E54;
+    --bubble-user: #DCF8C6;
+    --bubble-ai: #FFFFFF;
+    --text: #111B21;
+    --text-soft: #667781;
+    --accent: #25D366;
+    --border: #D1D7DB;
+    --input-bg: #FFFFFF;
+    --hover: #F0F2F5;
+    --active: #D9FDD3;
+  }
+
+  /* ── 皮肤：墨夜 ── */
+  body.skin-dark {
+    --bg: #1A1A1F;
+    --sidebar: #141418;
+    --bubble-user: #2E2E38;
+    --bubble-ai: #222228;
+    --text: #DDDBE0;
+    --text-soft: #7A7880;
+    --accent: #9E8FD4;
+    --border: #2E2E38;
+    --input-bg: #222228;
+    --hover: #252530;
+    --active: #2C2C3A;
+  }
+
+
+  /* ── 皮肤：WhatsApp ── */
+  body.skin-wa {
+    --bg: #ECE5DD;
+    --sidebar: #FFFFFF;
+    --bubble-user: #DCF8C6;
+    --bubble-ai: #FFFFFF;
+    --text: #111B21;
+    --text-soft: #667781;
+    --accent: #25D366;
+    --border: #E9EDEF;
+    --input-bg: #FFFFFF;
+    --hover: #F5F6F6;
+    --active: #E9EDEF;
+  }
+
   body {
     background: var(--bg);
     color: var(--text);
@@ -28,6 +81,7 @@
     height: 100dvh;
     display: flex;
     overflow: hidden;
+    transition: background 0.3s, color 0.3s;
   }
 
   /* SIDEBAR */
@@ -39,6 +93,7 @@
     display: flex;
     flex-direction: column;
     height: 100dvh;
+    transition: background 0.3s;
   }
 
   .sidebar-header {
@@ -57,7 +112,7 @@
   .new-chat-btn {
     width: 100%;
     background: var(--accent);
-    color: #F0EDE8;
+    color: var(--bg);
     border: none;
     border-radius: 8px;
     padding: 8px 12px;
@@ -129,7 +184,7 @@
     gap: 6px;
   }
 
-  .memory-btn, .key-btn {
+  .sidebar-btn {
     width: 100%;
     background: transparent;
     border: 1px solid var(--border);
@@ -143,7 +198,37 @@
     transition: background 0.15s;
   }
 
-  .memory-btn:hover, .key-btn:hover { background: var(--hover); }
+  .sidebar-btn:hover { background: var(--hover); }
+
+  /* 皮肤切换排排坐 */
+  .skin-row {
+    display: flex;
+    gap: 6px;
+    padding: 4px 0 2px;
+  }
+
+  .skin-dot {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.15s;
+    flex-shrink: 0;
+  }
+
+  .skin-dot:hover { transform: scale(1.15); }
+  .skin-dot.selected { border-color: var(--accent); }
+  .skin-dot.dot-warm { background: #EDEAE4; box-shadow: inset 0 0 0 1px #C8C2B8; }
+  .skin-dot.dot-dark { background: #1A1A1F; box-shadow: inset 0 0 0 1px #9E8FD4; }
+  .skin-dot.dot-wa { background: #25D366; box-shadow: inset 0 0 0 1px #128C7E; }
+  .skin-dot.dot-whatsapp { background: #25D366; box-shadow: inset 0 0 0 1px #075E54; }
+
+  .skin-label {
+    font-size: 11px;
+    color: var(--text-soft);
+    font-family: 'Helvetica Neue', sans-serif;
+    margin-bottom: 2px;
+  }
 
   /* MAIN */
   .main {
@@ -154,6 +239,83 @@
     height: 100dvh;
   }
 
+  /* 顶部工具栏 */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    flex-wrap: wrap;
+  }
+
+  .topbar select {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text);
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .topbar select:focus { border-color: var(--accent); }
+
+  .thinking-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text-soft);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .toggle-switch {
+    width: 32px; height: 18px;
+    background: var(--border);
+    border-radius: 9px;
+    position: relative;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch.on { background: var(--accent); }
+
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    background: white;
+    border-radius: 50%;
+    top: 2px; left: 2px;
+    transition: left 0.2s;
+  }
+
+  .toggle-switch.on::after { left: 16px; }
+
+  .topbar-sep {
+    width: 1px; height: 18px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  .thinking-badge {
+    font-size: 11px;
+    color: var(--accent);
+    font-family: 'Helvetica Neue', sans-serif;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .thinking-badge.show { opacity: 1; }
+
+  /* CHAT AREA */
   .chat-area {
     flex: 1;
     overflow-y: auto;
@@ -198,7 +360,31 @@
   .msg.ai .bubble {
     background: var(--bubble-ai);
     border-bottom-left-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  /* 思考链展示 */
+  .thinking-block {
+    background: var(--hover);
+    border-left: 2px solid var(--accent);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--text-soft);
+    font-family: 'Helvetica Neue', sans-serif;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: 72%;
+    align-self: flex-start;
+    animation: fadeUp 0.2s ease;
+  }
+
+  .thinking-label {
+    font-size: 11px;
+    color: var(--accent);
+    margin-bottom: 6px;
+    font-weight: 500;
   }
 
   .msg-time {
@@ -246,7 +432,7 @@
 
   /* INPUT */
   footer {
-    padding: 12px 20px 20px;
+    padding: 10px 20px 18px;
   }
 
   .status-bar {
@@ -306,14 +492,14 @@
   .send-btn:hover { opacity: 0.85; }
   .send-btn:active { transform: scale(0.92); }
   .send-btn:disabled { opacity: 0.35; cursor: default; }
-  .send-btn svg { width: 15px; height: 15px; fill: #F0EDE8; }
+  .send-btn svg { width: 15px; height: 15px; fill: var(--bg); }
 
   /* MODAL */
   .modal-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.25);
+    background: rgba(0,0,0,0.3);
     z-index: 100;
     align-items: center;
     justify-content: center;
@@ -330,7 +516,7 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
   }
 
   .modal h2 {
@@ -386,7 +572,7 @@
     padding: 8px 16px;
     font-size: 13px;
     font-family: 'Helvetica Neue', sans-serif;
-    color: #F0EDE8;
+    color: var(--bg);
     cursor: pointer;
     transition: opacity 0.2s;
   }
@@ -395,11 +581,11 @@
 
   @media (max-width: 580px) {
     .sidebar { width: 180px; min-width: 180px; }
-    .chat-area { padding: 16px; }
+    .chat-area { padding: 14px; }
   }
 </style>
 </head>
-<body>
+<body class="skin-warm">
 
 <!-- SIDEBAR -->
 <div class="sidebar">
@@ -409,19 +595,44 @@
   </div>
   <div class="chat-list" id="chatList"></div>
   <div class="sidebar-footer">
-    <button class="memory-btn" onclick="openMemory()">🧠 记忆设置</button>
-    <button class="key-btn" onclick="openKey()">🔑 API Key</button>
+    <div class="skin-label">外观</div>
+    <div class="skin-row">
+      <div class="skin-dot dot-warm selected" title="暖灰" onclick="setSkin('warm')"></div>
+      <div class="skin-dot dot-dark" title="墨夜" onclick="setSkin('dark')"></div>
+      <div class="skin-dot dot-wa" title="WhatsApp" onclick="setSkin('wa')"></div>
+      <div class="skin-dot dot-whatsapp" title="WhatsApp" onclick="setSkin('whatsapp')"></div>
+    </div>
+    <button class="sidebar-btn" onclick="openMemory()">🧠 记忆设置</button>
+    <button class="sidebar-btn" onclick="openKey()">🔑 API Key</button>
   </div>
 </div>
 
 <!-- MAIN -->
 <div class="main">
+  <!-- 顶部工具栏 -->
+  <div class="topbar">
+    <select id="modelSelect" onchange="onModelChange()">
+      <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+      <option value="claude-opus-4-6">Opus 4.6</option>
+      <option value="claude-opus-4-7">Opus 4.7</option>
+      <option value="claude-opus-4-8">Opus 4.8</option>
+      <option value="claude-haiku-4-5-20251001">Haiku 4.5（省钱）</option>
+    </select>
+    <div class="topbar-sep"></div>
+    <div class="thinking-toggle" onclick="toggleThinking()">
+      <div class="toggle-switch" id="thinkingSwitch"></div>
+      <span>思考链</span>
+    </div>
+    <span class="thinking-badge" id="thinkingBadge">✦ 深度思考中</span>
+  </div>
+
   <div class="chat-area" id="chatArea">
     <div class="empty-hint" id="emptyHint">
       <div class="icon">✦</div>
       <div>开始一段新对话</div>
     </div>
   </div>
+
   <footer>
     <div class="status-bar" id="statusBar"></div>
     <div class="input-row">
@@ -450,8 +661,8 @@
 <div class="modal-overlay" id="memoryModal">
   <div class="modal">
     <h2>记忆设置</h2>
-    <p>这段内容会在每次对话开始时告诉 Claude，让它了解你的背景和偏好。可以写你的名字、习惯、不想重复解释的事情等。</p>
-    <textarea id="memoryInput" rows="6" placeholder="例如：我叫Leona，住在英国，喜欢简洁的表达方式，不喜欢过度客套…"></textarea>
+    <p>这段内容会在每次对话开始时告诉 Claude，让它了解你的背景和偏好。</p>
+    <textarea id="memoryInput" rows="6" placeholder="例如：我叫Leona，住在英国，喜欢简洁的表达方式…"></textarea>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('memoryModal')">取消</button>
       <button class="btn-save" onclick="saveMemory()">保存</button>
@@ -469,17 +680,59 @@
   let chatOrder = JSON.parse(localStorage.getItem('claude_order') || '[]');
   let currentId = null;
   let isLoading = false;
+  let thinkingOn = false;
+  let currentSkin = localStorage.getItem('claude_skin') || 'warm';
 
   // Init
+  applySkin(currentSkin);
   if (apiKey) {
     document.getElementById('sendBtn').disabled = false;
     setStatus('已连接 ✓', 'ok');
   } else {
     setTimeout(() => openKey(), 400);
   }
-
   renderSidebar();
   if (chatOrder.length > 0) loadChat(chatOrder[0]);
+
+  // ── 皮肤 ─────────────────────────────────────────────
+  function setSkin(name) {
+    currentSkin = name;
+    localStorage.setItem('claude_skin', name);
+    applySkin(name);
+  }
+
+  function applySkin(name) {
+    document.body.className = 'skin-' + name;
+    document.querySelectorAll('.skin-dot').forEach(d => {
+      d.classList.toggle('selected', d.classList.contains('dot-' + name));
+    });
+  }
+
+  // ── 模型 & 思考链 ─────────────────────────────────────
+  function onModelChange() {
+    const model = document.getElementById('modelSelect').value;
+    // 思考链只支持 opus
+    if (!model.includes('opus') && thinkingOn) {
+      thinkingOn = false;
+      updateThinkingUI();
+    }
+  }
+
+  function toggleThinking() {
+    const model = document.getElementById('modelSelect').value;
+    if (!model.includes('opus')) {
+      setStatus('思考链目前只支持 Opus 模型', 'err');
+      setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2500);
+      return;
+    }
+    thinkingOn = !thinkingOn;
+    updateThinkingUI();
+  }
+
+  function updateThinkingUI() {
+    document.getElementById('thinkingSwitch').classList.toggle('on', thinkingOn);
+    document.getElementById('thinkingBadge').classList.toggle('show', thinkingOn);
+  }
 
   // ── SIDEBAR ──────────────────────────────────────────
   function renderSidebar() {
@@ -488,11 +741,10 @@
     chatOrder.forEach(id => {
       const chat = chats[id];
       if (!chat) return;
-      const title = chat.title || '新对话';
       const div = document.createElement('div');
       div.className = 'chat-item' + (id === currentId ? ' active' : '');
       div.innerHTML = `
-        <span class="chat-item-title">${escHtml(title)}</span>
+        <span class="chat-item-title">${escHtml(chat.title || '新对话')}</span>
         <button class="chat-item-del" onclick="deleteChat(event,'${id}')">×</button>
       `;
       div.addEventListener('click', () => loadChat(id));
@@ -513,14 +765,15 @@
     renderSidebar();
     const area = document.getElementById('chatArea');
     area.innerHTML = '';
-
     const chat = chats[id];
     if (!chat || chat.messages.length === 0) {
       area.innerHTML = `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
       return;
     }
-
-    chat.messages.forEach(m => renderMsg(m.role, m.content, false));
+    chat.messages.forEach(m => {
+      if (m.role === 'thinking') renderThinking(m.content, false);
+      else renderMsg(m.role, m.content, false);
+    });
     area.scrollTop = area.scrollHeight;
   }
 
@@ -542,14 +795,22 @@
     const area = document.getElementById('chatArea');
     const hint = document.getElementById('emptyHint');
     if (hint) hint.remove();
-
     const div = document.createElement('div');
     div.className = 'msg ' + role;
     if (!animate) div.style.animation = 'none';
-    div.innerHTML = `
-      <div class="bubble">${escHtml(text)}</div>
-      <div class="msg-time">${nowStr()}</div>
-    `;
+    div.innerHTML = `<div class="bubble">${escHtml(text)}</div><div class="msg-time">${nowStr()}</div>`;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+  }
+
+  function renderThinking(text, animate = true) {
+    const area = document.getElementById('chatArea');
+    const hint = document.getElementById('emptyHint');
+    if (hint) hint.remove();
+    const div = document.createElement('div');
+    div.className = 'thinking-block';
+    if (!animate) div.style.animation = 'none';
+    div.innerHTML = `<div class="thinking-label">✦ 思考过程</div>${escHtml(text)}`;
     area.appendChild(div);
     area.scrollTop = area.scrollHeight;
   }
@@ -559,8 +820,7 @@
     const hint = document.getElementById('emptyHint');
     if (hint) hint.remove();
     const div = document.createElement('div');
-    div.className = 'msg ai';
-    div.id = 'typing';
+    div.className = 'msg ai'; div.id = 'typing';
     div.innerHTML = `<div class="bubble typing"><span></span><span></span><span></span></div>`;
     area.appendChild(div);
     area.scrollTop = area.scrollHeight;
@@ -578,7 +838,6 @@
     const text = input.value.trim();
     if (!text) return;
 
-    // Create chat if none selected
     if (!currentId) newChat();
 
     input.value = '';
@@ -588,18 +847,31 @@
     setStatus('');
 
     const chat = chats[currentId];
+    const model = document.getElementById('modelSelect').value;
+
     chat.messages.push({ role: 'user', content: text });
-    if (chat.title === '新对话' && text.length > 0) {
-      chat.title = text.slice(0, 24) + (text.length > 24 ? '…' : '');
-    }
+    if (chat.title === '新对话') chat.title = text.slice(0, 24) + (text.length > 24 ? '…' : '');
     save();
     renderMsg('user', text);
     renderSidebar();
     addTyping();
 
-    // Build system prompt
-    let system = '你是 Claude，一个有自己性格的 AI。你好奇、直接、偶尔幽默，认真对待每段对话。用中文回复，保持自然的语气，不要过度正式。';
+    let system = '你是 Claude，一个有自己性格的 AI。你好奇、直接、偶尔幽默，认真对待每段对话。用中文回复，保持自然的语气，不要过度正式。如果开启了思考链，思考过程也请用中文。如果你有思考过程，也请用中文思考。';
     if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
+
+    // 构建发送给API的messages（过滤掉thinking记录）
+    const apiMessages = chat.messages.filter(m => m.role !== 'thinking');
+
+    const body = {
+      model,
+      max_tokens: thinkingOn ? 16000 : 1024,
+      system,
+      messages: apiMessages
+    };
+
+    if (thinkingOn) {
+      body.thinking = { type: 'enabled', budget_tokens: 10000 };
+    }
 
     try {
       const res = await fetch(PROXY + encodeURIComponent(API_URL), {
@@ -610,12 +882,7 @@
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true'
         },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1024,
-          system,
-          messages: chat.messages
-        })
+        body: JSON.stringify(body)
       });
 
       removeTyping();
@@ -625,14 +892,30 @@
         setStatus('出错了：' + (err.error?.message || res.status), 'err');
         chat.messages.pop();
         save();
+        isLoading = false;
+        document.getElementById('sendBtn').disabled = false;
         return;
       }
 
       const data = await res.json();
-      const reply = data.content[0].text;
-      chat.messages.push({ role: 'assistant', content: reply });
+
+      // 处理思考链
+      let thinkingText = '';
+      let replyText = '';
+
+      data.content.forEach(block => {
+        if (block.type === 'thinking') thinkingText = block.thinking;
+        if (block.type === 'text') replyText = block.text;
+      });
+
+      if (thinkingText) {
+        chat.messages.push({ role: 'thinking', content: thinkingText });
+        renderThinking(thinkingText);
+      }
+
+      chat.messages.push({ role: 'assistant', content: replyText });
       save();
-      renderMsg('ai', reply);
+      renderMsg('ai', replyText);
 
     } catch (e) {
       removeTyping();
@@ -655,9 +938,7 @@
   function saveKey() {
     const val = document.getElementById('keyInput').value.trim();
     if (!val || val.startsWith('•')) { closeModal('keyModal'); return; }
-    if (!val.startsWith('sk-ant-')) {
-      setStatus('Key 格式不对，应以 sk-ant- 开头', 'err'); return;
-    }
+    if (!val.startsWith('sk-ant-')) { setStatus('Key 格式不对，应以 sk-ant- 开头', 'err'); return; }
     apiKey = val;
     localStorage.setItem('claude_key', apiKey);
     document.getElementById('sendBtn').disabled = false;
@@ -678,11 +959,8 @@
     setTimeout(() => setStatus(''), 2000);
   }
 
-  function closeModal(id) {
-    document.getElementById(id).classList.remove('open');
-  }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-  // Click outside to close
   document.querySelectorAll('.modal-overlay').forEach(el => {
     el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
   });
