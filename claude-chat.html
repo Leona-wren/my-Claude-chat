@@ -890,12 +890,12 @@
 
     if (role === 'ai') {
       const parsed = parseAiReply(text);
-      const hasVoice = elKey && parsed.en;
+      const hasVoice = !!parsed.en;
       const uid = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
       div.innerHTML = `
         <div class="bubble">
           ${parsed.en ? `<div class="bubble-en">${escHtml(parsed.en)}</div>` : ''}
-          ${parsed.zh ? `<div class="bubble-zh">${escHtml(parsed.zh)}</div>` : escHtml(text)}
+          <div class="bubble-zh">${escHtml(parsed.zh || text)}</div>
         </div>
         ${hasVoice ? `<button class="play-btn" id="${uid}" onclick="playVoice(this, ${JSON.stringify(parsed.en)})">
           <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
@@ -1055,7 +1055,8 @@
     setStatus('生成语音中…');
 
     try {
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`, {
+      const elUrl = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`;
+      const res = await fetch(PROXY + encodeURIComponent(elUrl), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
