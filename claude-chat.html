@@ -1212,6 +1212,13 @@
     URL.revokeObjectURL(url);
   }
 
+  // 按 messageId 合并两个消息数组，保留全部本地消息
+  function mergeMessages(localMsgs, importedMsgs) {
+    const localIdSet = new Set(localMsgs.filter(m => m.id).map(m => m.id));
+    const toAdd = importedMsgs.filter(m => !m.id || !localIdSet.has(m.id));
+    return [...localMsgs, ...toAdd];
+  }
+
   function importChats(e) {
     const file = e.target.files[0];
     e.target.value = '';
@@ -1235,51 +1242,75 @@
         return;
       }
 
-      // 预扫描：统计各类情况
-      let willAdd = 0, willSkip = 0, willRename = 0;
+      // 预扫描
+      let willAdd = 0, willSkip = 0, willMergeById = 0, willPrompt = 0;
       validIds.forEach(id => {
-        if (!chats[id]) {
-          willAdd++;
-        } else if (JSON.stringify(chats[id].messages) === JSON.stringify(data.chats[id].messages)) {
-          willSkip++;
+        const incoming = data.chats[id];
+        if (chats[id]) {
+          if (JSON.stringify(chats[id].messages) === JSON.stringify(incoming.messages)) willSkip++;
+          else willMergeById++;
         } else {
-          willRename++;
+          const sameTitle = Object.values(chats).find(c => c.title === incoming.title);
+          if (sameTitle) willPrompt++;
+          else willAdd++;
         }
       });
 
       if (!confirm(
-        `合并导入说明：\n` +
-        `• 新对话（本地不存在）：${willAdd} 条，直接加入\n` +
-        `• 内容完全相同：${willSkip} 条，跳过\n` +
-        `• ID 冲突但内容不同：${willRename} 条，作为新对话加入\n\n` +
-        `本地现有 ${chatOrder.length} 条对话不会被删除或覆盖。\n` +
+        `合并导入预览：\n` +
+        `• 全新对话：${willAdd} 条，直接加入\n` +
+        `• 完全相同：${willSkip} 条，跳过\n` +
+        `• 同 ID 内容不同：${willMergeById} 条，按消息 ID 合并\n` +
+        `• 同名但不同 ID：${willPrompt} 条，逐一询问\n\n` +
+        `本地现有 ${chatOrder.length} 条对话不会被删除。\n` +
         `音频缓存不随 JSON 迁移，历史语音第一次播放时会重新生成。\n\n` +
-        `确认合并导入？`
+        `确认继续？`
       )) return;
 
-      // 执行合并
-      let added = 0;
+      let added = 0, skipped = 0, merged = 0;
+
       validIds.forEach(id => {
         const incoming = data.chats[id];
-        if (!chats[id]) {
-          // 新 chat，直接加入
-          chats[id] = incoming;
-          chatOrder.push(id);
-          added++;
-        } else if (JSON.stringify(chats[id].messages) === JSON.stringify(incoming.messages)) {
-          // 完全相同，跳过
+
+        if (chats[id]) {
+          // 同 chatId
+          if (JSON.stringify(chats[id].messages) === JSON.stringify(incoming.messages)) {
+            skipped++;
+          } else {
+            chats[id].messages = mergeMessages(chats[id].messages, incoming.messages);
+            merged++;
+          }
         } else {
-          // ID 冲突但内容不同，生成新 ID
-          const newId = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-          chats[newId] = { ...incoming, title: (incoming.title || '新对话') + '（导入）' };
-          chatOrder.push(newId);
-          added++;
+          // 不同 chatId，检查 title 是否重名
+          const matchEntry = Object.entries(chats).find(([, c]) => c.title === incoming.title);
+          if (matchEntry) {
+            const doMerge = confirm(
+              `发现同名对话：「${incoming.title}」\n\n` +
+              `确定 → 合并到本地同名对话（按消息 ID 合并，不删除任何本地消息）\n` +
+              `取消 → 作为独立新窗口导入`
+            );
+            if (doMerge) {
+              const [localId] = matchEntry;
+              chats[localId].messages = mergeMessages(chats[localId].messages, incoming.messages);
+              merged++;
+            } else {
+              const newId = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+              chats[newId] = { ...incoming };
+              chatOrder.push(newId);
+              added++;
+            }
+          } else {
+            // 全新对话
+            chats[id] = incoming;
+            chatOrder.push(id);
+            added++;
+          }
         }
       });
 
       save();
       renderSidebar();
-      setStatus(`合并完成：新增 ${added} 条，跳过 ${willSkip} 条 ✓`, 'ok');
+      setStatus(`导入完成：新增 ${added}，合并 ${merged}，跳过 ${skipped} ✓`, 'ok');
       setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 4000);
     };
     reader.readAsText(file);
