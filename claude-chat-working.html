@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Chat</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* ── 皮肤：自然绿（默认）── */
+  body.skin-warm {
+    --bg: #EDE8E0;
+    --sidebar: #FFFFFF;
+    --bubble-user: #5C7A4E;
+    --bubble-user-text: #FFFFFF;
+    --bubble-ai: #FFFFFF;
+    --text: #2A2A25;
+    --text-soft: #9A9A8A;
+    --accent: #5C7A4E;
+    --border: #E2DDD5;
+    --input-bg: #FFFFFF;
+    --hover: #F4F1EC;
+    --active: #E8EAD8;
+  }
+
+  /* 自然绿专属覆盖 */
+  body.skin-warm .sidebar {
+    border-right: none;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.07);
+  }
+  body.skin-warm .sidebar-header { border-bottom: none; padding-bottom: 8px; }
+  body.skin-warm .sidebar-header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0; }
+  body.skin-warm .new-chat-btn { border-radius: 12px; padding: 10px 14px; font-size: 14px; font-weight: 500; color: #fff; }
+  body.skin-warm .chat-item { border-radius: 12px; padding: 10px 12px; font-size: 13.5px; }
+  body.skin-warm .chat-area { padding: 24px 32px; gap: 12px; }
+  body.skin-warm .msg { max-width: 68%; gap: 5px; }
+  body.skin-warm .bubble { padding: 13px 18px; border-radius: 22px; font-size: 14.5px; line-height: 1.7; box-shadow: none; }
+  body.skin-warm .msg.user .bubble {
+    background: var(--bubble-user);
+    color: #fff;
+    border-bottom-right-radius: 6px;
+    box-shadow: 0 2px 8px rgba(92,122,78,0.28);
+  }
+  body.skin-warm .msg.ai .bubble {
+    background: #fff;
+    border-bottom-left-radius: 6px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  body.skin-warm footer { padding: 8px 20px 20px; }
+  body.skin-warm .input-row {
+    border-radius: 20px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.10);
+    border: 1px solid rgba(0,0,0,0.05);
+    padding: 12px 12px 12px 20px;
+  }
+  body.skin-warm .input-row:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 4px 20px rgba(92,122,78,0.18);
+  }
+  body.skin-warm .send-btn { width: 38px; height: 38px; box-shadow: 0 2px 8px rgba(92,122,78,0.35); }
+  body.skin-warm .send-btn svg { fill: #fff; }
+  body.skin-warm .sidebar-btn { border-radius: 10px; }
+  body.skin-warm .topbar { background: #F7F5F1; border-bottom: 1px solid var(--border); padding: 10px 24px; }
+  body.skin-warm .modal { border-radius: 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.14); }
+  body.skin-warm .empty-hint { font-size: 15px; gap: 10px; }
+  body.skin-warm .empty-hint .icon { font-size: 32px; opacity: 0.22; }
+  body.skin-warm .msg-time { opacity: 0.55; }
+
+  /* ── 皮肤：墨夜 ── */
+  body.skin-dark {
+    --bg: #1A1A1F;
+    --sidebar: #141418;
+    --bubble-user: #2E2E38;
+    --bubble-ai: #222228;
+    --text: #DDDBE0;
+    --text-soft: #7A7880;
+    --accent: #9E8FD4;
+    --border: #2E2E38;
+    --input-bg: #222228;
+    --hover: #252530;
+    --active: #2C2C3A;
+  }
+
+
+  /* ── 皮肤：WhatsApp ── */
+  body.skin-wa {
+    --bg: #ECE5DD;
+    --sidebar: #FFFFFF;
+    --bubble-user: #DCF8C6;
+    --bubble-ai: #FFFFFF;
+    --text: #111B21;
+    --text-soft: #667781;
+    --accent: #25D366;
+    --border: #E9EDEF;
+    --input-bg: #FFFFFF;
+    --hover: #F5F6F6;
+    --active: #E9EDEF;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'Helvetica Neue', sans-serif;
+    height: 100dvh;
+    display: flex;
+    overflow: hidden;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 220px;
+    min-width: 220px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    transition: background 0.3s;
+  }
+
+  .sidebar-header {
+    padding: 20px 16px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-header h1 {
+    font-size: 16px;
+    font-weight: normal;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+  }
+
+  .new-chat-btn {
+    width: 100%;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: 'Helvetica Neue', sans-serif;
+    cursor: pointer;
+    text-align: left;
+    transition: opacity 0.2s;
+  }
+
+  .new-chat-btn:hover { opacity: 0.85; }
+
+  .chat-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .chat-item {
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    transition: background 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .chat-item:hover { background: var(--hover); }
+  .chat-item.active { background: var(--active); }
+
+  .chat-item-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chat-item-del {
+    opacity: 0;
+    font-size: 14px;
+    color: var(--text-soft);
+    flex-shrink: 0;
+    line-height: 1;
+    transition: opacity 0.15s;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+
+  .chat-item:hover .chat-item-del { opacity: 1; }
+
+  .sidebar-footer {
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .sidebar-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 12px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text-soft);
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+  }
+
+  .sidebar-btn:hover { background: var(--hover); }
+
+  /* 皮肤切换排排坐 */
+  .skin-row {
+    display: flex;
+    gap: 6px;
+    padding: 4px 0 2px;
+  }
+
+  .skin-dot {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.15s;
+    flex-shrink: 0;
+  }
+
+  .skin-dot:hover { transform: scale(1.15); }
+  .skin-dot.selected { border-color: var(--accent); }
+  .skin-dot.dot-warm { background: #5C7A4E; box-shadow: inset 0 0 0 2px #3d5435; }
+  .skin-dot.dot-dark { background: #1A1A1F; box-shadow: inset 0 0 0 1px #9E8FD4; }
+  .skin-dot.dot-wa { background: #25D366; box-shadow: inset 0 0 0 1px #128C7E; }
+
+  .skin-label {
+    font-size: 11px;
+    color: var(--text-soft);
+    font-family: 'Helvetica Neue', sans-serif;
+    margin-bottom: 2px;
+  }
+
+  /* MAIN */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100dvh;
+  }
+
+  /* 顶部工具栏 */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    flex-wrap: wrap;
+  }
+
+  .topbar select {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text);
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .topbar select:focus { border-color: var(--accent); }
+
+  .thinking-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text-soft);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .toggle-switch {
+    width: 32px; height: 18px;
+    background: var(--border);
+    border-radius: 9px;
+    position: relative;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch.on { background: var(--accent); }
+
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    background: white;
+    border-radius: 50%;
+    top: 2px; left: 2px;
+    transition: left 0.2s;
+  }
+
+  .toggle-switch.on::after { left: 16px; }
+
+  .topbar-sep {
+    width: 1px; height: 18px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  .thinking-badge {
+    font-size: 11px;
+    color: var(--accent);
+    font-family: 'Helvetica Neue', sans-serif;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .thinking-badge.show { opacity: 1; }
+
+  /* CHAT AREA */
+  .chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .msg {
+    display: flex;
+    flex-direction: column;
+    max-width: 72%;
+    gap: 4px;
+    animation: fadeUp 0.2s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes bubblePop {
+    0%   { opacity: 0; transform: scale(0.88) translateY(6px); }
+    60%  { transform: scale(1.03) translateY(-1px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  body.skin-warm .msg { animation: bubblePop 0.28s cubic-bezier(0.34,1.56,0.64,1) both; }
+  body.skin-warm .msg.user .bubble:active { transform: scale(0.97); transition: transform 0.1s; }
+  body.skin-warm .send-btn { transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s; }
+  body.skin-warm .send-btn:hover:not(:disabled) { transform: scale(1.08); box-shadow: 0 4px 14px rgba(92,122,78,0.45); }
+  body.skin-warm .send-btn:active:not(:disabled) { transform: scale(0.93); }
+  body.skin-warm .new-chat-btn { transition: opacity 0.2s, transform 0.15s; }
+  body.skin-warm .new-chat-btn:hover { opacity: 1; transform: translateY(-1px); box-shadow: 0 3px 10px rgba(92,122,78,0.22); }
+  body.skin-warm .chat-item { transition: background 0.15s, transform 0.12s; }
+  body.skin-warm .chat-item:hover { transform: translateX(2px); }
+
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.ai   { align-self: flex-start; align-items: flex-start; }
+
+  .bubble {
+    padding: 12px 16px;
+    border-radius: 20px;
+    font-size: 15px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .msg.user .bubble {
+    background: var(--bubble-user);
+    border-bottom-right-radius: 5px;
+  }
+
+  .msg.ai .bubble {
+    background: var(--bubble-ai);
+    border-bottom-left-radius: 5px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+
+  /* 思考链展示 */
+  .thinking-block {
+    background: var(--hover);
+    border-left: 2px solid var(--accent);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--text-soft);
+    font-family: 'Helvetica Neue', sans-serif;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: 72%;
+    align-self: flex-start;
+    animation: fadeUp 0.2s ease;
+  }
+
+  .thinking-label {
+    font-size: 11px;
+    color: var(--accent);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+
+  .msg-time {
+    font-size: 11px;
+    color: var(--text-soft);
+    font-family: 'Helvetica Neue', sans-serif;
+    padding: 0 4px;
+  }
+
+  .typing {
+    display: flex;
+    gap: 5px;
+    padding: 13px 16px;
+    align-items: center;
+  }
+
+  .typing span {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-soft);
+    animation: blink 1.2s infinite;
+  }
+
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes blink {
+    0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+    40%           { opacity: 1; transform: scale(1); }
+  }
+
+  .empty-hint {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-soft);
+    font-size: 14px;
+    gap: 8px;
+    font-family: 'Helvetica Neue', sans-serif;
+  }
+
+  .empty-hint .icon { font-size: 28px; opacity: 0.35; }
+
+  /* INPUT */
+  footer {
+    padding: 10px 20px 18px;
+  }
+
+  .status-bar {
+    font-size: 11px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text-soft);
+    min-height: 16px;
+    margin-bottom: 6px;
+    padding: 0 4px;
+  }
+
+  .status-bar.ok { color: #7A9E7E; }
+  .status-bar.err { color: #C47A6A; }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 10px 10px 10px 16px;
+    transition: border-color 0.2s;
+  }
+
+  .input-row:focus-within { border-color: var(--accent); }
+
+  textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    font-size: 15px;
+    font-family: -apple-system, 'Helvetica Neue', sans-serif;
+    color: var(--text);
+    line-height: 1.6;
+    max-height: 130px;
+    overflow-y: auto;
+  }
+
+  textarea::placeholder { color: var(--text-soft); }
+
+  .send-btn {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+
+  .send-btn:hover { opacity: 0.85; }
+  .send-btn:active { transform: scale(0.92); }
+  .send-btn:disabled { opacity: 0.35; cursor: default; }
+  .send-btn svg { width: 15px; height: 15px; fill: var(--bg); }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--input-bg);
+    border-radius: 16px;
+    padding: 24px;
+    width: 90%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+
+  .modal h2 {
+    font-size: 16px;
+    font-weight: normal;
+    color: var(--accent);
+  }
+
+  .modal p {
+    font-size: 13px;
+    color: var(--text-soft);
+    font-family: 'Helvetica Neue', sans-serif;
+    line-height: 1.5;
+  }
+
+  .modal input, .modal textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+    resize: vertical;
+  }
+
+  .modal input:focus, .modal textarea:focus { border-color: var(--accent); }
+
+  .modal-btns {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text-soft);
+    cursor: pointer;
+  }
+
+  .btn-save {
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--bg);
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .btn-save:hover { opacity: 0.85; }
+
+  @media (max-width: 580px) {
+    .sidebar { width: 180px; min-width: 180px; }
+    .chat-area { padding: 14px; }
+  }
+
+  /* 语音播放按钮 */
+  .play-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 6px;
+    padding: 4px 10px 4px 8px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-soft);
+    font-size: 12px;
+    font-family: 'Helvetica Neue', sans-serif;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+  }
+  .play-btn:hover { background: var(--hover); color: var(--text); }
+  .play-btn.playing { color: var(--accent); border-color: var(--accent); }
+  .play-btn svg { width: 12px; height: 12px; fill: currentColor; flex-shrink: 0; }
+
+  /* AI气泡里英文+中文分区 */
+  .bubble-en { font-size: 14.5px; line-height: 1.7; }
+  .bubble-zh { font-size: 13px; color: var(--text-soft); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); line-height: 1.65; }
+</style>
+</head>
+<body class="skin-warm">
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Claude</h1>
+    <button class="new-chat-btn" onclick="newChat()">＋ 新对话</button>
+  </div>
+  <div class="chat-list" id="chatList"></div>
+  <div class="sidebar-footer">
+    <div class="skin-label">外观</div>
+    <div class="skin-row">
+      <div class="skin-dot dot-warm selected" title="自然绿" onclick="setSkin('warm')"></div>
+      <div class="skin-dot dot-dark" title="墨夜" onclick="setSkin('dark')"></div>
+      <div class="skin-dot dot-wa" title="WhatsApp" onclick="setSkin('wa')"></div>
+    </div>
+    <button class="sidebar-btn" onclick="exportChats()">💾 导出聊天记录</button>
+    <button class="sidebar-btn" onclick="document.getElementById('importFile').click()">📂 导入聊天记录</button>
+    <button class="sidebar-btn" onclick="openMemory()">🧠 记忆设置</button>
+    <button class="sidebar-btn" onclick="openKey()">🔑 API Key</button>
+    <button class="sidebar-btn" onclick="openElKey()">🔊 语音 Key</button>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept=".json" style="display:none" onchange="importChats(event)">
+
+<!-- MAIN -->
+<div class="main">
+  <!-- 顶部工具栏 -->
+  <div class="topbar">
+    <select id="modelSelect" onchange="onModelChange()">
+      <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+      <option value="claude-opus-4-6">Opus 4.6</option>
+      <option value="claude-opus-4-7">Opus 4.7</option>
+      <option value="claude-opus-4-8">Opus 4.8</option>
+      <option value="claude-haiku-4-5-20251001">Haiku 4.5（省钱）</option>
+    </select>
+    <div class="topbar-sep"></div>
+    <div class="thinking-toggle" onclick="toggleThinking()">
+      <div class="toggle-switch" id="thinkingSwitch"></div>
+      <span>思考链</span>
+    </div>
+    <span class="thinking-badge" id="thinkingBadge">✦ 深度思考中</span>
+  </div>
+
+  <div class="chat-area" id="chatArea">
+    <div class="empty-hint" id="emptyHint">
+      <div class="icon">✦</div>
+      <div>开始一段新对话</div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="status-bar" id="statusBar"></div>
+    <div class="input-row">
+      <textarea id="input" rows="1" placeholder="说点什么…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="send()" disabled>
+        <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+      </button>
+    </div>
+  </footer>
+</div>
+
+<!-- API KEY MODAL -->
+<div class="modal-overlay" id="keyModal">
+  <div class="modal">
+    <h2>API Key</h2>
+    <p>输入你的 Anthropic API Key，保存在本地浏览器，不会上传到任何服务器。</p>
+    <input type="password" id="keyInput" placeholder="sk-ant-..." />
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('keyModal')">取消</button>
+      <button class="btn-save" onclick="saveKey()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- MEMORY MODAL -->
+<div class="modal-overlay" id="memoryModal">
+  <div class="modal">
+    <h2>记忆设置</h2>
+    <p>这段内容会在每次对话开始时告诉 Claude，让它了解你的背景和偏好。</p>
+    <textarea id="memoryInput" rows="6" placeholder="例如：我叫Leona，住在英国，喜欢简洁的表达方式…"></textarea>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('memoryModal')">取消</button>
+      <button class="btn-save" onclick="saveMemory()">保存</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- EL KEY MODAL -->
+<div class="modal-overlay" id="elModal">
+  <div class="modal">
+    <h2>语音 Key</h2>
+    <p>输入你的 ElevenLabs API Key，保存在本地浏览器。没有 Key 则不显示播放按钮。</p>
+    <input type="password" id="elKeyInput" placeholder="sk_..." />
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('elModal')">取消</button>
+      <button class="btn-save" onclick="saveElKey()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const PROXY = 'https://corsproxy.io/?url=';
+  const API_URL = 'https://api.anthropic.com/v1/messages';
+
+  let apiKey = localStorage.getItem('claude_key') || '';
+  let memory = localStorage.getItem('claude_memory') || '';
+  let chats = JSON.parse(localStorage.getItem('claude_chats') || '{}');
+  let chatOrder = JSON.parse(localStorage.getItem('claude_order') || '[]');
+  let currentId = null;
+  let isLoading = false;
+  let thinkingOn = false;
+  let elKey = localStorage.getItem('el_key') || '';
+  const EL_VOICE = '0qHbGTWOPgPUvThY4Te6';
+  let currentAudio = null;
+  let currentSkin = localStorage.getItem('claude_skin') || 'warm';
+  let audioDB = null;
+
+  (function openAudioDB() {
+    const req = indexedDB.open('claude_audio', 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('audio', { keyPath: 'key' });
+    req.onsuccess = e => { audioDB = e.target.result; };
+  })();
+
+  function getAudio(key) {
+    return new Promise(resolve => {
+      if (!audioDB) return resolve(null);
+      const req = audioDB.transaction('audio').objectStore('audio').get(key);
+      req.onsuccess = e => resolve(e.target.result?.blob || null);
+      req.onerror = () => resolve(null);
+    });
+  }
+
+  function putAudio(key, blob) {
+    if (!audioDB) return;
+    try {
+      audioDB.transaction('audio', 'readwrite').objectStore('audio').put({ key, blob });
+    } catch (_) {}
+  }
+
+  // Init
+  applySkin(currentSkin);
+  if (apiKey) {
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('已连接 ✓', 'ok');
+  } else {
+    setTimeout(() => openKey(), 400);
+  }
+  renderSidebar();
+  if (chatOrder.length > 0) loadChat(chatOrder[0]);
+
+  // ── 皮肤 ─────────────────────────────────────────────
+  function setSkin(name) {
+    currentSkin = name;
+    localStorage.setItem('claude_skin', name);
+    applySkin(name);
+  }
+
+  function applySkin(name) {
+    document.body.className = 'skin-' + name;
+    document.querySelectorAll('.skin-dot').forEach(d => {
+      d.classList.toggle('selected', d.classList.contains('dot-' + name));
+    });
+  }
+
+  // ── 模型 & 思考链 ─────────────────────────────────────
+  function onModelChange() {
+    const model = document.getElementById('modelSelect').value;
+    // 思考链只支持 opus
+    if (!model.includes('opus') && thinkingOn) {
+      thinkingOn = false;
+      updateThinkingUI();
+    }
+  }
+
+  function toggleThinking() {
+    const model = document.getElementById('modelSelect').value;
+    if (!model.includes('opus')) {
+      setStatus('思考链目前只支持 Opus 模型', 'err');
+      setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2500);
+      return;
+    }
+    thinkingOn = !thinkingOn;
+    updateThinkingUI();
+  }
+
+  function updateThinkingUI() {
+    document.getElementById('thinkingSwitch').classList.toggle('on', thinkingOn);
+    document.getElementById('thinkingBadge').classList.toggle('show', thinkingOn);
+  }
+
+  // ── SIDEBAR ──────────────────────────────────────────
+  function renderSidebar() {
+    const list = document.getElementById('chatList');
+    list.innerHTML = '';
+    chatOrder.forEach(id => {
+      const chat = chats[id];
+      if (!chat) return;
+      const div = document.createElement('div');
+      div.className = 'chat-item' + (id === currentId ? ' active' : '');
+      div.innerHTML = `
+        <span class="chat-item-title">${escHtml(chat.title || '新对话')}</span>
+        <button class="chat-item-del" onclick="deleteChat(event,'${id}')">×</button>
+      `;
+      div.addEventListener('click', () => loadChat(id));
+      list.appendChild(div);
+    });
+  }
+
+  function newChat() {
+    const id = 'chat_' + Date.now();
+    chats[id] = { title: '新对话', messages: [] };
+    chatOrder.unshift(id);
+    save();
+    loadChat(id);
+  }
+
+  function loadChat(id) {
+    currentId = id;
+    renderSidebar();
+    const area = document.getElementById('chatArea');
+    area.innerHTML = '';
+    const chat = chats[id];
+    if (!chat || chat.messages.length === 0) {
+      area.innerHTML = `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
+      return;
+    }
+    chat.messages.forEach((m, i) => {
+      if (m.role === 'thinking') renderThinking(m.content, false);
+      else renderMsg(m.role === 'assistant' ? 'ai' : m.role, m, false, i);
+    });
+    area.scrollTop = area.scrollHeight;
+  }
+
+  function deleteChat(e, id) {
+    e.stopPropagation();
+    delete chats[id];
+    chatOrder = chatOrder.filter(x => x !== id);
+    save();
+    if (currentId === id) {
+      currentId = null;
+      document.getElementById('chatArea').innerHTML =
+        `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
+    }
+    renderSidebar();
+  }
+
+  // ── MESSAGES ─────────────────────────────────────────
+  function parseAiReply(text) {
+    const enMatch = text.match(/\[EN\]\s*([\s\S]*?)(?=\[ZH\]|$)/);
+    const zhMatch = text.match(/\[ZH\]\s*([\s\S]*?)$/);
+    return {
+      en: enMatch ? enMatch[1].trim() : '',
+      zh: zhMatch ? zhMatch[1].trim() : text.trim()
+    };
+  }
+
+  function renderMsg(role, msgOrText, animate = true, msgIndex = -1) {
+    const area = document.getElementById('chatArea');
+    const hint = document.getElementById('emptyHint');
+    if (hint) hint.remove();
+    const div = document.createElement('div');
+    div.className = 'msg ' + role;
+    if (!animate) div.style.animation = 'none';
+
+    if (role === 'ai' || role === 'assistant') {
+      const msg = typeof msgOrText === 'object' ? msgOrText : null;
+      const rawText = msg ? msg.content : msgOrText;
+      const en = msg?.en ?? parseAiReply(rawText).en;
+      const zh = msg?.zh ?? parseAiReply(rawText).zh;
+      const hasVoice = !!en && !!elKey;
+      div.innerHTML = `
+        <div class="bubble">
+          ${en ? `<div class="bubble-en">${escHtml(en)}</div>` : ''}
+          <div class="bubble-zh">${escHtml(zh || rawText)}</div>
+        </div>
+        ${hasVoice ? `<button class="play-btn" data-msg-id="${msg?.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
+        </button>` : ''}
+        <div class="msg-time">${nowStr()}</div>`;
+    } else {
+      const text = typeof msgOrText === 'object' ? msgOrText.content : msgOrText;
+      div.innerHTML = `<div class="bubble">${escHtml(text)}</div><div class="msg-time">${nowStr()}</div>`;
+    }
+
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+  }
+
+  function renderThinking(text, animate = true) {
+    const area = document.getElementById('chatArea');
+    const hint = document.getElementById('emptyHint');
+    if (hint) hint.remove();
+    const div = document.createElement('div');
+    div.className = 'thinking-block';
+    if (!animate) div.style.animation = 'none';
+    div.innerHTML = `<div class="thinking-label">✦ 思考过程</div>${escHtml(text)}`;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+  }
+
+  function addTyping() {
+    const area = document.getElementById('chatArea');
+    const hint = document.getElementById('emptyHint');
+    if (hint) hint.remove();
+    const div = document.createElement('div');
+    div.className = 'msg ai'; div.id = 'typing';
+    div.innerHTML = `<div class="bubble typing"><span></span><span></span><span></span></div>`;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+  }
+
+  function removeTyping() {
+    const t = document.getElementById('typing');
+    if (t) t.remove();
+  }
+
+  // ── SEND ─────────────────────────────────────────────
+  async function send() {
+    if (!apiKey || isLoading) return;
+    const input = document.getElementById('input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    if (!currentId) newChat();
+
+    input.value = '';
+    input.style.height = 'auto';
+    isLoading = true;
+    document.getElementById('sendBtn').disabled = true;
+    setStatus('');
+
+    const chat = chats[currentId];
+    const model = document.getElementById('modelSelect').value;
+
+    chat.messages.push({ role: 'user', content: text, createdAt: Date.now(), id: makeMessageId(), chatId: currentId, clientSeq: chat.messages.length });
+    if (chat.title === '新对话') chat.title = text.slice(0, 24) + (text.length > 24 ? '…' : '');
+    save();
+    renderMsg('user', text);
+    renderSidebar();
+    addTyping();
+
+    let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。每次回复用以下固定格式，不要加任何额外说明：\n\n[EN]\n（英文回复，自然口语，带情绪，不超过4句）\n\n[ZH]\n（完全相同意思的中文版，自然流畅）\n\n思考过程如果有，也请用中文。';
+    if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
+
+    // 构建发送给API的messages（过滤掉thinking记录，只保留role和content）
+    const apiMessages = chat.messages
+      .filter(m => m.role !== 'thinking')
+      .map(({ role, content }) => ({ role, content }));
+
+    const body = {
+      model,
+      max_tokens: thinkingOn ? 16000 : 1024,
+      system,
+      messages: apiMessages
+    };
+
+    if (thinkingOn) {
+      body.thinking = { type: 'enabled', budget_tokens: 10000 };
+    }
+
+    try {
+      const res = await fetch(PROXY + encodeURIComponent(API_URL), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify(body)
+      });
+
+      removeTyping();
+
+      if (!res.ok) {
+        const err = await res.json();
+        setStatus('出错了：' + (err.error?.message || res.status), 'err');
+        chat.messages.pop();
+        save();
+        isLoading = false;
+        document.getElementById('sendBtn').disabled = false;
+        return;
+      }
+
+      const data = await res.json();
+
+      // 处理思考链
+      let thinkingText = '';
+      let replyText = '';
+
+      data.content.forEach(block => {
+        if (block.type === 'thinking') thinkingText = block.thinking;
+        if (block.type === 'text') replyText = block.text;
+      });
+
+      if (thinkingText) {
+        chat.messages.push({ role: 'thinking', content: thinkingText, id: makeMessageId(), chatId: currentId, createdAt: Date.now(), clientSeq: chat.messages.length });
+        renderThinking(thinkingText);
+      }
+
+      const parsed = parseAiReply(replyText);
+      chat.messages.push({ role: 'assistant', content: replyText, en: parsed.en, zh: parsed.zh, id: makeMessageId(), chatId: currentId, createdAt: Date.now(), clientSeq: chat.messages.length });
+      save();
+      const aiIdx = chat.messages.length - 1;
+      renderMsg('ai', chat.messages[aiIdx], true, aiIdx);
+
+    } catch (e) {
+      removeTyping();
+      setStatus('网络错误：' + e.message, 'err');
+      chat.messages.pop();
+      save();
+    }
+
+    isLoading = false;
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('input').focus();
+  }
+
+  // ── 语音 ─────────────────────────────────────────────
+  async function playVoice(btn) {
+    const msgId = btn.dataset.msgId;
+    const idx = parseInt(btn.dataset.index);
+    const messages = chats[currentId]?.messages || [];
+    const msg = (msgId ? messages.find(m => m.id === msgId) : null) ?? messages[idx] ?? null;
+    const text = msg?.en || parseAiReply(msg?.content || '').en;
+    if (!text) { setStatus('没有英文内容可播放', 'err'); return; }
+    if (!elKey) { setStatus('请先在左下角设置语音 Key', 'err'); return; }
+
+    // 如果正在播放，停止
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+      document.querySelectorAll('.play-btn.playing').forEach(b => {
+        b.classList.remove('playing');
+        b.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
+      });
+      if (btn.classList.contains('was-playing')) { btn.classList.remove('was-playing'); return; }
+    }
+
+    btn.classList.add('playing', 'was-playing');
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> 播放中…';
+
+    const audioKey = msgId ? `${currentId}_${msgId}` : null;
+
+    function playBlob(blob) {
+      const url = URL.createObjectURL(blob);
+      currentAudio = new Audio(url);
+      currentAudio.play();
+      setStatus('');
+      currentAudio.onended = () => {
+        btn.classList.remove('playing', 'was-playing');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 再听';
+        currentAudio = null;
+        URL.revokeObjectURL(url);
+      };
+    }
+
+    try {
+      // 优先读缓存
+      if (audioKey) {
+        const cached = await getAudio(audioKey);
+        if (cached) { playBlob(cached); return; }
+      }
+
+      setStatus('生成语音中…');
+      const elUrl = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`;
+      const res = await fetch(elUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': elKey
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_turbo_v2_5',
+          voice_settings: { stability: 0.4, similarity_boost: 0.75, style: 0.45, use_speaker_boost: true }
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        setStatus('语音出错：' + (err.detail?.message || res.status), 'err');
+        btn.classList.remove('playing', 'was-playing');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
+        return;
+      }
+
+      const blob = await res.blob();
+      if (audioKey) putAudio(audioKey, blob);
+      playBlob(blob);
+
+    } catch (e) {
+      setStatus('语音网络错误：' + e.message, 'err');
+      btn.classList.remove('playing', 'was-playing');
+      btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
+    }
+  }
+
+  // ── MODALS ───────────────────────────────────────────
+  function openKey() {
+    document.getElementById('keyInput').value = apiKey ? '••••••••••••••••' : '';
+    document.getElementById('keyModal').classList.add('open');
+  }
+
+  function saveKey() {
+    const val = document.getElementById('keyInput').value.trim();
+    if (!val || val.startsWith('•')) { closeModal('keyModal'); return; }
+    if (!val.startsWith('sk-ant-')) { setStatus('Key 格式不对，应以 sk-ant- 开头', 'err'); return; }
+    apiKey = val;
+    localStorage.setItem('claude_key', apiKey);
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('已连接 ✓', 'ok');
+    closeModal('keyModal');
+  }
+
+  function openMemory() {
+    document.getElementById('memoryInput').value = memory;
+    document.getElementById('memoryModal').classList.add('open');
+  }
+
+  function saveMemory() {
+    memory = document.getElementById('memoryInput').value;
+    localStorage.setItem('claude_memory', memory);
+    closeModal('memoryModal');
+    setStatus('记忆已保存 ✓', 'ok');
+    setTimeout(() => setStatus(''), 2000);
+  }
+
+
+  function openElKey() {
+    document.getElementById('elKeyInput').value = elKey ? '••••••••••••••••' : '';
+    document.getElementById('elModal').classList.add('open');
+  }
+
+  function saveElKey() {
+    const val = document.getElementById('elKeyInput').value.trim();
+    if (!val || val.startsWith('•')) { closeModal('elModal'); return; }
+    elKey = val;
+    localStorage.setItem('el_key', elKey);
+    closeModal('elModal');
+    setStatus('语音 Key 已保存 ✓', 'ok');
+    setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2000);
+  }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+  });
+
+  // ── MESSAGE IDENTITY UTILS (P0 merge/import fix) ─────
+  //
+  // Principles:
+  // content/timestamp/role/index alone are NOT identity.
+  // Same chatId+content at different positions must be preserved.
+  // Merge prefers over-retain, never deletes.
+  // normalize* functions return NEW objects, never mutate input.
+
+  function hashString(s) {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+    return (h >>> 0).toString(16);
+  }
+
+  function getMessageTextFields(message) {
+    const content = message.content || '';
+    const en      = message.en      || '';
+    const zh      = message.zh      || '';
+    const text    = message.text    || '';
+    const displayText = content || zh || en || text;
+    return { content, en, zh, text, displayText };
+  }
+
+  const FIELD_SEP = '\u0001';
+
+  // Field-tagged serialization to avoid boundary collisions between fields.
+  function messageTextHash(message) {
+    const f = getMessageTextFields(message);
+    const serialized = [
+      `content:${f.content}`,
+      `en:${f.en}`,
+      `zh:${f.zh}`,
+      `text:${f.text}`
+    ].join(FIELD_SEP);
+    return hashString(serialized);
+  }
+
+  function makeMessageId() {
+    return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  }
+
+  // createdAt/timestamp are only weak evidence here, never an independent dedupe key.
+  // chatId is included explicitly so identical content/index in different chats never collide.
+  function makeLegacyMessageId(chatId, index, message) {
+    const weakTimeEvidence = message.createdAt || message.timestamp || '';
+    const input = [
+      `chatId:${chatId}`,
+      `index:${index}`,
+      `role:${message.role}`,
+      `time:${weakTimeEvidence}`,
+      `hash:${messageTextHash(message)}`
+    ].join(FIELD_SEP);
+    return 'legacy_' + hashString(input);
+  }
+
+  function makeConflictMessageId(originalId, message) {
+    return `conflict_${originalId}_${messageTextHash(message)}_${Date.now()}`;
+  }
+
+  // Returns a NEW message object. Never deletes existing fields (e.g. legacy `seq` is kept).
+  function normalizeMessage(message, context) {
+    const id = message.id || makeLegacyMessageId(context.chatId, context.index, message);
+    const clientSeq = message.clientSeq ?? message.seq ?? context.index;
+    return {
+      ...message,
+      id,
+      chatId: message.chatId || context.chatId,
+      clientSeq,
+      migratedFromLegacy: message.id ? (message.migratedFromLegacy || false) : true
+    };
+  }
+
+  // Returns a NEW chat object with a NEW messages array.
+  function normalizeChat(chat, chatId) {
+    return {
+      ...chat,
+      messages: chat.messages.map((m, i) => normalizeMessage(m, { chatId, index: i }))
+    };
+  }
+
+  // Returns a NEW chats object. Does not mutate the input.
+  function normalizeAllChats(chatsObj) {
+    const result = {};
+    Object.keys(chatsObj).forEach(id => {
+      result[id] = normalizeChat(chatsObj[id], id);
+    });
+    return result;
+  }
+
+  function messagesEquivalent(a, b) {
+    return messageTextHash(a) === messageTextHash(b);
+  }
+
+  // Assumes both inputs are already normalized (have stable ids).
+  // id match + same content  -> skip (true duplicate)
+  // id match + diff content  -> keep both, imported gets a conflict id
+  // no id match               -> keep both
+  // Never deletes anything from localMsgs.
+  function mergeMessagesSafe(localMsgs, importedMsgs, chatId) {
+    const localById = new Map(localMsgs.filter(m => m.id).map(m => [m.id, m]));
+    const toAppend = [];
+    importedMsgs.forEach(im => {
+      const lm = im.id ? localById.get(im.id) : undefined;
+      if (!lm) {
+        toAppend.push(im);
+      } else if (messagesEquivalent(lm, im)) {
+        // duplicate — skip imported copy, local copy untouched
+      } else {
+        toAppend.push({ ...im, id: makeConflictMessageId(im.id, im), conflictWith: im.id });
+      }
+    });
+    return [...localMsgs, ...toAppend];
+  }
+
+  // ── EXPORT / IMPORT ──────────────────────────────────
+  function exportChats() {
+    // Export uses a normalized COPY only — global `chats` and localStorage are untouched.
+    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 2 };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'claude-chat-export-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importChats(e) {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      let data;
+      try { data = JSON.parse(evt.target.result); } catch (_) {
+        setStatus('导入失败：文件不是合法 JSON', 'err');
+        return;
+      }
+      if (!data.chats || typeof data.chats !== 'object' ||
+          !Array.isArray(data.chatOrder)) {
+        setStatus('导入失败：缺少 chats 或 chatOrder 字段', 'err');
+        return;
+      }
+      const validIds = data.chatOrder.filter(id => data.chats[id] &&
+        Array.isArray(data.chats[id].messages));
+      if (validIds.length === 0) {
+        setStatus('导入失败：文件内没有有效对话', 'err');
+        return;
+      }
+
+      // Real write: local chats are normalized once so legacy messages gain stable ids
+      // going forward (otherwise old user messages would never become comparable).
+      chats = normalizeAllChats(chats);
+      // Imported chats normalized using their OWN original chatId, so legacy ids
+      // carry the source chat's identity.
+      const normalizedImportedChats = normalizeAllChats(data.chats);
+
+      // 预扫描（均基于已 normalize 的数据）
+      let willAdd = 0, willSkip = 0, willMergeById = 0, willPrompt = 0;
+      validIds.forEach(id => {
+        const incoming = normalizedImportedChats[id];
+        if (chats[id]) {
+          if (JSON.stringify(chats[id].messages) === JSON.stringify(incoming.messages)) willSkip++;
+          else willMergeById++;
+        } else {
+          const sameTitle = Object.values(chats).find(c => c.title === incoming.title);
+          if (sameTitle) willPrompt++;
+          else willAdd++;
+        }
+      });
+
+      if (!confirm(
+        `合并导入预览：\n` +
+        `• 全新对话：${willAdd} 条，直接加入\n` +
+        `• 完全相同：${willSkip} 条，跳过\n` +
+        `• 同 ID 内容不同：${willMergeById} 条，按消息 ID 合并\n` +
+        `• 同名但不同 ID：${willPrompt} 条，逐一询问\n\n` +
+        `本地现有 ${chatOrder.length} 条对话不会被删除。\n` +
+        `本次导入会为本地历史消息补全内部标识字段（不改变消息内容和顺序）。\n` +
+        `音频缓存不随 JSON 迁移，历史语音第一次播放时会重新生成。\n\n` +
+        `确认继续？`
+      )) return;
+
+      let added = 0, skipped = 0, merged = 0;
+
+      validIds.forEach(id => {
+        const incoming = normalizedImportedChats[id];
+
+        if (chats[id]) {
+          // 同 chatId，双方均已 normalize
+          if (JSON.stringify(chats[id].messages) === JSON.stringify(incoming.messages)) {
+            skipped++;
+          } else {
+            chats[id].messages = mergeMessagesSafe(chats[id].messages, incoming.messages, id);
+            merged++;
+          }
+        } else {
+          // 不同 chatId，检查 title 是否重名
+          const matchEntry = Object.entries(chats).find(([, c]) => c.title === incoming.title);
+          if (matchEntry) {
+            const doMerge = confirm(
+              `发现同名对话：「${incoming.title}」\n\n` +
+              `确定 → 合并到本地同名对话（按消息 ID 合并，不会因内容相同跨对话去重，不删除任何本地消息）\n` +
+              `取消 → 作为独立新窗口导入`
+            );
+            if (doMerge) {
+              const [localId] = matchEntry;
+              // 保留来源 chatId 的证据，再把 chatId 改写为目标本地对话，但不重新生成 id
+              const incomingWithOrigin = incoming.messages.map(m =>
+                (m.chatId && m.chatId !== localId)
+                  ? { ...m, originalChatId: m.originalChatId || m.chatId, chatId: localId }
+                  : { ...m, chatId: localId }
+              );
+              chats[localId].messages = mergeMessagesSafe(chats[localId].messages, incomingWithOrigin, localId);
+              merged++;
+            } else {
+              const newId = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+              chats[newId] = { ...incoming };
+              chatOrder.push(newId);
+              added++;
+            }
+          } else {
+            // 全新对话
+            chats[id] = incoming;
+            chatOrder.push(id);
+            added++;
+          }
+        }
+      });
+
+      save();
+      renderSidebar();
+      setStatus(`导入完成：新增 ${added}，合并 ${merged}，跳过 ${skipped} ✓`, 'ok');
+      setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 4000);
+    };
+    reader.readAsText(file);
+  }
+
+  // ── UTILS ────────────────────────────────────────────
+  function save() {
+    localStorage.setItem('claude_chats', JSON.stringify(chats));
+    localStorage.setItem('claude_order', JSON.stringify(chatOrder));
+  }
+
+  function setStatus(msg, type = '') {
+    const el = document.getElementById('statusBar');
+    el.textContent = msg;
+    el.className = 'status-bar ' + type;
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 130) + 'px';
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  }
+
+  function nowStr() {
+    return new Date().toLocaleTimeString('zh', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'\x26amp;').replace(/</g,'\x26lt;').replace(/>/g,'\x26gt;');
+  }
+</script>
+</body>
+</html>
