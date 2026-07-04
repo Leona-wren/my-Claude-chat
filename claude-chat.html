@@ -985,7 +985,7 @@
     const chat = chats[currentId];
     const model = document.getElementById('modelSelect').value;
 
-    chat.messages.push({ role: 'user', content: text, createdAt: Date.now() });
+    chat.messages.push({ role: 'user', content: text, createdAt: Date.now(), id: makeMessageId(), chatId: currentId, clientSeq: chat.messages.length });
     if (chat.title === '新对话') chat.title = text.slice(0, 24) + (text.length > 24 ? '…' : '');
     save();
     renderMsg('user', text);
@@ -1047,12 +1047,12 @@
       });
 
       if (thinkingText) {
-        chat.messages.push({ role: 'thinking', content: thinkingText });
+        chat.messages.push({ role: 'thinking', content: thinkingText, id: makeMessageId(), chatId: currentId, createdAt: Date.now(), clientSeq: chat.messages.length });
         renderThinking(thinkingText);
       }
 
       const parsed = parseAiReply(replyText);
-      chat.messages.push({ role: 'assistant', content: replyText, en: parsed.en, zh: parsed.zh, id: 'msg_' + Date.now(), createdAt: Date.now() });
+      chat.messages.push({ role: 'assistant', content: replyText, en: parsed.en, zh: parsed.zh, id: makeMessageId(), chatId: currentId, createdAt: Date.now(), clientSeq: chat.messages.length });
       save();
       const aiIdx = chat.messages.length - 1;
       renderMsg('ai', chat.messages[aiIdx], true, aiIdx);
@@ -1200,9 +1200,124 @@
     el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
   });
 
+  // ── MESSAGE IDENTITY UTILS (P0 merge/import fix) ─────
+  //
+  // Principles:
+  // content/timestamp/role/index alone are NOT identity.
+  // Same chatId+content at different positions must be preserved.
+  // Merge prefers over-retain, never deletes.
+  // normalize* functions return NEW objects, never mutate input.
+
+  function hashString(s) {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+    return (h >>> 0).toString(16);
+  }
+
+  function getMessageTextFields(message) {
+    const content = message.content || '';
+    const en      = message.en      || '';
+    const zh      = message.zh      || '';
+    const text    = message.text    || '';
+    const displayText = content || zh || en || text;
+    return { content, en, zh, text, displayText };
+  }
+
+  const FIELD_SEP = '\u0001';
+
+  // Field-tagged serialization to avoid boundary collisions between fields.
+  function messageTextHash(message) {
+    const f = getMessageTextFields(message);
+    const serialized = [
+      `content:${f.content}`,
+      `en:${f.en}`,
+      `zh:${f.zh}`,
+      `text:${f.text}`
+    ].join(FIELD_SEP);
+    return hashString(serialized);
+  }
+
+  function makeMessageId() {
+    return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  }
+
+  // createdAt/timestamp are only weak evidence here, never an independent dedupe key.
+  // chatId is included explicitly so identical content/index in different chats never collide.
+  function makeLegacyMessageId(chatId, index, message) {
+    const weakTimeEvidence = message.createdAt || message.timestamp || '';
+    const input = [
+      `chatId:${chatId}`,
+      `index:${index}`,
+      `role:${message.role}`,
+      `time:${weakTimeEvidence}`,
+      `hash:${messageTextHash(message)}`
+    ].join(FIELD_SEP);
+    return 'legacy_' + hashString(input);
+  }
+
+  function makeConflictMessageId(originalId, message) {
+    return `conflict_${originalId}_${messageTextHash(message)}_${Date.now()}`;
+  }
+
+  // Returns a NEW message object. Never deletes existing fields (e.g. legacy `seq` is kept).
+  function normalizeMessage(message, context) {
+    const id = message.id || makeLegacyMessageId(context.chatId, context.index, message);
+    const clientSeq = message.clientSeq ?? message.seq ?? context.index;
+    return {
+      ...message,
+      id,
+      chatId: message.chatId || context.chatId,
+      clientSeq,
+      migratedFromLegacy: message.id ? (message.migratedFromLegacy || false) : true
+    };
+  }
+
+  // Returns a NEW chat object with a NEW messages array.
+  function normalizeChat(chat, chatId) {
+    return {
+      ...chat,
+      messages: chat.messages.map((m, i) => normalizeMessage(m, { chatId, index: i }))
+    };
+  }
+
+  // Returns a NEW chats object. Does not mutate the input.
+  function normalizeAllChats(chatsObj) {
+    const result = {};
+    Object.keys(chatsObj).forEach(id => {
+      result[id] = normalizeChat(chatsObj[id], id);
+    });
+    return result;
+  }
+
+  function messagesEquivalent(a, b) {
+    return messageTextHash(a) === messageTextHash(b);
+  }
+
+  // Assumes both inputs are already normalized (have stable ids).
+  // id match + same content  -> skip (true duplicate)
+  // id match + diff content  -> keep both, imported gets a conflict id
+  // no id match               -> keep both
+  // Never deletes anything from localMsgs.
+  function mergeMessagesSafe(localMsgs, importedMsgs, chatId) {
+    const localById = new Map(localMsgs.filter(m => m.id).map(m => [m.id, m]));
+    const toAppend = [];
+    importedMsgs.forEach(im => {
+      const lm = im.id ? localById.get(im.id) : undefined;
+      if (!lm) {
+        toAppend.push(im);
+      } else if (messagesEquivalent(lm, im)) {
+        // duplicate — skip imported copy, local copy untouched
+      } else {
+        toAppend.push({ ...im, id: makeConflictMessageId(im.id, im), conflictWith: im.id });
+      }
+    });
+    return [...localMsgs, ...toAppend];
+  }
+
   // ── EXPORT / IMPORT ──────────────────────────────────
   function exportChats() {
-    const data = { chats, chatOrder, exportedAt: new Date().toISOString() };
+    // Export uses a normalized COPY only — global `chats` and localStorage are untouched.
+    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 2 };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1210,13 +1325,6 @@
     a.download = 'claude-chat-export-' + new Date().toISOString().slice(0,10) + '.json';
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  // 按 messageId 合并两个消息数组，保留全部本地消息
-  function mergeMessages(localMsgs, importedMsgs) {
-    const localIdSet = new Set(localMsgs.filter(m => m.id).map(m => m.id));
-    const toAdd = importedMsgs.filter(m => !m.id || !localIdSet.has(m.id));
-    return [...localMsgs, ...toAdd];
   }
 
   function importChats(e) {
@@ -1242,10 +1350,17 @@
         return;
       }
 
-      // 预扫描
+      // Real write: local chats are normalized once so legacy messages gain stable ids
+      // going forward (otherwise old user messages would never become comparable).
+      chats = normalizeAllChats(chats);
+      // Imported chats normalized using their OWN original chatId, so legacy ids
+      // carry the source chat's identity.
+      const normalizedImportedChats = normalizeAllChats(data.chats);
+
+      // 预扫描（均基于已 normalize 的数据）
       let willAdd = 0, willSkip = 0, willMergeById = 0, willPrompt = 0;
       validIds.forEach(id => {
-        const incoming = data.chats[id];
+        const incoming = normalizedImportedChats[id];
         if (chats[id]) {
           if (JSON.stringify(chats[id].messages) === JSON.stringify(incoming.messages)) willSkip++;
           else willMergeById++;
@@ -1263,6 +1378,7 @@
         `• 同 ID 内容不同：${willMergeById} 条，按消息 ID 合并\n` +
         `• 同名但不同 ID：${willPrompt} 条，逐一询问\n\n` +
         `本地现有 ${chatOrder.length} 条对话不会被删除。\n` +
+        `本次导入会为本地历史消息补全内部标识字段（不改变消息内容和顺序）。\n` +
         `音频缓存不随 JSON 迁移，历史语音第一次播放时会重新生成。\n\n` +
         `确认继续？`
       )) return;
@@ -1270,14 +1386,14 @@
       let added = 0, skipped = 0, merged = 0;
 
       validIds.forEach(id => {
-        const incoming = data.chats[id];
+        const incoming = normalizedImportedChats[id];
 
         if (chats[id]) {
-          // 同 chatId
+          // 同 chatId，双方均已 normalize
           if (JSON.stringify(chats[id].messages) === JSON.stringify(incoming.messages)) {
             skipped++;
           } else {
-            chats[id].messages = mergeMessages(chats[id].messages, incoming.messages);
+            chats[id].messages = mergeMessagesSafe(chats[id].messages, incoming.messages, id);
             merged++;
           }
         } else {
@@ -1286,12 +1402,18 @@
           if (matchEntry) {
             const doMerge = confirm(
               `发现同名对话：「${incoming.title}」\n\n` +
-              `确定 → 合并到本地同名对话（按消息 ID 合并，不删除任何本地消息）\n` +
+              `确定 → 合并到本地同名对话（按消息 ID 合并，不会因内容相同跨对话去重，不删除任何本地消息）\n` +
               `取消 → 作为独立新窗口导入`
             );
             if (doMerge) {
               const [localId] = matchEntry;
-              chats[localId].messages = mergeMessages(chats[localId].messages, incoming.messages);
+              // 保留来源 chatId 的证据，再把 chatId 改写为目标本地对话，但不重新生成 id
+              const incomingWithOrigin = incoming.messages.map(m =>
+                (m.chatId && m.chatId !== localId)
+                  ? { ...m, originalChatId: m.originalChatId || m.chatId, chatId: localId }
+                  : { ...m, chatId: localId }
+              );
+              chats[localId].messages = mergeMessagesSafe(chats[localId].messages, incomingWithOrigin, localId);
               merged++;
             } else {
               const newId = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
