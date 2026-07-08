@@ -1,0 +1,106 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2575.7">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica; min-height: 14.0px}
+  </style>
+</head>
+<body>
+<p class="p1">&lt;!DOCTYPE html&gt;</p>
+<p class="p1">&lt;html lang="zh-CN"&gt;</p>
+<p class="p1">&lt;head&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;meta charset="UTF-8"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;title&gt;Clear Personal AI Data&lt;/title&gt;</p>
+<p class="p1">&lt;/head&gt;</p>
+<p class="p1">&lt;body&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;p id="status"&gt;准备清理 Personal AI 本地数据…&lt;/p&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;script&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>(async function clearPersonalAIDataOnce() {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const status = document.getElementById('status');</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>const confirmed = confirm(</p>
+<p class="p1"><span class="Apple-converted-space">        </span>'确定清除这个浏览器中的 Personal AI 本地数据吗？\n\n' +</p>
+<p class="p1"><span class="Apple-converted-space">        </span>'将删除：\n' +</p>
+<p class="p1"><span class="Apple-converted-space">        </span>'- 聊天和消息\n' +</p>
+<p class="p1"><span class="Apple-converted-space">        </span>'- 聊天顺序\n' +</p>
+<p class="p1"><span class="Apple-converted-space">        </span>'- Anthropic API Key\n' +</p>
+<p class="p1"><span class="Apple-converted-space">        </span>'- ElevenLabs Key\n' +</p>
+<p class="p1"><span class="Apple-converted-space">        </span>'- 记忆设置内容\n' +</p>
+<p class="p1"><span class="Apple-converted-space">        </span>'- 当前皮肤选择\n' +</p>
+<p class="p1"><span class="Apple-converted-space">        </span>'- 本地语音缓存\n\n' +</p>
+<p class="p1"><span class="Apple-converted-space">        </span>'不会修改 GitHub 上的 HTML 代码。'</p>
+<p class="p1"><span class="Apple-converted-space">      </span>);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>if (!confirmed) {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>status.textContent = '已取消，没有删除任何数据。';</p>
+<p class="p1"><span class="Apple-converted-space">        </span>return;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>try {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>const keysToDelete = [</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'claude_key',</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'claude_memory',</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'claude_chats',</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'claude_order',</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'el_key',</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'claude_skin'</p>
+<p class="p1"><span class="Apple-converted-space">        </span>];</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>keysToDelete.forEach(key =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">          </span>localStorage.removeItem(key);</p>
+<p class="p1"><span class="Apple-converted-space">        </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>status.textContent = '文字数据已清除，正在删除语音缓存…';</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>await new Promise((resolve, reject) =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">          </span>const request = indexedDB.deleteDatabase('claude_audio');</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">          </span>request.onsuccess = () =&gt; resolve();</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">          </span>request.onerror = () =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>reject(request.error || new Error('IndexedDB delete failed'));</p>
+<p class="p1"><span class="Apple-converted-space">          </span>};</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">          </span>request.onblocked = () =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">            </span>reject(</p>
+<p class="p1"><span class="Apple-converted-space">              </span>new Error(</p>
+<p class="p1"><span class="Apple-converted-space">                </span>'语音数据库删除被其他仍打开的 Personal AI 页面阻塞。'</p>
+<p class="p1"><span class="Apple-converted-space">              </span>)</p>
+<p class="p1"><span class="Apple-converted-space">            </span>);</p>
+<p class="p1"><span class="Apple-converted-space">          </span>};</p>
+<p class="p1"><span class="Apple-converted-space">        </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>status.textContent =</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'清理完成。请关闭所有 Personal AI 页面，然后重新打开正式入口。';</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>alert(</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'Personal AI 本地数据已清除。\n\n' +</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'请关闭所有 Personal AI 标签页，再重新打开正式入口。'</p>
+<p class="p1"><span class="Apple-converted-space">        </span>);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>} catch (error) {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>status.textContent =</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'文字数据已清除，但语音缓存删除可能未完成：' +</p>
+<p class="p1"><span class="Apple-converted-space">          </span>String(error);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>alert(</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'聊天等 localStorage 数据已清除。\n\n' +</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'但语音缓存删除可能未完成。\n' +</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'请先关闭其他 Personal AI 标签页，再重新打开此清理页面重试。\n\n' +</p>
+<p class="p1"><span class="Apple-converted-space">          </span>String(error)</p>
+<p class="p1"><span class="Apple-converted-space">        </span>);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>})();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/script&gt;</p>
+<p class="p1">&lt;/body&gt;</p>
+<p class="p1">&lt;/html&gt;</p>
+</body>
+</html>
