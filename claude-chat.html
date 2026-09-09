@@ -765,7 +765,6 @@
 </div>
 
 <script>
-  const PROXY = 'https://corsproxy.io/?url=';
   const API_URL = 'https://api.anthropic.com/v1/messages';
 
   let apiKey = localStorage.getItem('claude_key') || '';
@@ -1085,7 +1084,7 @@
     }
 
     try {
-      const res = await fetch(PROXY + encodeURIComponent(API_URL), {
+      const res = await fetch(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
