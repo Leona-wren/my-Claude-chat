@@ -185,7 +185,7 @@
   }
 
   .chat-item-del {
-    opacity: 0;
+    opacity: 0.55;
     font-size: 14px;
     color: var(--text-soft);
     flex-shrink: 0;
@@ -669,6 +669,7 @@
     <button class="sidebar-btn" onclick="openMemory()">🧠 记忆设置</button>
     <button class="sidebar-btn" onclick="openKey()">🔑 API Key</button>
     <button class="sidebar-btn" onclick="openElKey()">🔊 语音 Key</button>
+    <button class="sidebar-btn" onclick="openTrash()">🗑 回收站</button>
   </div>
 </div>
 
@@ -751,6 +752,18 @@
   </div>
 </div>
 
+<!-- TRASH MODAL -->
+<div class="modal-overlay" id="trashModal">
+  <div class="modal">
+    <h2>回收站</h2>
+    <p>回收站中的对话会在 7 天后自动清理，之前可以随时恢复。</p>
+    <div id="trashList" style="display:flex;flex-direction:column;gap:10px;max-height:360px;overflow-y:auto;"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('trashModal')">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const PROXY = 'https://corsproxy.io/?url=';
   const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -771,7 +784,10 @@
   (function openAudioDB() {
     const req = indexedDB.open('claude_audio', 1);
     req.onupgradeneeded = e => e.target.result.createObjectStore('audio', { keyPath: 'key' });
-    req.onsuccess = e => { audioDB = e.target.result; };
+    req.onsuccess = e => {
+      audioDB = e.target.result;
+      retryPendingAudioCleanup();
+    };
   })();
 
   function getAudio(key) {
@@ -789,6 +805,29 @@
       audioDB.transaction('audio', 'readwrite').objectStore('audio').put({ key, blob });
     } catch (_) {}
   }
+
+  // ── AUDIO STORAGE ADAPTER (P0-2) ──
+  // Chat lifecycle domain never touches IndexedDB transactions directly.
+  const AudioStorage = {
+    get(key) { return getAudio(key); },
+    put(key, blob) { return putAudio(key, blob); },
+    deleteByChatId(chatId) {
+      return new Promise(resolve => {
+        if (!audioDB) return resolve(false);
+        try {
+          const store = audioDB.transaction('audio', 'readwrite').objectStore('audio');
+          const req = store.openCursor();
+          req.onsuccess = e => {
+            const cursor = e.target.result;
+            if (!cursor) return resolve(true);
+            if (String(cursor.key).startsWith(chatId + '_')) cursor.delete();
+            cursor.continue();
+          };
+          req.onerror = () => resolve(false);
+        } catch (_) { resolve(false); }
+      });
+    }
+  };
 
   // Init
   applySkin(currentSkin);
@@ -852,7 +891,7 @@
       div.className = 'chat-item' + (id === currentId ? ' active' : '');
       div.innerHTML = `
         <span class="chat-item-title">${escHtml(chat.title || '新对话')}</span>
-        <button class="chat-item-del" onclick="deleteChat(event,'${id}')">×</button>
+        <button class="chat-item-del" onclick="openChatActions(event,'${id}')" title="更多操作">⋯</button>
       `;
       div.addEventListener('click', () => loadChat(id));
       list.appendChild(div);
@@ -860,8 +899,15 @@
   }
 
   function newChat() {
-    const id = 'chat_' + Date.now();
-    chats[id] = { title: '新对话', messages: [] };
+    const id = makeChatId();
+    const now = Date.now();
+    chats[id] = {
+      title: '新对话',
+      createdAt: now,
+      createdTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      updatedAt: now,
+      messages: []
+    };
     chatOrder.unshift(id);
     save();
     loadChat(id);
@@ -884,17 +930,28 @@
     area.scrollTop = area.scrollHeight;
   }
 
-  function deleteChat(e, id) {
-    e.stopPropagation();
-    delete chats[id];
-    chatOrder = chatOrder.filter(x => x !== id);
-    save();
-    if (currentId === id) {
+  // ── PER-CHAT ACTIONS (UI controller layer) ──
+  // Generic actions entry — NOT bound to "delete" only. First version has a single
+  // action; future items (rename / export single chat / clear audio cache) can be
+  // added here without touching the domain lifecycle functions below.
+  function openChatActions(event, chatId) {
+    event.stopPropagation(); // must not trigger loadChat
+    if (confirm('删除到回收站？')) {
+      handleMoveChatToTrash(chatId);
+    }
+  }
+
+  function handleMoveChatToTrash(chatId) {
+    const result = moveChatToTrash(chatId);
+    if (!result.ok) return;
+    if (currentId === chatId) {
       currentId = null;
       document.getElementById('chatArea').innerHTML =
         `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
     }
     renderSidebar();
+    setStatus('已移至回收站 ✓', 'ok');
+    setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2000);
   }
 
   // ── MESSAGES ─────────────────────────────────────────
@@ -929,10 +986,11 @@
         ${hasVoice ? `<button class="play-btn" data-msg-id="${msg?.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
           <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
         </button>` : ''}
-        <div class="msg-time">${nowStr()}</div>`;
+        <div class="msg-time">${msg ? formatMessageTimestamp(msg) : '时间未知'}</div>`;
     } else {
-      const text = typeof msgOrText === 'object' ? msgOrText.content : msgOrText;
-      div.innerHTML = `<div class="bubble">${escHtml(text)}</div><div class="msg-time">${nowStr()}</div>`;
+      const msgObj = typeof msgOrText === 'object' ? msgOrText : null;
+      const text = msgObj ? msgObj.content : msgOrText;
+      div.innerHTML = `<div class="bubble">${escHtml(text)}</div><div class="msg-time">${msgObj ? formatMessageTimestamp(msgObj) : '时间未知'}</div>`;
     }
 
     area.appendChild(div);
@@ -976,21 +1034,36 @@
 
     if (!currentId) newChat();
 
+    // Lock the parent chat identity for this entire request lifecycle.
+    // currentId may change while we await the response (user can switch chats);
+    // requestChatId must be used for message.chatId, never currentId at response time.
+    const requestChatId = currentId;
+
     input.value = '';
     input.style.height = 'auto';
     isLoading = true;
     document.getElementById('sendBtn').disabled = true;
     setStatus('');
 
-    const chat = chats[currentId];
+    const chat = chats[requestChatId];
     const model = document.getElementById('modelSelect').value;
 
-    chat.messages.push({ role: 'user', content: text, createdAt: Date.now(), id: makeMessageId(), chatId: currentId, clientSeq: chat.messages.length });
+    const userMsg = {
+      role: 'user',
+      content: text,
+      id: makeMessageId(),
+      chatId: requestChatId,
+      clientSeq: chat.messages.length,
+      createdAt: Date.now(),
+      createdTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    };
+    chat.messages.push(userMsg);
     if (chat.title === '新对话') chat.title = text.slice(0, 24) + (text.length > 24 ? '…' : '');
+    chat.updatedAt = Date.now();
     save();
-    renderMsg('user', text);
+    if (currentId === requestChatId) renderMsg('user', userMsg);
     renderSidebar();
-    addTyping();
+    if (currentId === requestChatId) addTyping();
 
     let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。每次回复用以下固定格式，不要加任何额外说明：\n\n[EN]\n（英文回复，自然口语，带情绪，不超过4句）\n\n[ZH]\n（完全相同意思的中文版，自然流畅）\n\n思考过程如果有，也请用中文。';
     if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
@@ -1023,13 +1096,16 @@
         body: JSON.stringify(body)
       });
 
-      removeTyping();
+      if (currentId === requestChatId) removeTyping();
 
       if (!res.ok) {
         const err = await res.json();
-        setStatus('出错了：' + (err.error?.message || res.status), 'err');
-        chat.messages.pop();
-        save();
+        // Generation failure does not delete the already-sent user message —
+        // it is a real chat event that already happened. Only status display
+        // is skipped if the user has since switched away from this chat.
+        if (currentId === requestChatId) {
+          setStatus('出错了：' + (err.error?.message || res.status), 'err');
+        }
         isLoading = false;
         document.getElementById('sendBtn').disabled = false;
         return;
@@ -1047,21 +1123,45 @@
       });
 
       if (thinkingText) {
-        chat.messages.push({ role: 'thinking', content: thinkingText, id: makeMessageId(), chatId: currentId, createdAt: Date.now(), clientSeq: chat.messages.length });
-        renderThinking(thinkingText);
+        chat.messages.push({
+          role: 'thinking',
+          content: thinkingText,
+          id: makeMessageId(),
+          chatId: requestChatId,
+          clientSeq: chat.messages.length,
+          createdAt: Date.now(),
+          createdTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        });
+        if (currentId === requestChatId) renderThinking(thinkingText);
       }
 
       const parsed = parseAiReply(replyText);
-      chat.messages.push({ role: 'assistant', content: replyText, en: parsed.en, zh: parsed.zh, id: makeMessageId(), chatId: currentId, createdAt: Date.now(), clientSeq: chat.messages.length });
+      chat.messages.push({
+        role: 'assistant',
+        content: replyText,
+        en: parsed.en,
+        zh: parsed.zh,
+        id: makeMessageId(),
+        chatId: requestChatId,
+        clientSeq: chat.messages.length,
+        createdAt: Date.now(),
+        createdTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      });
+      chat.updatedAt = Date.now();
       save();
-      const aiIdx = chat.messages.length - 1;
-      renderMsg('ai', chat.messages[aiIdx], true, aiIdx);
+      if (currentId === requestChatId) {
+        const aiIdx = chat.messages.length - 1;
+        renderMsg('ai', chat.messages[aiIdx], true, aiIdx);
+      } else {
+        renderSidebar();
+      }
 
     } catch (e) {
-      removeTyping();
-      setStatus('网络错误：' + e.message, 'err');
-      chat.messages.pop();
-      save();
+      // Network failure does not delete the already-sent user message either.
+      if (currentId === requestChatId) {
+        removeTyping();
+        setStatus('网络错误：' + e.message, 'err');
+      }
     }
 
     isLoading = false;
@@ -1196,6 +1296,59 @@
   }
   function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
+  // ── TRASH UI ─────────────────────────────────────────
+  // UI only: displays state and forwards clicks to domain lifecycle functions.
+  function openTrash() {
+    renderTrashModal();
+    document.getElementById('trashModal').classList.add('open');
+  }
+
+  function renderTrashModal() {
+    const trash = loadTrash();
+    const list = document.getElementById('trashList');
+    const ids = Object.keys(trash);
+    if (ids.length === 0) {
+      list.innerHTML = `<p>回收站是空的</p>`;
+      return;
+    }
+    list.innerHTML = ids.map(chatId => {
+      const item = trash[chatId];
+      const remainingDays = Math.max(0, Math.ceil((item.deleteAfter - Date.now()) / (24 * 60 * 60 * 1000)));
+      const importedNote = item.hasImportedChangesWhileTrashed
+        ? `<div style="color:var(--accent);font-size:12px;margin-top:4px;">回收站期间导入了其他设备的新记录</div>`
+        : '';
+      return `
+        <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;">
+          <div style="font-size:14px;">${escHtml(item.chat.title || '新对话')}</div>
+          <div style="font-size:12px;color:var(--text-soft);">删除于 ${escHtml(new Date(item.deletedAt).toLocaleString('zh-CN'))} · 剩余 ${remainingDays} 天</div>
+          ${importedNote}
+          <div class="modal-btns" style="margin-top:8px;">
+            <button class="btn-cancel" onclick="handlePermanentDeleteChat('${chatId}')">永久删除</button>
+            <button class="btn-save" onclick="handleRestoreChat('${chatId}')">恢复</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function handleRestoreChat(chatId) {
+    const result = restoreChatFromTrash(chatId);
+    if (!result.ok) return;
+    renderSidebar();
+    renderTrashModal();
+    setStatus('已恢复 ✓', 'ok');
+    setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2000);
+  }
+
+  function handlePermanentDeleteChat(chatId) {
+    if (!confirm('永久删除后无法恢复，确定吗？')) return;
+    const result = permanentlyDeleteChat(chatId);
+    if (!result.ok) return;
+    renderTrashModal();
+    setStatus('已永久删除 ✓', 'ok');
+    setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2000);
+  }
+
   document.querySelectorAll('.modal-overlay').forEach(el => {
     el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
   });
@@ -1237,8 +1390,22 @@
     return hashString(serialized);
   }
 
+  // Browser-compatible UUID generator. Falls back to a high-entropy string
+  // (never a bare Date.now()) when crypto.randomUUID is unavailable.
+  function generateUuid() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    const rand = (typeof crypto !== 'undefined' && crypto.getRandomValues)
+      ? Array.from(crypto.getRandomValues(new Uint8Array(10))).map(b => b.toString(36)).join('')
+      : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    return Date.now().toString(36) + '-' + rand;
+  }
+
+  // Only affects NEW messages. legacy_ ids (makeLegacyMessageId) and conflict_ ids
+  // (makeConflictMessageId) are untouched.
   function makeMessageId() {
-    return 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    return 'msg_' + generateUuid();
   }
 
   // createdAt/timestamp are only weak evidence here, never an independent dedupe key.
@@ -1314,6 +1481,293 @@
     return [...localMsgs, ...toAppend];
   }
 
+  // ── CHAT IDENTITY (P0-2) ──────────────────────────────
+  // chatId is immutable chat entity identity. Only newChat() and the
+  // "brand new chatId" import branch may create one. Soft delete / trash /
+  // restore / import never rewrite an existing chatId.
+
+  function isChatIdReserved(chatId) {
+    return !!chats[chatId] || !!loadTrash()[chatId];
+  }
+
+  function makeChatId() {
+    let id;
+    do { id = 'chat_' + generateUuid(); } while (isChatIdReserved(id));
+    return id;
+  }
+
+  // ── TEMPORAL SCHEMA (P0-2) ────────────────────────────
+  // createdAt/createdTimeZone/updatedAt are metadata, never message/chat identity.
+  // timestamps never single-handedly decide dedupe, lifecycle conflicts, or restore.
+
+  function isValidEpoch(v) {
+    return typeof v === 'number' && Number.isFinite(v) && v > 0;
+  }
+
+  function formatMessageTimestamp(message, now = Date.now()) {
+    if (!message || !isValidEpoch(message.createdAt)) return '时间未知';
+
+    const displayTimeZone = message.createdTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const date = new Date(message.createdAt);
+
+    // messageYear and currentYear must both be computed under the SAME displayTimeZone,
+    // otherwise cross-timezone/cross-year-boundary comparisons can silently omit the year.
+    const messageYear = Number(
+      new Intl.DateTimeFormat('en-US', { year: 'numeric', timeZone: displayTimeZone }).format(date)
+    );
+    const currentYear = Number(
+      new Intl.DateTimeFormat('en-US', { year: 'numeric', timeZone: displayTimeZone }).format(new Date(now))
+    );
+
+    const opts = {
+      month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      hour12: false, timeZone: displayTimeZone
+    };
+    if (messageYear !== currentYear) opts.year = 'numeric';
+
+    return new Intl.DateTimeFormat('zh-CN', opts).format(date);
+  }
+
+  // Compares only the three fields this stage manages. Never a whole-chat comparison.
+  function temporalMetadataEquivalent(a, b) {
+    return a.createdAt === b.createdAt &&
+           a.createdTimeZone === b.createdTimeZone &&
+           a.updatedAt === b.updatedAt;
+  }
+
+  // Returns a NEW chat object. createdAt/timezone pair rules:
+  // - incoming strictly earlier (or local invalid) -> adopt incoming's createdAt+timezone pair
+  // - createdAt equal -> keep local createdAt; complete createdTimeZone from incoming only if
+  //   local timezone is missing (never overwrite a local timezone that is already present)
+  // - otherwise -> keep local pair unchanged
+  // updatedAt = max of local.updatedAt / incoming.updatedAt / any valid message.createdAt in mergedMessages.
+  function reconcileChatTemporalMetadata(localChat, incomingChat, mergedMessages) {
+    const localValid = isValidEpoch(localChat.createdAt);
+    const incomingValid = isValidEpoch(incomingChat.createdAt);
+
+    let createdAt = localChat.createdAt;
+    let createdTimeZone = localChat.createdTimeZone;
+
+    if (incomingValid && (!localValid || incomingChat.createdAt < localChat.createdAt)) {
+      createdAt = incomingChat.createdAt;
+      createdTimeZone = incomingChat.createdTimeZone;
+    } else if (localValid && incomingValid && incomingChat.createdAt === localChat.createdAt) {
+      createdAt = localChat.createdAt;
+      createdTimeZone = localChat.createdTimeZone || incomingChat.createdTimeZone;
+    }
+
+    const updatedAtCandidates = [
+      localChat.updatedAt,
+      incomingChat.updatedAt,
+      ...mergedMessages.map(m => m.createdAt)
+    ].filter(isValidEpoch);
+
+    const updatedAt = updatedAtCandidates.length
+      ? Math.max(...updatedAtCandidates)
+      : localChat.updatedAt;
+
+    return { ...localChat, createdAt, createdTimeZone, updatedAt };
+  }
+
+  // Only for a pair already confirmed to be the SAME message entity
+  // (same id AND messagesEquivalent === true). Returns a NEW message object.
+  // Never resolves a createdAt conflict by picking earlier/later — that would
+  // upgrade a metadata disagreement into a fabricated identity decision.
+  function reconcileMessageTemporalMetadata(localMessage, incomingMessage) {
+    const localValid = isValidEpoch(localMessage.createdAt);
+    const incomingValid = isValidEpoch(incomingMessage.createdAt);
+
+    let createdAt = localMessage.createdAt;
+    let createdTimeZone = localMessage.createdTimeZone;
+
+    if (!localValid && incomingValid) {
+      createdAt = incomingMessage.createdAt;
+      createdTimeZone = incomingMessage.createdTimeZone;
+    } else if (localValid && incomingValid && localMessage.createdAt === incomingMessage.createdAt) {
+      createdTimeZone = localMessage.createdTimeZone || incomingMessage.createdTimeZone;
+    }
+    // both valid but different createdAt -> keep local pair, no completion, no conflict escalation
+
+    return { ...localMessage, createdAt, createdTimeZone };
+  }
+
+  // Post-processing layer over mergeMessagesSafe's output. Does NOT do identity/dedupe
+  // decisions — those belong entirely to mergeMessagesSafe (P0-1 core, untouched).
+  // Only completes temporal metadata for messages confirmed to be the same entity.
+  function reconcileEquivalentMessageMetadata(mergedMessages, incomingMessages) {
+    const incomingById = new Map(incomingMessages.filter(m => m.id).map(m => [m.id, m]));
+    return mergedMessages.map(localMsg => {
+      if (!localMsg.id) return localMsg;
+      const incomingMsg = incomingById.get(localMsg.id);
+      if (!incomingMsg) return localMsg; // no matching incoming id (includes conflict_ ids)
+      if (!messagesEquivalent(localMsg, incomingMsg)) return localMsg; // id conflict, not same entity
+      return reconcileMessageTemporalMetadata(localMsg, incomingMsg);
+    });
+  }
+
+  // ── STORAGE ADAPTERS (P0-2) ───────────────────────────
+  function loadTrash() {
+    return JSON.parse(localStorage.getItem('claude_trash') || '{}');
+  }
+  function saveTrash(trash) {
+    localStorage.setItem('claude_trash', JSON.stringify(trash));
+  }
+  function saveActiveChats() {
+    save();
+  }
+
+  function loadPendingAudioCleanup() {
+    return JSON.parse(localStorage.getItem('claude_pending_audio_cleanup') || '[]');
+  }
+  function savePendingAudioCleanup(list) {
+    localStorage.setItem('claude_pending_audio_cleanup', JSON.stringify(list));
+  }
+  async function deleteAudioWithFallback(chatId) {
+    const ok = await AudioStorage.deleteByChatId(chatId);
+    if (!ok) {
+      const pending = loadPendingAudioCleanup();
+      if (!pending.includes(chatId)) {
+        pending.push(chatId);
+        savePendingAudioCleanup(pending);
+      }
+    }
+    return ok;
+  }
+  async function retryPendingAudioCleanup() {
+    const pending = loadPendingAudioCleanup();
+    if (pending.length === 0) return;
+    const stillPending = [];
+    for (const chatId of pending) {
+      const ok = await AudioStorage.deleteByChatId(chatId);
+      if (!ok) stillPending.push(chatId);
+    }
+    savePendingAudioCleanup(stillPending);
+  }
+
+  // ── CHAT LIFECYCLE DOMAIN (P0-2) ──────────────────────
+  // No DOM/event access, no renderSidebar/modal calls. Returns structured
+  // { ok, action/reason, ... } results; UI controllers decide what to render.
+
+  function moveChatToTrash(chatId) {
+    if (!chats[chatId]) return { ok: false, reason: 'CHAT_NOT_FOUND' };
+    const trash = loadTrash();
+    const now = Date.now();
+    trash[chatId] = {
+      chatId,
+      chat: chats[chatId],
+      state: 'trashed',
+      deletedAt: now,
+      deleteAfter: now + 7 * 24 * 60 * 60 * 1000,
+      hasImportedChangesWhileTrashed: false,
+      lastImportedMergeAt: null
+    };
+    saveTrash(trash);
+    delete chats[chatId];
+    chatOrder = chatOrder.filter(cid => cid !== chatId);
+    saveActiveChats();
+    return { ok: true, action: 'trashed', chatId };
+  }
+
+  function restoreChatFromTrash(chatId) {
+    const trash = loadTrash();
+    if (!trash[chatId]) return { ok: false, reason: 'TRASH_ITEM_NOT_FOUND' };
+    chats[chatId] = trash[chatId].chat;
+    chatOrder.unshift(chatId);
+    delete trash[chatId];
+    saveTrash(trash);
+    saveActiveChats();
+    return { ok: true, action: 'restored', chatId };
+  }
+
+  function permanentlyDeleteChat(chatId) {
+    const trash = loadTrash();
+    if (!trash[chatId]) return { ok: false, reason: 'TRASH_ITEM_NOT_FOUND' };
+    delete trash[chatId];
+    saveTrash(trash);
+    // Text snapshot deletion above is already committed; audio cleanup failure
+    // must not block or reverse it — deleteAudioWithFallback queues a retry instead.
+    deleteAudioWithFallback(chatId);
+    return { ok: true, action: 'permanentlyDeleted', chatId };
+  }
+
+  function purgeExpiredTrash() {
+    const trash = loadTrash();
+    const now = Date.now();
+    const purged = [];
+    Object.keys(trash).forEach(chatId => {
+      if (trash[chatId].deleteAfter <= now) {
+        delete trash[chatId];
+        purged.push(chatId);
+      }
+    });
+    if (purged.length) saveTrash(trash);
+    purged.forEach(chatId => deleteAudioWithFallback(chatId));
+    return { ok: true, action: 'purged', chatIds: purged };
+  }
+
+  // Pure domain helper: no loadTrash/saveTrash, no DOM/IndexedDB access.
+  // Returns { item: newItem, result } without persisting anything.
+  function mergeIncomingIntoTrashedItem(item, chatId, incomingChat) {
+    const normalizedIncoming = normalizeChat(incomingChat, chatId);
+    const localMessages = item.chat.messages;
+    const messagesSame = JSON.stringify(localMessages) === JSON.stringify(normalizedIncoming.messages);
+
+    let finalMessages = localMessages;
+    let hasImportedMessageRecords = false;
+
+    if (!messagesSame) {
+      const mergedMessages = mergeMessagesSafe(localMessages, normalizedIncoming.messages, chatId);
+      // P0-1 semantics: new/conflict append -> length grows; exact duplicate or
+      // metadata-only completion -> length unchanged.
+      hasImportedMessageRecords = mergedMessages.length > localMessages.length;
+      finalMessages = reconcileEquivalentMessageMetadata(mergedMessages, normalizedIncoming.messages);
+    }
+
+    const messagesChanged = JSON.stringify(finalMessages) !== JSON.stringify(localMessages);
+
+    const reconciledChat = reconcileChatTemporalMetadata(
+      { ...item.chat, messages: finalMessages },
+      normalizedIncoming,
+      finalMessages
+    );
+    const temporalChanged = !temporalMetadataEquivalent(item.chat, reconciledChat);
+    const snapshotChanged = messagesChanged || temporalChanged;
+
+    // { ...item } preserves state/deletedAt/deleteAfter untouched, and never
+    // resets hasImportedChangesWhileTrashed back to false once it was true.
+    const newItem = { ...item, chat: reconciledChat };
+    if (hasImportedMessageRecords) {
+      newItem.hasImportedChangesWhileTrashed = true;
+      newItem.lastImportedMergeAt = Date.now();
+    }
+
+    return {
+      item: newItem,
+      result: {
+        ok: true,
+        action: 'mergedIntoTrash',
+        chatId,
+        changed: snapshotChanged,
+        hasImportedMessageRecords
+      }
+    };
+  }
+
+  // Storage orchestration: loads trash, delegates to the pure domain helper,
+  // writes back only if the snapshot actually changed.
+  function mergeIncomingIntoTrashedChat(chatId, incomingChat) {
+    const trash = loadTrash();
+    const item = trash[chatId];
+    if (!item) return { ok: false, reason: 'TRASH_ITEM_NOT_FOUND' };
+
+    const { item: newItem, result } = mergeIncomingIntoTrashedItem(item, chatId, incomingChat);
+    if (result.changed) {
+      trash[chatId] = newItem;
+      saveTrash(trash);
+    }
+    return result;
+  }
+
   // ── EXPORT / IMPORT ──────────────────────────────────
   function exportChats() {
     // Export uses a normalized COPY only — global `chats` and localStorage are untouched.
@@ -1356,83 +1810,92 @@
       // Imported chats normalized using their OWN original chatId, so legacy ids
       // carry the source chat's identity.
       const normalizedImportedChats = normalizeAllChats(data.chats);
+      // Read trash once; preview and actual routing both reuse this same snapshot
+      // for membership checks (the read-modify-write itself still goes through the
+      // single mergeIncomingIntoTrashedChat domain call, not scattered here).
+      const trashSnapshot = loadTrash();
 
-      // 预扫描（均基于已 normalize 的数据）
-      let willAdd = 0, willSkip = 0, willMergeById = 0, willPrompt = 0;
+      // title plays no role in identity/import routing: same chatId = same entity,
+      // different chatId = different entity, regardless of title.
+      let willAdd = 0, willSkip = 0, willMergeActive = 0, willMergeTrash = 0;
       validIds.forEach(id => {
         const incoming = normalizedImportedChats[id];
         if (chats[id]) {
-          if (JSON.stringify(chats[id].messages) === JSON.stringify(incoming.messages)) willSkip++;
-          else willMergeById++;
+          const localChat = chats[id];
+          const messagesSame = JSON.stringify(localChat.messages) === JSON.stringify(incoming.messages);
+          let finalMessages = localChat.messages;
+          if (!messagesSame) {
+            const mergedMessages = mergeMessagesSafe(localChat.messages, incoming.messages, id);
+            finalMessages = reconcileEquivalentMessageMetadata(mergedMessages, incoming.messages);
+          }
+          const messagesWouldChange = JSON.stringify(finalMessages) !== JSON.stringify(localChat.messages);
+          const previewReconciled = reconcileChatTemporalMetadata(
+            { ...localChat, messages: finalMessages }, incoming, finalMessages
+          );
+          const temporalWouldChange = !temporalMetadataEquivalent(localChat, previewReconciled);
+          if (!messagesWouldChange && !temporalWouldChange) willSkip++;
+          else willMergeActive++;
+        } else if (trashSnapshot[id]) {
+          const { result } = mergeIncomingIntoTrashedItem(trashSnapshot[id], id, incoming);
+          if (result.changed) willMergeTrash++;
+          else willSkip++;
         } else {
-          const sameTitle = Object.values(chats).find(c => c.title === incoming.title);
-          if (sameTitle) willPrompt++;
-          else willAdd++;
+          willAdd++;
         }
       });
 
       if (!confirm(
         `合并导入预览：\n` +
-        `• 全新对话：${willAdd} 条，直接加入\n` +
-        `• 完全相同：${willSkip} 条，跳过\n` +
-        `• 同 ID 内容不同：${willMergeById} 条，按消息 ID 合并\n` +
-        `• 同名但不同 ID：${willPrompt} 条，逐一询问\n\n` +
+        `• 新增对话：${willAdd} 条\n` +
+        `• 合并已有对话：${willMergeActive} 条（相同对话 ID，按消息合并）\n` +
+        `• 回收站内更新：${willMergeTrash} 条（不会恢复，仅更新回收站快照）\n` +
+        `• 完全相同：${willSkip} 条，跳过\n\n` +
         `本地现有 ${chatOrder.length} 条对话不会被删除。\n` +
         `本次导入会为本地历史消息补全内部标识字段（不改变消息内容和顺序）。\n` +
         `音频缓存不随 JSON 迁移，历史语音第一次播放时会重新生成。\n\n` +
         `确认继续？`
       )) return;
 
-      let added = 0, skipped = 0, merged = 0;
+      let added = 0, skipped = 0, merged = 0, mergedIntoTrash = 0;
 
       validIds.forEach(id => {
         const incoming = normalizedImportedChats[id];
 
         if (chats[id]) {
-          // 同 chatId，双方均已 normalize
-          if (JSON.stringify(chats[id].messages) === JSON.stringify(incoming.messages)) {
+          const localChat = chats[id];
+          const messagesSame = JSON.stringify(localChat.messages) === JSON.stringify(incoming.messages);
+          let finalMessages = localChat.messages;
+          if (!messagesSame) {
+            const mergedMessages = mergeMessagesSafe(localChat.messages, incoming.messages, id);
+            finalMessages = reconcileEquivalentMessageMetadata(mergedMessages, incoming.messages);
+          }
+          const messagesChanged = JSON.stringify(finalMessages) !== JSON.stringify(localChat.messages);
+          const reconciledChat = reconcileChatTemporalMetadata(
+            { ...localChat, messages: finalMessages }, incoming, finalMessages
+          );
+          const temporalChanged = !temporalMetadataEquivalent(localChat, reconciledChat);
+          if (!messagesChanged && !temporalChanged) {
             skipped++;
           } else {
-            chats[id].messages = mergeMessagesSafe(chats[id].messages, incoming.messages, id);
+            chats[id] = reconciledChat;
             merged++;
           }
+        } else if (trashSnapshot[id]) {
+          // same chatId hits trash: merge into the trash snapshot, never revive it.
+          const result = mergeIncomingIntoTrashedChat(id, incoming);
+          if (result.changed) mergedIntoTrash++;
+          else skipped++;
         } else {
-          // 不同 chatId，检查 title 是否重名
-          const matchEntry = Object.entries(chats).find(([, c]) => c.title === incoming.title);
-          if (matchEntry) {
-            const doMerge = confirm(
-              `发现同名对话：「${incoming.title}」\n\n` +
-              `确定 → 合并到本地同名对话（按消息 ID 合并，不会因内容相同跨对话去重，不删除任何本地消息）\n` +
-              `取消 → 作为独立新窗口导入`
-            );
-            if (doMerge) {
-              const [localId] = matchEntry;
-              // 保留来源 chatId 的证据，再把 chatId 改写为目标本地对话，但不重新生成 id
-              const incomingWithOrigin = incoming.messages.map(m =>
-                (m.chatId && m.chatId !== localId)
-                  ? { ...m, originalChatId: m.originalChatId || m.chatId, chatId: localId }
-                  : { ...m, chatId: localId }
-              );
-              chats[localId].messages = mergeMessagesSafe(chats[localId].messages, incomingWithOrigin, localId);
-              merged++;
-            } else {
-              const newId = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-              chats[newId] = { ...incoming };
-              chatOrder.push(newId);
-              added++;
-            }
-          } else {
-            // 全新对话
-            chats[id] = incoming;
-            chatOrder.push(id);
-            added++;
-          }
+          // brand new chatId: independent chat entity, chatId kept as-is.
+          chats[id] = incoming;
+          chatOrder.push(id);
+          added++;
         }
       });
 
       save();
       renderSidebar();
-      setStatus(`导入完成：新增 ${added}，合并 ${merged}，跳过 ${skipped} ✓`, 'ok');
+      setStatus(`导入完成：新增 ${added}，合并 ${merged}，回收站更新 ${mergedIntoTrash}，跳过 ${skipped} ✓`, 'ok');
       setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 4000);
     };
     reader.readAsText(file);
@@ -1466,6 +1929,12 @@
   function escHtml(s) {
     return String(s).replace(/&/g,'\x26amp;').replace(/</g,'\x26lt;').replace(/>/g,'\x26gt;');
   }
+
+  // ── LIFECYCLE MAINTENANCE (P0-2) ──────────────────────
+  // Runs once after all definitions are in place; non-blocking.
+  // retryPendingAudioCleanup() is NOT called here — audioDB may not be ready yet.
+  // It runs from openAudioDB()'s onsuccess callback instead, once IndexedDB is actually open.
+  purgeExpiredTrash();
 </script>
 </body>
 </html>
