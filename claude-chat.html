@@ -849,6 +849,8 @@
   let currentId = null;
   let isLoading = false;
   let activeRequestChatId = null;
+  // Transient UI status revision must exist before Init can call loadChat()/status renderers.
+  let statusRevision = 0;
   let thinkingOn = false;
   let selectedEffort = 'default';
   let selectedModelId = localStorage.getItem(MODEL_SELECTION_KEY) || '';
@@ -907,15 +909,6 @@
       });
     }
   };
-
-  // Init
-  applySkin(currentSkin);
-  initializeModelRegistry();
-  if (!apiKey) setTimeout(() => openKey(), 400);
-  renderSidebar();
-  if (chatOrder.length > 0) loadChat(chatOrder[0]);
-  updateSendAvailability();
-  if (apiKey) refreshModelRegistry();
 
   // ── 皮肤 ─────────────────────────────────────────────
   function setSkin(name) {
@@ -2502,8 +2495,6 @@
     localStorage.setItem('claude_order', JSON.stringify(chatOrder));
   }
 
-  let statusRevision = 0;
-
   function setStatus(msg, type = '') {
     statusRevision++;
     const el = document.getElementById('statusBar');
@@ -2587,10 +2578,24 @@
     return String(s).replace(/&/g,'\x26amp;').replace(/</g,'\x26lt;').replace(/>/g,'\x26gt;');
   }
 
+  // ── APP INITIALIZATION ─────────────────────────────────
+  // Run only after all function/state declarations are initialized. Keeping bootstrap
+  // at the end prevents temporal-dead-zone bugs when future transient state is added.
+  function initializeApp() {
+    applySkin(currentSkin);
+    initializeModelRegistry();
+    if (!apiKey) setTimeout(() => openKey(), 400);
+    renderSidebar();
+    if (chatOrder.length > 0) loadChat(chatOrder[0]);
+    updateSendAvailability();
+    if (apiKey) refreshModelRegistry();
+  }
+
   // ── LIFECYCLE MAINTENANCE (P0-2) ──────────────────────
   // Runs once after all definitions are in place; non-blocking.
   // retryPendingAudioCleanup() is NOT called here — audioDB may not be ready yet.
   // It runs from openAudioDB()'s onsuccess callback instead, once IndexedDB is actually open.
+  initializeApp();
   purgeExpiredTrash();
 </script>
 </body>
