@@ -287,6 +287,26 @@
 
   .topbar select:focus { border-color: var(--accent); }
 
+  .model-control {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+  }
+
+  .control-label,
+  .thinking-type {
+    font-size: 11px;
+    font-family: 'Helvetica Neue', sans-serif;
+    color: var(--text-soft);
+    white-space: nowrap;
+  }
+
+  .thinking-type {
+    color: var(--accent);
+    opacity: 0.88;
+  }
+
   .thinking-toggle {
     display: flex;
     align-items: center;
@@ -296,6 +316,11 @@
     color: var(--text-soft);
     cursor: pointer;
     user-select: none;
+  }
+
+  /* Locked-on Thinking remains visibly ON; only interaction is disabled. */
+  .thinking-toggle.is-locked-on {
+    cursor: default;
   }
 
   .toggle-switch {
@@ -325,17 +350,12 @@
     width: 1px; height: 18px;
     background: var(--border);
     flex-shrink: 0;
+    display: none;
   }
 
-  .thinking-badge {
-    font-size: 11px;
-    color: var(--accent);
-    font-family: 'Helvetica Neue', sans-serif;
-    opacity: 0;
-    transition: opacity 0.2s;
+  #effortSelect {
+    min-width: 86px;
   }
-
-  .thinking-badge.show { opacity: 1; }
 
   /* CHAT AREA */
   .chat-area {
@@ -484,6 +504,41 @@
 
   .status-bar.ok { color: #7A9E7E; }
   .status-bar.err { color: #C47A6A; }
+
+  .request-failure {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .retry-btn {
+    width: 22px;
+    height: 22px;
+    padding: 2px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: currentColor;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s, transform 0.1s;
+  }
+
+  .retry-btn:hover { background: var(--hover); }
+  .retry-btn:active { transform: scale(0.92); }
+  .retry-btn:disabled { opacity: 0.35; cursor: default; }
+  .retry-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
 
   .input-row {
     display: flex;
@@ -677,21 +732,21 @@
 
 <!-- MAIN -->
 <div class="main">
-  <!-- 顶部工具栏 -->
+  <!-- 顶部工具栏：UI 只渲染 ModelRegistry / capability state，不决定 API 能力 -->
   <div class="topbar">
-    <select id="modelSelect" onchange="onModelChange()">
-      <option value="claude-sonnet-4-6">Sonnet 4.6</option>
-      <option value="claude-opus-4-6">Opus 4.6</option>
-      <option value="claude-opus-4-7">Opus 4.7</option>
-      <option value="claude-opus-4-8">Opus 4.8</option>
-      <option value="claude-haiku-4-5-20251001">Haiku 4.5（省钱）</option>
-    </select>
-    <div class="topbar-sep"></div>
-    <div class="thinking-toggle" onclick="toggleThinking()">
-      <div class="toggle-switch" id="thinkingSwitch"></div>
-      <span>思考链</span>
+    <select id="modelSelect" onchange="onModelChange()"></select>
+    <div class="topbar-sep" id="modelCapabilitySep"></div>
+    <div class="model-control" id="thinkingControl">
+      <span class="control-label">Thinking</span>
+      <div class="thinking-toggle" id="thinkingToggle" onclick="toggleThinking()" role="button" tabindex="0" aria-label="切换 Thinking">
+        <div class="toggle-switch" id="thinkingSwitch"></div>
+      </div>
+      <span class="thinking-type" id="thinkingTypeLabel"></span>
     </div>
-    <span class="thinking-badge" id="thinkingBadge">✦ 深度思考中</span>
+    <div class="model-control" id="effortControl">
+      <span class="control-label">Effort</span>
+      <select id="effortSelect" onchange="onEffortChange()"></select>
+    </div>
   </div>
 
   <div class="chat-area" id="chatArea">
@@ -766,6 +821,26 @@
 
 <script>
   const API_URL = 'https://api.anthropic.com/v1/messages';
+  const MODELS_URL = 'https://api.anthropic.com/v1/models?limit=1000';
+  const MODEL_CACHE_KEY = 'claude_model_registry_v1';
+  const MODEL_PREFS_KEY = 'claude_model_prefs_v1';
+  const MODEL_SELECTION_KEY = 'claude_model';
+  const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+  // Offline/first-load fallback only. A successful GET /v1/models replaces this list.
+  // Capabilities here intentionally cover only the controls this frontend needs.
+  const FALLBACK_MODELS = [
+    { id: 'claude-fable-5', display_name: 'Claude Fable 5', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-opus-5', display_name: 'Claude Opus 5', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-sonnet-5', display_name: 'Claude Sonnet 5', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-opus-4-8', display_name: 'Claude Opus 4.8', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-opus-4-7', display_name: 'Claude Opus 4.7', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-opus-4-6', display_name: 'Claude Opus 4.6', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true }, enabled: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-opus-4-5-20251101', display_name: 'Claude Opus 4.5', capabilities: { thinking: { supported: true, types: { enabled: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true } } } },
+    { id: 'claude-sonnet-4-6', display_name: 'Claude Sonnet 4.6', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true }, enabled: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-sonnet-4-5-20250929', display_name: 'Claude Sonnet 4.5', capabilities: { thinking: { supported: true, types: { enabled: { supported: true } } }, effort: { supported: false } } },
+    { id: 'claude-haiku-4-5-20251001', display_name: 'Claude Haiku 4.5', capabilities: { thinking: { supported: true, types: { enabled: { supported: true } } }, effort: { supported: false } } }
+  ];
 
   let apiKey = localStorage.getItem('claude_key') || '';
   let memory = localStorage.getItem('claude_memory') || '';
@@ -773,7 +848,12 @@
   let chatOrder = JSON.parse(localStorage.getItem('claude_order') || '[]');
   let currentId = null;
   let isLoading = false;
+  let activeRequestChatId = null;
   let thinkingOn = false;
+  let selectedEffort = 'default';
+  let selectedModelId = localStorage.getItem(MODEL_SELECTION_KEY) || '';
+  let modelPrefs = JSON.parse(localStorage.getItem(MODEL_PREFS_KEY) || '{}');
+  let modelRegistry = [];
   let elKey = localStorage.getItem('el_key') || '';
   const EL_VOICE = '0qHbGTWOPgPUvThY4Te6';
   let currentAudio = null;
@@ -830,14 +910,12 @@
 
   // Init
   applySkin(currentSkin);
-  if (apiKey) {
-    document.getElementById('sendBtn').disabled = false;
-    setStatus('已连接 ✓', 'ok');
-  } else {
-    setTimeout(() => openKey(), 400);
-  }
+  initializeModelRegistry();
+  if (!apiKey) setTimeout(() => openKey(), 400);
   renderSidebar();
   if (chatOrder.length > 0) loadChat(chatOrder[0]);
+  updateSendAvailability();
+  if (apiKey) refreshModelRegistry();
 
   // ── 皮肤 ─────────────────────────────────────────────
   function setSkin(name) {
@@ -853,31 +931,364 @@
     });
   }
 
-  // ── 模型 & 思考链 ─────────────────────────────────────
+  // ── MODEL REGISTRY / THINKING / EFFORT ─────────────────
+  // Architecture rule: API/model capability logic lives here; the topbar only renders
+  // state and forwards user choices. No generation behavior is inferred from UI shape.
+
+  function loadModelRegistryCache() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(MODEL_CACHE_KEY) || 'null');
+      return parsed && Array.isArray(parsed.models) ? parsed : null;
+    } catch (_) { return null; }
+  }
+
+  function saveModelRegistryCache(models) {
+    localStorage.setItem(MODEL_CACHE_KEY, JSON.stringify({
+      fetchedAt: Date.now(),
+      models
+    }));
+  }
+
+  function normalizeModelInfo(model) {
+    const fallback = FALLBACK_MODELS.find(item => item.id === model.id);
+    const hasCapabilities = model.capabilities && Object.keys(model.capabilities).length > 0;
+    return {
+      id: model.id,
+      display_name: model.display_name || model.id,
+      capabilities: hasCapabilities ? model.capabilities : (fallback?.capabilities || {}),
+      created_at: model.created_at || null,
+      max_input_tokens: model.max_input_tokens ?? null,
+      max_tokens: model.max_tokens ?? null
+    };
+  }
+
+  function registryCapabilitySignature(models) {
+    return JSON.stringify((models || []).map(model => {
+      const thinking = model.capabilities?.thinking || null;
+      const effort = model.capabilities?.effort || null;
+      return {
+        id: model.id,
+        thinking,
+        effort
+      };
+    }));
+  }
+
+  function initializeModelRegistry() {
+    const cached = loadModelRegistryCache();
+    modelRegistry = cached?.models?.length
+      ? cached.models.map(normalizeModelInfo)
+      : FALLBACK_MODELS.map(normalizeModelInfo);
+
+    if (!selectedModelId) {
+      const safeDefault = modelRegistry.find(m => m.id === 'claude-sonnet-4-6')
+        || modelRegistry.find(m => m.id === 'claude-sonnet-5')
+        || modelRegistry[0];
+      if (safeDefault) {
+        selectedModelId = safeDefault.id;
+        localStorage.setItem(MODEL_SELECTION_KEY, selectedModelId);
+      }
+    }
+
+    renderModelSelect();
+    applySelectedModelPreferences();
+    renderModelCapabilityControls();
+  }
+
+  async function refreshModelRegistry() {
+    if (!apiKey) return { ok: false, reason: 'NO_API_KEY' };
+    const previousCache = loadModelRegistryCache();
+
+    try {
+      const res = await fetch(MODELS_URL, {
+        method: 'GET',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        }
+      });
+      if (!res.ok) return { ok: false, reason: `HTTP_${res.status}` };
+
+      const payload = await res.json();
+      const models = (payload.data || [])
+        .filter(m => m && typeof m.id === 'string')
+        .map(normalizeModelInfo);
+      if (!models.length) return { ok: false, reason: 'EMPTY_MODEL_LIST' };
+
+      const changed = !!previousCache?.models?.length &&
+        registryCapabilitySignature(previousCache.models) !== registryCapabilitySignature(models);
+
+      modelRegistry = models;
+      saveModelRegistryCache(models);
+      renderModelSelect();
+      applySelectedModelPreferences();
+      renderModelCapabilityControls();
+      updateSendAvailability();
+
+      if (selectedModelId && !getModelInfo(selectedModelId)) {
+        setStatus('当前模型已不可用，请重新选择', 'err');
+      } else if (changed) {
+        flashStatus('模型能力已更新', 'ok', 2200);
+      }
+      return { ok: true, changed };
+    } catch (_) {
+      // Network/model-registry failure must not break chat. Cached/fallback models remain usable.
+      return { ok: false, reason: 'NETWORK' };
+    }
+  }
+
+  function getModelInfo(modelId) {
+    return modelRegistry.find(model => model.id === modelId) || null;
+  }
+
+  function getSupportedEffortLevels(modelInfo) {
+    const effort = modelInfo?.capabilities?.effort;
+    if (!effort?.supported) return [];
+    return EFFORT_LEVEL_ORDER.filter(level => effort[level]?.supported === true);
+  }
+
+  // Models API exposes supported thinking types, but does not currently encode every
+  // default/disable rule. This small policy layer handles those semantics while the
+  // live registry remains the source of truth for model availability and capabilities.
+  function getKnownThinkingPolicy(modelId) {
+    if (/^claude-(fable|mythos)-(?:5|5-1)(?:-\d{8})?$/.test(modelId)) {
+      return { mode: 'adaptive', defaultState: 'always_on', canToggle: false };
+    }
+    if (/^claude-mythos-preview(?:-\d{8})?$/.test(modelId)) {
+      return { mode: 'adaptive', defaultState: 'always_on', canToggle: false };
+    }
+    if (/^claude-opus-5(?:-\d{8})?$/.test(modelId)) {
+      return {
+        mode: 'adaptive', defaultState: 'on', canToggle: true,
+        offStrategy: 'disabled', offForbiddenEfforts: ['xhigh', 'max']
+      };
+    }
+    if (/^claude-sonnet-5(?:-\d{8})?$/.test(modelId)) {
+      return { mode: 'adaptive', defaultState: 'on', canToggle: true, offStrategy: 'disabled' };
+    }
+    if (/^claude-opus-4-(8|7)(?:-\d{8})?$/.test(modelId)) {
+      return { mode: 'adaptive', defaultState: 'off', canToggle: true, offStrategy: 'omit' };
+    }
+    if (/^claude-(opus|sonnet)-4-6(?:-\d{8})?$/.test(modelId)) {
+      return { mode: 'adaptive', defaultState: 'off', canToggle: true, offStrategy: 'omit' };
+    }
+    if (/^claude-(opus|sonnet|haiku)-4-5(?:-\d{8})?$/.test(modelId)) {
+      return { mode: 'enabled', defaultState: 'off', canToggle: true, offStrategy: 'omit', budgetTokens: 10000 };
+    }
+    return null;
+  }
+
+  function resolveModelControls(modelInfo) {
+    if (!modelInfo) {
+      return {
+        thinkingSupported: false, thinkingMode: null, canToggleThinking: false,
+        thinkingDefaultOn: false, thinkingAlwaysOn: false, offStrategy: 'omit',
+        offForbiddenEfforts: [], effortLevels: []
+      };
+    }
+
+    const thinking = modelInfo.capabilities?.thinking || {};
+    const types = thinking.types || {};
+    const thinkingSupported = thinking.supported === true;
+    const known = getKnownThinkingPolicy(modelInfo.id);
+    const inferredMode = types.adaptive?.supported ? 'adaptive'
+      : types.enabled?.supported ? 'enabled'
+      : null;
+    const thinkingMode = thinkingSupported ? (known?.mode || inferredMode) : null;
+    const explicitDisabledSupport = types.disabled?.supported === true;
+    const canToggleThinking = thinkingSupported && !!thinkingMode &&
+      (known ? known.canToggle : explicitDisabledSupport);
+    const thinkingAlwaysOn = thinkingSupported && known?.defaultState === 'always_on';
+    const thinkingDefaultOn = thinkingAlwaysOn || (thinkingSupported && known?.defaultState === 'on');
+
+    return {
+      thinkingSupported,
+      thinkingMode,
+      canToggleThinking,
+      thinkingDefaultOn,
+      thinkingAlwaysOn,
+      offStrategy: known?.offStrategy || (explicitDisabledSupport ? 'disabled' : 'omit'),
+      offForbiddenEfforts: known?.offForbiddenEfforts || [],
+      budgetTokens: known?.budgetTokens || 10000,
+      effortLevels: getSupportedEffortLevels(modelInfo)
+    };
+  }
+
+  function renderModelSelect() {
+    const select = document.getElementById('modelSelect');
+    if (!select) return;
+    select.innerHTML = '';
+
+    const selectedExists = !!getModelInfo(selectedModelId);
+    if (selectedModelId && !selectedExists) {
+      const unavailable = document.createElement('option');
+      unavailable.value = selectedModelId;
+      unavailable.textContent = `${selectedModelId}（不可用）`;
+      unavailable.disabled = true;
+      unavailable.selected = true;
+      select.appendChild(unavailable);
+    }
+
+    modelRegistry.forEach(model => {
+      const option = document.createElement('option');
+      option.value = model.id;
+      option.textContent = model.display_name || model.id;
+      option.title = model.id;
+      select.appendChild(option);
+    });
+
+    if (selectedExists) select.value = selectedModelId;
+  }
+
+  function getModelPreference(modelId, controls) {
+    const stored = modelPrefs[modelId] || {};
+    const thinkingEnabled = controls.thinkingAlwaysOn
+      ? true
+      : typeof stored.thinkingEnabled === 'boolean'
+        ? stored.thinkingEnabled
+        : controls.thinkingDefaultOn;
+    const effort = controls.effortLevels.includes(stored.effort) ? stored.effort : 'default';
+    return { thinkingEnabled, effort };
+  }
+
+  function saveSelectedModelPreference() {
+    if (!selectedModelId) return;
+    modelPrefs[selectedModelId] = {
+      ...(modelPrefs[selectedModelId] || {}),
+      thinkingEnabled: thinkingOn,
+      effort: selectedEffort
+    };
+    localStorage.setItem(MODEL_PREFS_KEY, JSON.stringify(modelPrefs));
+  }
+
+  function applySelectedModelPreferences() {
+    const modelInfo = getModelInfo(selectedModelId);
+    const controls = resolveModelControls(modelInfo);
+    const pref = getModelPreference(selectedModelId, controls);
+    thinkingOn = pref.thinkingEnabled;
+    selectedEffort = pref.effort;
+
+    // Never restore a persisted combination that the current API contract rejects.
+    if (!thinkingOn && controls.offForbiddenEfforts.includes(selectedEffort)) {
+      selectedEffort = 'default';
+      saveSelectedModelPreference();
+    }
+  }
+
+  function canDisableThinkingAtEffort(controls, effort) {
+    if (!controls.canToggleThinking) return false;
+    if (!thinkingOn) return true;
+    return !controls.offForbiddenEfforts.includes(effort);
+  }
+
+  function renderModelCapabilityControls() {
+    const modelInfo = getModelInfo(selectedModelId);
+    const controls = resolveModelControls(modelInfo);
+    const thinkingControl = document.getElementById('thinkingControl');
+    const effortControl = document.getElementById('effortControl');
+    const sep = document.getElementById('modelCapabilitySep');
+    const toggle = document.getElementById('thinkingToggle');
+    const switchEl = document.getElementById('thinkingSwitch');
+    const typeLabel = document.getElementById('thinkingTypeLabel');
+    const effortSelect = document.getElementById('effortSelect');
+
+    // UI projection only: the policy layer above decides whether Thinking exists,
+    // whether it is always-on, and whether the current effort allows disabling it.
+    // The renderer only visualizes that state.
+    const showThinking = controls.thinkingAlwaysOn || controls.canToggleThinking;
+    thinkingControl.style.display = showThinking ? 'flex' : 'none';
+    if (showThinking) {
+      const effectiveThinkingOn = controls.thinkingAlwaysOn ? true : thinkingOn;
+      const lockedByPolicy = controls.thinkingAlwaysOn;
+      const lockedByEffort = effectiveThinkingOn && controls.canToggleThinking &&
+        !canDisableThinkingAtEffort(controls, selectedEffort);
+      const lockedOn = lockedByPolicy || lockedByEffort;
+
+      switchEl.classList.toggle('on', effectiveThinkingOn);
+      typeLabel.textContent = controls.thinkingMode === 'adaptive' ? 'Adaptive' : 'Extended';
+      toggle.classList.toggle('is-locked-on', lockedOn);
+      toggle.setAttribute('aria-pressed', String(effectiveThinkingOn));
+      toggle.setAttribute('aria-disabled', String(lockedOn));
+      toggle.tabIndex = lockedOn ? -1 : 0;
+      toggle.title = lockedByPolicy
+        ? '此模型始终启用 Thinking'
+        : lockedByEffort
+          ? '当前 Effort 需要保持 Thinking 开启'
+          : '';
+    } else {
+      toggle.classList.remove('is-locked-on');
+      toggle.removeAttribute('aria-disabled');
+      toggle.tabIndex = 0;
+      toggle.title = '';
+    }
+
+    const showEffort = controls.effortLevels.length > 0;
+    effortControl.style.display = showEffort ? 'flex' : 'none';
+    effortSelect.innerHTML = '';
+    if (showEffort) {
+      const defaultOption = document.createElement('option');
+      defaultOption.value = 'default';
+      defaultOption.textContent = '默认';
+      effortSelect.appendChild(defaultOption);
+
+      controls.effortLevels.forEach(level => {
+        const option = document.createElement('option');
+        option.value = level;
+        option.textContent = level === 'xhigh' ? 'XHigh' : level === 'max' ? 'Max' : level[0].toUpperCase() + level.slice(1);
+        if (!thinkingOn && controls.offForbiddenEfforts.includes(level)) option.disabled = true;
+        effortSelect.appendChild(option);
+      });
+      effortSelect.value = controls.effortLevels.includes(selectedEffort) ? selectedEffort : 'default';
+    }
+
+    sep.style.display = (showThinking || showEffort) ? 'block' : 'none';
+  }
+
+  function updateSendAvailability() {
+    const hasUsableModel = !!selectedModelId && !!getModelInfo(selectedModelId);
+    document.getElementById('sendBtn').disabled = !apiKey || isLoading || !hasUsableModel;
+  }
+
   function onModelChange() {
     const model = document.getElementById('modelSelect').value;
-    // 思考链只支持 opus
-    if (!model.includes('opus') && thinkingOn) {
-      thinkingOn = false;
-      updateThinkingUI();
-    }
+    if (!model || !getModelInfo(model)) return;
+    selectedModelId = model;
+    localStorage.setItem(MODEL_SELECTION_KEY, selectedModelId);
+    applySelectedModelPreferences();
+    renderModelCapabilityControls();
+    updateSendAvailability();
+    setStatus('');
   }
 
   function toggleThinking() {
-    const model = document.getElementById('modelSelect').value;
-    if (!model.includes('opus')) {
-      setStatus('思考链目前只支持 Opus 模型', 'err');
-      setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2500);
+    const controls = resolveModelControls(getModelInfo(selectedModelId));
+    if (!controls.canToggleThinking) return;
+    if (thinkingOn && !canDisableThinkingAtEffort(controls, selectedEffort)) {
+      flashStatus('当前 Effort 需要保持 Thinking 开启', 'err', 2200);
       return;
     }
     thinkingOn = !thinkingOn;
-    updateThinkingUI();
+    saveSelectedModelPreference();
+    renderModelCapabilityControls();
   }
 
-  function updateThinkingUI() {
-    document.getElementById('thinkingSwitch').classList.toggle('on', thinkingOn);
-    document.getElementById('thinkingBadge').classList.toggle('show', thinkingOn);
+  function onEffortChange() {
+    const controls = resolveModelControls(getModelInfo(selectedModelId));
+    const value = document.getElementById('effortSelect').value;
+    if (value !== 'default' && !controls.effortLevels.includes(value)) return;
+    if (!thinkingOn && controls.offForbiddenEfforts.includes(value)) return;
+    selectedEffort = value;
+    saveSelectedModelPreference();
+    renderModelCapabilityControls();
   }
+
+  document.getElementById('thinkingToggle').addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleThinking();
+    }
+  });
 
   // ── SIDEBAR ──────────────────────────────────────────
   function renderSidebar() {
@@ -920,6 +1331,7 @@
     const chat = chats[id];
     if (!chat || chat.messages.length === 0) {
       area.innerHTML = `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
+      syncRequestStatusForChat(id);
       return;
     }
     chat.messages.forEach((m, i) => {
@@ -927,6 +1339,7 @@
       else renderMsg(m.role === 'assistant' ? 'ai' : m.role, m, false, i);
     });
     area.scrollTop = area.scrollHeight;
+    syncRequestStatusForChat(id);
   }
 
   // ── PER-CHAT ACTIONS (UI controller layer) ──
@@ -949,8 +1362,7 @@
         `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
     }
     renderSidebar();
-    setStatus('已移至回收站 ✓', 'ok');
-    setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2000);
+    flashStatus('已移至回收站 ✓', 'ok', 2000);
   }
 
   // ── MESSAGES ─────────────────────────────────────────
@@ -1024,28 +1436,304 @@
     if (t) t.remove();
   }
 
-  // ── SEND ─────────────────────────────────────────────
+  // ── GENERATION / RETRY (P0-2.5) ─────────────────────
+  // Domain predicate only: no DOM access and no persisted request-state fields.
+  // The latest non-thinking message being a user turn is enough to derive that
+  // the latest turn has not yet received an assistant reply.
+  function getLatestUnresolvedUserTurn(chat) {
+    if (!chat || !Array.isArray(chat.messages)) return null;
+    for (let i = chat.messages.length - 1; i >= 0; i--) {
+      const message = chat.messages[i];
+      if (message.role === 'thinking') continue;
+      return message.role === 'user' ? { message, index: i } : null;
+    }
+    return null;
+  }
+
+  function buildSystemPrompt() {
+    let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。每次回复用以下固定格式，不要加任何额外说明：\n\n[EN]\n（英文回复，自然口语，带情绪，不超过4句）\n\n[ZH]\n（完全相同意思的中文版，自然流畅）\n\n思考过程如果有，也请用中文。';
+    if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
+    return system;
+  }
+
+  // UI/config adapter. Generation service receives plain data and does not read DOM.
+  function getCurrentGenerationConfig() {
+    const modelInfo = getModelInfo(selectedModelId);
+    if (!modelInfo) return null;
+    const controls = resolveModelControls(modelInfo);
+    return {
+      model: selectedModelId,
+      modelInfo,
+      controls,
+      thinkingEnabled: controls.thinkingAlwaysOn ? true : thinkingOn,
+      effort: selectedEffort
+    };
+  }
+
+  function getRequestMaxTokens(config) {
+    const thinkingMayRun = config.controls.thinkingSupported && (
+      config.controls.thinkingAlwaysOn ||
+      config.controls.thinkingDefaultOn ||
+      config.thinkingEnabled ||
+      !config.controls.canToggleThinking
+    );
+    const desired = thinkingMayRun ? 16000 : 1024;
+    const modelMax = Number(config.modelInfo?.max_tokens);
+    return Number.isFinite(modelMax) && modelMax >= 1024 ? Math.min(desired, modelMax) : desired;
+  }
+
+  function applyThinkingAndEffortToBody(body, config) {
+    const controls = config.controls;
+    const effort = config.effort;
+
+    if (effort !== 'default' && controls.effortLevels.includes(effort)) {
+      body.output_config = { ...(body.output_config || {}), effort };
+    }
+
+    if (!controls.thinkingSupported || !controls.thinkingMode) return;
+
+    // Always-on models have no UI toggle, but request readable official summaries.
+    if (controls.thinkingAlwaysOn) {
+      body.thinking = { type: 'adaptive', display: 'summarized' };
+      return;
+    }
+
+    if (!controls.canToggleThinking) {
+      // Unknown future semantics: do not invent a disable/enable contract.
+      return;
+    }
+
+    if (config.thinkingEnabled) {
+      if (controls.thinkingMode === 'adaptive') {
+        body.thinking = { type: 'adaptive', display: 'summarized' };
+      } else if (controls.thinkingMode === 'enabled') {
+        const maxTokens = body.max_tokens;
+        const budget = Math.max(1024, Math.min(controls.budgetTokens, maxTokens - 1024));
+        body.thinking = { type: 'enabled', budget_tokens: budget, display: 'summarized' };
+      }
+      return;
+    }
+
+    if (controls.offStrategy === 'disabled') {
+      body.thinking = { type: 'disabled' };
+    }
+    // offStrategy === 'omit': model defaults to thinking off, so no field is sent.
+  }
+
+  function parseAnthropicResponse(data) {
+    const thinkingParts = [];
+    const textParts = [];
+    const unknownBlockTypes = [];
+    let officialThinkingBlockCount = 0;
+
+    (data.content || []).forEach(block => {
+      if (block?.type === 'thinking') {
+        officialThinkingBlockCount++;
+        if (typeof block.thinking === 'string' && block.thinking.trim()) {
+          thinkingParts.push(block.thinking.trim());
+        }
+        return;
+      }
+      if (block?.type === 'redacted_thinking') {
+        // Official Anthropic block, intentionally not rendered as readable thinking.
+        return;
+      }
+      if (block?.type === 'text') {
+        if (typeof block.text === 'string') textParts.push(block.text);
+        return;
+      }
+      unknownBlockTypes.push(block?.type || 'unknown');
+    });
+
+    return {
+      thinkingText: thinkingParts.join('\n\n'),
+      replyText: textParts.join('\n'),
+      officialThinkingBlockCount,
+      unknownBlockTypes: [...new Set(unknownBlockTypes)],
+      apiResponseId: data.id || null,
+      responseModel: data.model || null
+    };
+  }
+
+  // API service layer: builds/sends the request and returns structured data.
+  // It does not render, mutate chat history, or decide how retry is presented.
+  async function requestAssistantReply(chatId, config) {
+    const chat = chats[chatId];
+    if (!chat) return { ok: false, kind: 'state', error: '对话已不存在' };
+    if (!config?.model) return { ok: false, kind: 'state', error: '没有可用模型' };
+
+    const apiMessages = chat.messages
+      .filter(m => m.role !== 'thinking')
+      .map(({ role, content }) => ({ role, content }));
+
+    const body = {
+      model: config.model,
+      max_tokens: getRequestMaxTokens(config),
+      system: buildSystemPrompt(),
+      messages: apiMessages
+    };
+    applyThinkingAndEffortToBody(body, config);
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        let err = null;
+        try { err = await res.json(); } catch (_) {}
+        return {
+          ok: false,
+          kind: 'api',
+          error: err?.error?.message || `HTTP ${res.status}`
+        };
+      }
+
+      const data = await res.json();
+      const parsedResponse = parseAnthropicResponse(data);
+      return { ok: true, ...parsedResponse };
+    } catch (e) {
+      return { ok: false, kind: 'network', error: e.message };
+    }
+  }
+
+    // Persistence/domain commit. No DOM access.
+  function commitAssistantReply(chatId, result, config) {
+    const chat = chats[chatId];
+    if (!chat) return { ok: false, reason: 'CHAT_NOT_FOUND' };
+
+    let thinkingMessage = null;
+    if (result.thinkingText) {
+      thinkingMessage = {
+        role: 'thinking',
+        content: result.thinkingText,
+        source: 'anthropic_api_thinking_block',
+        thinkingDisplay: 'summarized',
+        officialBlockCount: result.officialThinkingBlockCount || 1,
+        model: result.responseModel || config.model,
+        apiResponseId: result.apiResponseId || null,
+        id: makeMessageId(),
+        chatId,
+        clientSeq: chat.messages.length,
+        createdAt: Date.now(),
+        createdTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      };
+      chat.messages.push(thinkingMessage);
+    }
+
+    const parsed = parseAiReply(result.replyText);
+    const assistantMessage = {
+      role: 'assistant',
+      content: result.replyText,
+      en: parsed.en,
+      zh: parsed.zh,
+      id: makeMessageId(),
+      chatId,
+      clientSeq: chat.messages.length,
+      createdAt: Date.now(),
+      createdTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    };
+    chat.messages.push(assistantMessage);
+    chat.updatedAt = Date.now();
+    save();
+
+    return {
+      ok: true,
+      thinkingMessage,
+      assistantMessage,
+      assistantIndex: chat.messages.length - 1
+    };
+  }
+
+    // Shared controller for both a fresh send and a retry. It owns transient UI
+  // state but delegates API work and persistence to the layers above.
+  async function generateAssistantReply(chatId) {
+    if (!apiKey || isLoading || !chats[chatId]) return { ok: false, reason: 'NOT_READY' };
+
+    const config = getCurrentGenerationConfig();
+    if (!config) {
+      if (currentId === chatId) flashStatus('请选择可用模型', 'err', 2200);
+      return { ok: false, reason: 'NO_MODEL' };
+    }
+
+    isLoading = true;
+    activeRequestChatId = chatId;
+    updateSendAvailability();
+
+    if (currentId === chatId) {
+      showRequestPending();
+      addTyping();
+    }
+
+    const result = await requestAssistantReply(chatId, config);
+
+    if (currentId === chatId) removeTyping();
+
+    let committed = null;
+    if (result.ok) committed = commitAssistantReply(chatId, result, config);
+
+    isLoading = false;
+    activeRequestChatId = null;
+    updateSendAvailability();
+
+    if (!result.ok) {
+      if (currentId === chatId) {
+        const prefix = result.kind === 'network' ? '网络错误：' : '出错了：';
+        showRequestFailure(prefix + result.error, chatId);
+      } else if (currentId) {
+        syncRequestStatusForChat(currentId);
+      }
+      return result;
+    }
+
+    if (!committed?.ok) {
+      // Known low-probability edge: the chat may have been moved to trash while
+      // the request was in flight. Do not couple retry to trash lifecycle here.
+      if (currentId === chatId) showRequestFailure('回复未能写入当前对话', chatId);
+      return { ok: false, kind: 'state', error: committed?.reason || 'COMMIT_FAILED' };
+    }
+
+    if (currentId === chatId) {
+      if (committed.thinkingMessage) renderThinking(committed.thinkingMessage.content);
+      renderMsg('ai', committed.assistantMessage, true, committed.assistantIndex);
+      if (result.unknownBlockTypes?.length) {
+        flashStatus(`Anthropic 响应包含未支持的新类型：${result.unknownBlockTypes.join(', ')}`, 'err', 4200);
+      } else {
+        showRequestSuccess();
+      }
+    } else {
+      renderSidebar();
+      if (currentId) syncRequestStatusForChat(currentId);
+    }
+
+    document.getElementById('input').focus();
+    return { ok: true };
+  }
+
+  // Normal send creates exactly one user message, then calls the shared
+  // generation controller. Retry never passes through this creation path.
   async function send() {
     if (!apiKey || isLoading) return;
+    if (!getCurrentGenerationConfig()) { flashStatus('请选择可用模型', 'err', 2200); return; }
     const input = document.getElementById('input');
     const text = input.value.trim();
     if (!text) return;
 
     if (!currentId) newChat();
 
-    // Lock the parent chat identity for this entire request lifecycle.
-    // currentId may change while we await the response (user can switch chats);
-    // requestChatId must be used for message.chatId, never currentId at response time.
+    // Lock the parent chat identity before any await.
     const requestChatId = currentId;
+    const chat = chats[requestChatId];
 
     input.value = '';
     input.style.height = 'auto';
-    isLoading = true;
-    document.getElementById('sendBtn').disabled = true;
-    setStatus('');
-
-    const chat = chats[requestChatId];
-    const model = document.getElementById('modelSelect').value;
 
     const userMsg = {
       role: 'user',
@@ -1060,112 +1748,24 @@
     if (chat.title === '新对话') chat.title = text.slice(0, 24) + (text.length > 24 ? '…' : '');
     chat.updatedAt = Date.now();
     save();
+
     if (currentId === requestChatId) renderMsg('user', userMsg);
     renderSidebar();
-    if (currentId === requestChatId) addTyping();
 
-    let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。每次回复用以下固定格式，不要加任何额外说明：\n\n[EN]\n（英文回复，自然口语，带情绪，不超过4句）\n\n[ZH]\n（完全相同意思的中文版，自然流畅）\n\n思考过程如果有，也请用中文。';
-    if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
+    await generateAssistantReply(requestChatId);
+  }
 
-    // 构建发送给API的messages（过滤掉thinking记录，只保留role和content）
-    const apiMessages = chat.messages
-      .filter(m => m.role !== 'thinking')
-      .map(({ role, content }) => ({ role, content }));
-
-    const body = {
-      model,
-      max_tokens: thinkingOn ? 16000 : 1024,
-      system,
-      messages: apiMessages
-    };
-
-    if (thinkingOn) {
-      body.thinking = { type: 'enabled', budget_tokens: 10000 };
+  // UI controller entry point. It reuses the existing latest user turn and
+  // therefore never duplicates user content, ids, timestamps, clientSeq, or chatId.
+  async function handleRetryLatestReply(chatId) {
+    if (!apiKey || isLoading) return;
+    if (!getCurrentGenerationConfig()) { flashStatus('请选择可用模型', 'err', 2200); return; }
+    const chat = chats[chatId];
+    if (!getLatestUnresolvedUserTurn(chat)) {
+      if (currentId === chatId) syncRequestStatusForChat(chatId);
+      return;
     }
-
-    try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (currentId === requestChatId) removeTyping();
-
-      if (!res.ok) {
-        const err = await res.json();
-        // Generation failure does not delete the already-sent user message —
-        // it is a real chat event that already happened. Only status display
-        // is skipped if the user has since switched away from this chat.
-        if (currentId === requestChatId) {
-          setStatus('出错了：' + (err.error?.message || res.status), 'err');
-        }
-        isLoading = false;
-        document.getElementById('sendBtn').disabled = false;
-        return;
-      }
-
-      const data = await res.json();
-
-      // 处理思考链
-      let thinkingText = '';
-      let replyText = '';
-
-      data.content.forEach(block => {
-        if (block.type === 'thinking') thinkingText = block.thinking;
-        if (block.type === 'text') replyText = block.text;
-      });
-
-      if (thinkingText) {
-        chat.messages.push({
-          role: 'thinking',
-          content: thinkingText,
-          id: makeMessageId(),
-          chatId: requestChatId,
-          clientSeq: chat.messages.length,
-          createdAt: Date.now(),
-          createdTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-        });
-        if (currentId === requestChatId) renderThinking(thinkingText);
-      }
-
-      const parsed = parseAiReply(replyText);
-      chat.messages.push({
-        role: 'assistant',
-        content: replyText,
-        en: parsed.en,
-        zh: parsed.zh,
-        id: makeMessageId(),
-        chatId: requestChatId,
-        clientSeq: chat.messages.length,
-        createdAt: Date.now(),
-        createdTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-      });
-      chat.updatedAt = Date.now();
-      save();
-      if (currentId === requestChatId) {
-        const aiIdx = chat.messages.length - 1;
-        renderMsg('ai', chat.messages[aiIdx], true, aiIdx);
-      } else {
-        renderSidebar();
-      }
-
-    } catch (e) {
-      // Network failure does not delete the already-sent user message either.
-      if (currentId === requestChatId) {
-        removeTyping();
-        setStatus('网络错误：' + e.message, 'err');
-      }
-    }
-
-    isLoading = false;
-    document.getElementById('sendBtn').disabled = false;
-    document.getElementById('input').focus();
+    await generateAssistantReply(chatId);
   }
 
   // ── 语音 ─────────────────────────────────────────────
@@ -1260,9 +1860,10 @@
     if (!val.startsWith('sk-ant-')) { setStatus('Key 格式不对，应以 sk-ant- 开头', 'err'); return; }
     apiKey = val;
     localStorage.setItem('claude_key', apiKey);
-    document.getElementById('sendBtn').disabled = false;
-    setStatus('已连接 ✓', 'ok');
     closeModal('keyModal');
+    updateSendAvailability();
+    flashStatus('✓', 'ok', 1200);
+    refreshModelRegistry();
   }
 
   function openMemory() {
@@ -1274,8 +1875,7 @@
     memory = document.getElementById('memoryInput').value;
     localStorage.setItem('claude_memory', memory);
     closeModal('memoryModal');
-    setStatus('记忆已保存 ✓', 'ok');
-    setTimeout(() => setStatus(''), 2000);
+    flashStatus('记忆已保存 ✓', 'ok', 2000);
   }
 
 
@@ -1290,8 +1890,7 @@
     elKey = val;
     localStorage.setItem('el_key', elKey);
     closeModal('elModal');
-    setStatus('语音 Key 已保存 ✓', 'ok');
-    setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2000);
+    flashStatus('语音 Key 已保存 ✓', 'ok', 2000);
   }
   function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
@@ -1335,8 +1934,7 @@
     if (!result.ok) return;
     renderSidebar();
     renderTrashModal();
-    setStatus('已恢复 ✓', 'ok');
-    setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2000);
+    flashStatus('已恢复 ✓', 'ok', 2000);
   }
 
   function handlePermanentDeleteChat(chatId) {
@@ -1344,8 +1942,7 @@
     const result = permanentlyDeleteChat(chatId);
     if (!result.ok) return;
     renderTrashModal();
-    setStatus('已永久删除 ✓', 'ok');
-    setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 2000);
+    flashStatus('已永久删除 ✓', 'ok', 2000);
   }
 
   document.querySelectorAll('.modal-overlay').forEach(el => {
@@ -1894,8 +2491,7 @@
 
       save();
       renderSidebar();
-      setStatus(`导入完成：新增 ${added}，合并 ${merged}，回收站更新 ${mergedIntoTrash}，跳过 ${skipped} ✓`, 'ok');
-      setTimeout(() => setStatus(apiKey ? '已连接 ✓' : '', apiKey ? 'ok' : ''), 4000);
+      flashStatus(`导入完成：新增 ${added}，合并 ${merged}，回收站更新 ${mergedIntoTrash}，跳过 ${skipped} ✓`, 'ok', 4000);
     };
     reader.readAsText(file);
   }
@@ -1906,10 +2502,72 @@
     localStorage.setItem('claude_order', JSON.stringify(chatOrder));
   }
 
+  let statusRevision = 0;
+
   function setStatus(msg, type = '') {
+    statusRevision++;
     const el = document.getElementById('statusBar');
     el.textContent = msg;
     el.className = 'status-bar ' + type;
+  }
+
+  function clearStatusLater(ms) {
+    const revision = statusRevision;
+    setTimeout(() => {
+      if (statusRevision === revision) setStatus('');
+    }, ms);
+  }
+
+  function flashStatus(msg, type = '', ms = 1400) {
+    setStatus(msg, type);
+    clearStatusLater(ms);
+  }
+
+  // Request-status renderer only. Retry behavior itself lives in the controller
+  // and domain/service functions above, so changing this UI does not change logic.
+  function showRequestPending() {
+    setStatus('…');
+  }
+
+  function showRequestSuccess() {
+    flashStatus('✓', 'ok', 1200);
+  }
+
+  function showRequestFailure(message, chatId) {
+    statusRevision++;
+    const el = document.getElementById('statusBar');
+    el.textContent = '';
+    el.className = 'status-bar err request-failure';
+
+    const text = document.createElement('div');
+    text.textContent = message;
+
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'retry-btn';
+    retry.title = '重新生成回复';
+    retry.setAttribute('aria-label', '重新生成回复');
+    retry.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66"></path><path d="M20 4v7h-7"></path></svg>';
+    retry.addEventListener('click', () => handleRetryLatestReply(chatId));
+
+    el.append(text, retry);
+  }
+
+  function syncRequestStatusForChat(chatId) {
+    if (!chatId || !chats[chatId]) {
+      setStatus('');
+      return;
+    }
+    if (isLoading) {
+      if (activeRequestChatId === chatId) showRequestPending();
+      else setStatus('');
+      return;
+    }
+    if (getLatestUnresolvedUserTurn(chats[chatId])) {
+      showRequestFailure('回复未生成', chatId);
+    } else {
+      setStatus('');
+    }
   }
 
   function autoResize(el) {
