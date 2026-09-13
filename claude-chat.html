@@ -1243,6 +1243,14 @@
     document.getElementById('sendBtn').disabled = !apiKey || isLoading || !hasUsableModel;
   }
 
+  // Generation-config changes must not erase a retry affordance for an unresolved
+  // user turn. This is UI synchronization only: retry eligibility still comes from
+  // getLatestUnresolvedUserTurn(), not from model/thinking/effort controls.
+  function resyncRequestStatusAfterConfigChange() {
+    if (currentId) syncRequestStatusForChat(currentId);
+    else setStatus('');
+  }
+
   function onModelChange() {
     const model = document.getElementById('modelSelect').value;
     if (!model || !getModelInfo(model)) return;
@@ -1251,7 +1259,7 @@
     applySelectedModelPreferences();
     renderModelCapabilityControls();
     updateSendAvailability();
-    setStatus('');
+    resyncRequestStatusAfterConfigChange();
   }
 
   function toggleThinking() {
@@ -1264,6 +1272,7 @@
     thinkingOn = !thinkingOn;
     saveSelectedModelPreference();
     renderModelCapabilityControls();
+    resyncRequestStatusAfterConfigChange();
   }
 
   function onEffortChange() {
@@ -1274,6 +1283,7 @@
     selectedEffort = value;
     saveSelectedModelPreference();
     renderModelCapabilityControls();
+    resyncRequestStatusAfterConfigChange();
   }
 
   document.getElementById('thinkingToggle').addEventListener('keydown', event => {
