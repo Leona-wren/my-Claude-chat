@@ -778,6 +778,17 @@
   }
   .debug-btn:hover { opacity: 1; color: var(--accent); border-color: var(--accent); }
 
+  .expression-debug-modal {
+    max-height: 86dvh;
+    overflow: hidden;
+  }
+  #expressionDebugContent {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 4px;
+  }
   .expression-debug-grid {
     display: grid;
     grid-template-columns: 150px 1fr;
@@ -953,7 +964,7 @@
 
 <!-- P1-1 EXPRESSION SHADOW DEBUG (temporary observability; read-only) -->
 <div class="modal-overlay" id="expressionDebugModal">
-  <div class="modal">
+  <div class="modal expression-debug-modal">
     <h2>Response Debug</h2>
     <p>Response Core 观察：Expression 仅作 provider-neutral 元数据；SpeechPlan 会编译为 Eleven v3 的实际输入。</p>
     <div id="expressionDebugContent"></div>
@@ -2621,13 +2632,9 @@
       return `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${lines}`;
     }).join('\n\n') : '—';
 
-    const requestPreview = blocks.length ? blocks.map((block, blockIndex) => {
-      const context = getAdjacentCleanContext(blocks, blockIndex);
-      const lines = [`b${blockIndex + 1}.text = ${compileDeliveryBlockForElevenV3(block)}`];
-      if (context.previous) lines.push(`  previous_text = ${context.previous}`);
-      if (context.next) lines.push(`  next_text = ${context.next}`);
-      return lines.join('\n');
-    }).join('\n\n') : '—';
+    const requestPreview = blocks.length ? blocks.map((block, blockIndex) =>
+      `b${blockIndex + 1}.text = ${compileDeliveryBlockForElevenV3(block)}`
+    ).join('\n\n') : '—';
 
     const rows = [
       ['messageId', msg.id || '—'],
@@ -2679,14 +2686,6 @@
     return tokens.join(' ').replace(/[ \t]+/g, ' ').trim();
   }
 
-  function getAdjacentCleanContext(blocks, blockIndex) {
-    const previous = blockIndex > 0 ? normalizeTtsInlineText(getDeliveryBlockCleanText(blocks[blockIndex - 1])) : '';
-    const next = blockIndex >= 0 && blockIndex < blocks.length - 1
-      ? normalizeTtsInlineText(getDeliveryBlockCleanText(blocks[blockIndex + 1]))
-      : '';
-    return { previous, next };
-  }
-
   // ── 语音 ─────────────────────────────────────────────
   async function playVoice(btn) {
     const msgId = btn.dataset.msgId;
@@ -2699,16 +2698,11 @@
 
     const blocks = Array.isArray(msg?.deliveryBlocks) && msg.deliveryBlocks.length ? msg.deliveryBlocks : null;
     let text = '';
-    let previousText = '';
-    let nextText = '';
     let audioKey = null;
 
     if (blocks && requestedBlockIndex !== null && blocks[requestedBlockIndex]) {
       const block = blocks[requestedBlockIndex];
       text = compileDeliveryBlockForElevenV3(block);
-      const context = getAdjacentCleanContext(blocks, requestedBlockIndex);
-      previousText = context.previous;
-      nextText = context.next;
       const blockId = block.blockId || `b${requestedBlockIndex + 1}`;
       audioKey = msgId ? `${currentId}_${msgId}__${blockId}__en__${ELEVEN_TTS_MODEL}__rv${ELEVEN_RENDER_VERSION}` : null;
     } else {
@@ -2762,11 +2756,6 @@
         model_id: ELEVEN_TTS_MODEL,
         voice_settings: { ...ELEVEN_V3_VOICE_SETTINGS }
       };
-      // IMPORTANT: previous_text / next_text are conditioning context only. ElevenLabs
-      // synthesizes only requestBody.text. Adjacent clean text is never inserted into text.
-      if (previousText) requestBody.previous_text = previousText;
-      if (nextText) requestBody.next_text = nextText;
-
       const res = await fetch(elUrl, {
         method: 'POST',
         headers: {
