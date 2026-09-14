@@ -357,6 +357,37 @@
     min-width: 86px;
   }
 
+  /* P1-1 Reply Language: UI renders preference; generation snapshots it per request. */
+  .reply-language-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .language-segment {
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--input-bg);
+  }
+
+  .language-option {
+    border: none;
+    background: transparent;
+    color: var(--text-soft);
+    border-radius: 7px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-family: 'Helvetica Neue', sans-serif;
+    cursor: pointer;
+  }
+
+  .language-option.active {
+    background: var(--active);
+    color: var(--accent);
+  }
+
   /* CHAT AREA */
   .chat-area {
     flex: 1;
@@ -720,7 +751,34 @@
   .play-btn.playing { color: var(--accent); border-color: var(--accent); }
   .play-btn svg { width: 12px; height: 12px; fill: currentColor; flex-shrink: 0; }
 
-  /* AI气泡里英文+中文分区 */
+  /* Temporary P1-1 shadow/debug affordance. Expression remains hidden from normal chat text. */
+  .debug-btn {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 4px;
+    padding: 2px 7px;
+    border-radius: 12px;
+    border: 1px dashed var(--border);
+    background: transparent;
+    color: var(--text-soft);
+    font-size: 10.5px;
+    font-family: 'Helvetica Neue', sans-serif;
+    cursor: pointer;
+    opacity: 0.78;
+  }
+  .debug-btn:hover { opacity: 1; color: var(--accent); border-color: var(--accent); }
+
+  .expression-debug-grid {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 6px 10px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .expression-debug-grid .k { color: var(--text-soft); }
+  .expression-debug-grid .v { color: var(--text); word-break: break-word; }
+
+  /* AI气泡里英文+中文分区（仅 legacy 双语消息兼容） */
   .bubble-en { font-size: 14.5px; line-height: 1.7; }
   .bubble-zh { font-size: 13px; color: var(--text-soft); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); line-height: 1.65; }
 
@@ -852,6 +910,14 @@
       <span class="control-label">Effort</span>
       <select id="effortSelect" onchange="onEffortChange()"></select>
     </div>
+    <div class="topbar-sep" id="replyLanguageSep" style="display:block"></div>
+    <div class="reply-language-control" id="replyLanguageControl">
+      <span class="control-label">Reply</span>
+      <div class="language-segment" role="group" aria-label="回复语言">
+        <button class="language-option" id="replyLangEn" type="button" onclick="setReplyLanguage('en')">English</button>
+        <button class="language-option" id="replyLangZh" type="button" onclick="setReplyLanguage('zh')">中文</button>
+      </div>
+    </div>
   </div>
 
   <div class="chat-area" id="chatArea">
@@ -873,6 +939,18 @@
       </button>
     </div>
   </footer>
+</div>
+
+<!-- P1-1 EXPRESSION SHADOW DEBUG (temporary observability; read-only) -->
+<div class="modal-overlay" id="expressionDebugModal">
+  <div class="modal">
+    <h2>Response Debug</h2>
+    <p>临时 shadow 观察：Expression 已保存到 assistant message，但当前不会控制 ElevenLabs。</p>
+    <div id="expressionDebugContent"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('expressionDebugModal')">关闭</button>
+    </div>
+  </div>
 </div>
 
 <!-- API KEY MODAL -->
@@ -968,20 +1046,27 @@
   const SCROLL_MEMORY_TTL_MS = 60 * 60 * 1000; // 1 hour
   const CHAT_BOTTOM_THRESHOLD_PX = 100;
   const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
+  const REPLY_LANGUAGE_KEY = 'claude_reply_language_v1';
+  const EXPRESSION_SCHEMA_VERSION = 1;
+  const REPLY_LANGUAGES = new Set(['en', 'zh']);
+  const EXPRESSION_STANCES = ['neutral', 'warm', 'playful', 'teasing', 'serious', 'reassuring', 'reflective', 'tender'];
+  const EXPRESSION_AFFECTS = ['neutral', 'calm', 'amused', 'pleased', 'excited', 'concerned', 'sad', 'surprised', 'frustrated', 'affectionate'];
+  const EXPRESSION_CUE_TYPES = ['soft_laugh', 'laugh', 'sigh', 'whisper', 'hesitation', 'emphasis'];
+  const EXPRESSION_CUE_STRENGTHS = ['low', 'medium', 'high'];
 
   // Offline/first-load fallback only. A successful GET /v1/models replaces this list.
   // Capabilities here intentionally cover only the controls this frontend needs.
   const FALLBACK_MODELS = [
-    { id: 'claude-fable-5', display_name: 'Claude Fable 5', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
-    { id: 'claude-opus-5', display_name: 'Claude Opus 5', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
-    { id: 'claude-sonnet-5', display_name: 'Claude Sonnet 5', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
-    { id: 'claude-opus-4-8', display_name: 'Claude Opus 4.8', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
-    { id: 'claude-opus-4-7', display_name: 'Claude Opus 4.7', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
-    { id: 'claude-opus-4-6', display_name: 'Claude Opus 4.6', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true }, enabled: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, max: { supported: true } } } },
-    { id: 'claude-opus-4-5-20251101', display_name: 'Claude Opus 4.5', capabilities: { thinking: { supported: true, types: { enabled: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true } } } },
-    { id: 'claude-sonnet-4-6', display_name: 'Claude Sonnet 4.6', capabilities: { thinking: { supported: true, types: { adaptive: { supported: true }, enabled: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, max: { supported: true } } } },
-    { id: 'claude-sonnet-4-5-20250929', display_name: 'Claude Sonnet 4.5', capabilities: { thinking: { supported: true, types: { enabled: { supported: true } } }, effort: { supported: false } } },
-    { id: 'claude-haiku-4-5-20251001', display_name: 'Claude Haiku 4.5', capabilities: { thinking: { supported: true, types: { enabled: { supported: true } } }, effort: { supported: false } } }
+    { id: 'claude-fable-5', display_name: 'Claude Fable 5', capabilities: { structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-opus-5', display_name: 'Claude Opus 5', capabilities: { structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-sonnet-5', display_name: 'Claude Sonnet 5', capabilities: { structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-opus-4-8', display_name: 'Claude Opus 4.8', capabilities: { structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-opus-4-7', display_name: 'Claude Opus 4.7', capabilities: { structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-opus-4-6', display_name: 'Claude Opus 4.6', capabilities: { structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true }, enabled: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-opus-4-5-20251101', display_name: 'Claude Opus 4.5', capabilities: { structured_outputs: { supported: true }, thinking: { supported: true, types: { enabled: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true } } } },
+    { id: 'claude-sonnet-4-6', display_name: 'Claude Sonnet 4.6', capabilities: { structured_outputs: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true }, enabled: { supported: true } } }, effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, max: { supported: true } } } },
+    { id: 'claude-sonnet-4-5-20250929', display_name: 'Claude Sonnet 4.5', capabilities: { structured_outputs: { supported: true }, thinking: { supported: true, types: { enabled: { supported: true } } }, effort: { supported: false } } },
+    { id: 'claude-haiku-4-5-20251001', display_name: 'Claude Haiku 4.5', capabilities: { structured_outputs: { supported: true }, thinking: { supported: true, types: { enabled: { supported: true } } }, effort: { supported: false } } }
   ];
 
   let apiKey = localStorage.getItem('claude_key') || '';
@@ -1002,6 +1087,9 @@
   const EL_VOICE = '0qHbGTWOPgPUvThY4Te6';
   let currentAudio = null;
   let currentSkin = localStorage.getItem('claude_skin') || 'warm';
+  let currentReplyLanguage = REPLY_LANGUAGES.has(localStorage.getItem(REPLY_LANGUAGE_KEY))
+    ? localStorage.getItem(REPLY_LANGUAGE_KEY)
+    : 'en';
   let audioDB = null;
   let draftSaveTimer = null;
   let draftEditorInitialized = false;
@@ -1335,10 +1423,12 @@
     return JSON.stringify((models || []).map(model => {
       const thinking = model.capabilities?.thinking || null;
       const effort = model.capabilities?.effort || null;
+      const structuredOutputs = model.capabilities?.structured_outputs || null;
       return {
         id: model.id,
         thinking,
-        effort
+        effort,
+        structuredOutputs
       };
     }));
   }
@@ -1669,6 +1759,25 @@
     }
   });
 
+  // ── REPLY LANGUAGE (P1-1) ─────────────────────────────
+  // Persistent preference for the NEXT generation invocation. It does not constrain
+  // the user's input language and is not stored on drafts or user messages.
+  function setReplyLanguage(language) {
+    if (!REPLY_LANGUAGES.has(language)) return;
+    currentReplyLanguage = language;
+    localStorage.setItem(REPLY_LANGUAGE_KEY, language);
+    renderReplyLanguageControl();
+    // Retry intentionally uses the language preference that is current when Retry is clicked.
+    resyncRequestStatusAfterConfigChange();
+  }
+
+  function renderReplyLanguageControl() {
+    const en = document.getElementById('replyLangEn');
+    const zh = document.getElementById('replyLangZh');
+    if (en) en.classList.toggle('active', currentReplyLanguage === 'en');
+    if (zh) zh.classList.toggle('active', currentReplyLanguage === 'zh');
+  }
+
   // ── SIDEBAR ──────────────────────────────────────────
   function renderSidebar() {
     const list = document.getElementById('chatList');
@@ -1782,18 +1891,33 @@
     if (role === 'ai' || role === 'assistant') {
       const msg = typeof msgOrText === 'object' ? msgOrText : null;
       const rawText = msg ? msg.content : msgOrText;
-      const en = msg?.en ?? parseAiReply(rawText).en;
-      const zh = msg?.zh ?? parseAiReply(rawText).zh;
-      const hasVoice = !!en && !!elKey;
-      div.innerHTML = `
-        <div class="bubble">
-          ${en ? `<div class="bubble-en">${escHtml(en)}</div>` : ''}
-          <div class="bubble-zh">${escHtml(zh || rawText)}</div>
-        </div>
-        ${hasVoice ? `<button class="play-btn" data-msg-id="${msg?.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
-          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
-        </button>` : ''}
-        <div class="msg-time">${msg ? formatMessageTimestamp(msg) : '时间未知'}</div>`;
+      const isSingleLanguage = !!msg?.language && REPLY_LANGUAGES.has(msg.language);
+
+      if (isSingleLanguage) {
+        const hasVoice = msg.language === 'en' && !!msg.content && !!elKey;
+        const hasDebug = !!msg.expression || !!msg.language;
+        div.innerHTML = `
+          <div class="bubble">${escHtml(msg.content || '')}</div>
+          ${hasVoice ? `<button class="play-btn" data-msg-id="${msg.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
+          </button>` : ''}
+          ${hasDebug ? `<button class="debug-btn" type="button" onclick="openExpressionDebug('${msg.id || ''}')">Debug</button>` : ''}
+          <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
+      } else {
+        // Legacy [EN]/[ZH] messages keep their historical display and ElevenLabs behavior.
+        const en = msg?.en ?? parseAiReply(rawText).en;
+        const zh = msg?.zh ?? parseAiReply(rawText).zh;
+        const hasVoice = !!en && !!elKey;
+        div.innerHTML = `
+          <div class="bubble">
+            ${en ? `<div class="bubble-en">${escHtml(en)}</div>` : ''}
+            <div class="bubble-zh">${escHtml(zh || rawText)}</div>
+          </div>
+          ${hasVoice ? `<button class="play-btn" data-msg-id="${msg?.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
+          </button>` : ''}
+          <div class="msg-time">${msg ? formatMessageTimestamp(msg) : '时间未知'}</div>`;
+      }
     } else {
       const msgObj = typeof msgOrText === 'object' ? msgOrText : null;
       const text = msgObj ? msgObj.content : msgOrText;
@@ -1846,13 +1970,82 @@
     return null;
   }
 
-  function buildSystemPrompt() {
-    let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。每次回复用以下固定格式，不要加任何额外说明：\n\n[EN]\n（英文回复，自然口语，带情绪，不超过4句）\n\n[ZH]\n（完全相同意思的中文版，自然流畅）\n\n思考过程如果有，也请用中文。';
+  function languageLabel(language) {
+    return language === 'zh' ? '中文' : 'English';
+  }
+
+  function buildSystemPrompt(config) {
+    const languageRule = config.replyLanguage === 'zh'
+      ? '回复正文必须直接用自然、母语化的中文构思和表达。用户输入可以是任何语言；不要因为用户使用英语就切换回复语言。'
+      : '回复正文必须直接用自然、地道的英语构思和表达，不要先用中文构思再翻译。用户输入可以是任何语言；不要因为用户使用中文就切换回复语言。';
+
+    let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。' +
+      '\n\n回复语言规则：' + languageRule +
+      '\n\n你的最终输出包含 reply 与 expression 两部分。reply 是用户真正看到的正文。' +
+      'expression 是 provider-neutral 的表达元数据，用来记录这条回复的 stance、affect、intensity，以及少量真正发生的 expressive cues。' +
+      '不要把 expression 写成声音导演说明，不要规定音高、语速、停顿秒数、声学参数或任何 TTS provider 专属标签。' +
+      'expressiveCues 默认应为空；只有当确实存在轻笑、笑、叹息、耳语、真实迟疑或需要特别强调的局部表达事件时才添加，最多 4 个。' +
+      '不要为了显得有情绪而制造 cue。stance/affect 描述这条回复本身的表达姿态，不是对用户心理的诊断。' +
+      '\n\n回复通常保持自然对话长度；若用户明确要求详细内容，则按任务需要展开。';
+
+    if (!config.structuredOutputSupported) {
+      system += '\n\n当前模型未声明 Structured Outputs capability。请严格只输出一个合法 JSON 对象，不要 Markdown code fence、不要额外文字；字段必须与应用要求的 reply/expression schema 一致。';
+    }
     if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
     return system;
   }
 
+  function supportsStructuredOutputs(modelInfo) {
+    if (modelInfo?.capabilities?.structured_outputs?.supported === true) return true;
+    const fallback = FALLBACK_MODELS.find(item => item.id === modelInfo?.id);
+    return fallback?.capabilities?.structured_outputs?.supported === true;
+  }
+
+  function buildResponseJsonSchema() {
+    return {
+      type: 'object',
+      additionalProperties: false,
+      required: ['reply', 'expression'],
+      properties: {
+        reply: { type: 'string' },
+        expression: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['stance', 'affect', 'intensity', 'expressiveCues'],
+          properties: {
+            stance: { type: 'string', enum: EXPRESSION_STANCES },
+            affect: { type: 'string', enum: EXPRESSION_AFFECTS },
+            intensity: { type: 'number' },
+            expressiveCues: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['type', 'anchor', 'strength'],
+                properties: {
+                  type: { type: 'string', enum: EXPRESSION_CUE_TYPES },
+                  anchor: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                  strength: { type: 'string', enum: EXPRESSION_CUE_STRENGTHS }
+                }
+              }
+            }
+          }
+        }
+      }
+    };
+  }
+
+  function applyResponseFormatToBody(body, config) {
+    if (!config.structuredOutputSupported) return;
+    body.output_config = {
+      ...(body.output_config || {}),
+      format: { type: 'json_schema', schema: buildResponseJsonSchema() }
+    };
+  }
+
   // UI/config adapter. Generation service receives plain data and does not read DOM.
+  // replyLanguage is snapshotted here for this invocation only. A later UI switch cannot
+  // relabel an in-flight response; a later Retry intentionally creates a new snapshot.
   function getCurrentGenerationConfig() {
     const modelInfo = getModelInfo(selectedModelId);
     if (!modelInfo) return null;
@@ -1862,7 +2055,9 @@
       modelInfo,
       controls,
       thinkingEnabled: controls.thinkingAlwaysOn ? true : thinkingOn,
-      effort: selectedEffort
+      effort: selectedEffort,
+      replyLanguage: currentReplyLanguage,
+      structuredOutputSupported: supportsStructuredOutputs(modelInfo)
     };
   }
 
@@ -1916,6 +2111,74 @@
     // offStrategy === 'omit': model defaults to thinking off, so no field is sent.
   }
 
+  function normalizeExpression(expression) {
+    const source = expression && typeof expression === 'object' ? expression : {};
+    const stance = EXPRESSION_STANCES.includes(source.stance) ? source.stance : 'neutral';
+    const affect = EXPRESSION_AFFECTS.includes(source.affect) ? source.affect : 'neutral';
+    const rawIntensity = Number(source.intensity);
+    const intensity = Number.isFinite(rawIntensity) ? Math.min(1, Math.max(0, rawIntensity)) : 0;
+    const expressiveCues = Array.isArray(source.expressiveCues)
+      ? source.expressiveCues.slice(0, 4).flatMap(cue => {
+          if (!cue || !EXPRESSION_CUE_TYPES.includes(cue.type) || !EXPRESSION_CUE_STRENGTHS.includes(cue.strength)) return [];
+          return [{
+            type: cue.type,
+            anchor: typeof cue.anchor === 'string' && cue.anchor.trim() ? cue.anchor.trim() : null,
+            strength: cue.strength
+          }];
+        })
+      : [];
+    return { stance, affect, intensity, expressiveCues };
+  }
+
+  function parseStructuredAssistantPayload(rawText) {
+    let text = String(rawText || '').trim();
+    if (!text) return { ok: false, error: 'Claude 返回了空回复' };
+    if (text.startsWith('```')) {
+      text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    }
+    let payload;
+    try { payload = JSON.parse(text); }
+    catch (_) { return { ok: false, error: 'Response Core 不是合法 JSON' }; }
+    if (!payload || typeof payload !== 'object' || typeof payload.reply !== 'string' || !payload.reply.trim()) {
+      return { ok: false, error: 'Response Core 缺少 reply' };
+    }
+    return {
+      ok: true,
+      reply: payload.reply.trim(),
+      expression: normalizeExpression(payload.expression)
+    };
+  }
+
+  // Conservative client-side guard. It deliberately ignores code/URLs and returns UNKNOWN
+  // for short or script-ambiguous replies rather than rejecting legitimate technical text.
+  function validateReplyLanguage(text, expectedLanguage) {
+    const sample = String(text || '')
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/`[^`]*`/g, ' ')
+      .replace(/https?:\/\/\S+/g, ' ')
+      .replace(/\b[\w.-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, ' ');
+
+    const hanCount = (sample.match(/[\u3400-\u9fff]/g) || []).length;
+    const latinWords = sample.match(/[A-Za-z]+(?:['’][A-Za-z]+)?/g) || [];
+    const latinLetters = latinWords.reduce((sum, word) => sum + word.replace(/[^A-Za-z]/g, '').length, 0);
+    const meaningful = hanCount + latinLetters;
+
+    let status = 'UNKNOWN';
+    if (meaningful >= 8) {
+      if (expectedLanguage === 'en') {
+        const clearlyChinese = (hanCount >= 12 && latinWords.length <= 4) ||
+          (hanCount >= 20 && hanCount > latinLetters * 0.65);
+        status = clearlyChinese ? 'MISMATCH' : (latinLetters >= 10 ? 'PASS' : 'UNKNOWN');
+      } else {
+        const clearlyEnglish = (hanCount === 0 && latinWords.length >= 4) ||
+          (hanCount < 4 && latinWords.length >= 8 && latinLetters > hanCount * 8);
+        status = clearlyEnglish ? 'MISMATCH' : (hanCount >= 4 ? 'PASS' : 'UNKNOWN');
+      }
+    }
+
+    return { status, expectedLanguage, hanCount, latinWordCount: latinWords.length, latinLetters };
+  }
+
   function parseAnthropicResponse(data) {
     const thinkingParts = [];
     const textParts = [];
@@ -1965,9 +2228,10 @@
     const body = {
       model: config.model,
       max_tokens: getRequestMaxTokens(config),
-      system: buildSystemPrompt(),
+      system: buildSystemPrompt(config),
       messages: apiMessages
     };
+    applyResponseFormatToBody(body, config);
     applyThinkingAndEffortToBody(body, config);
 
     try {
@@ -1994,7 +2258,29 @@
 
       const data = await res.json();
       const parsedResponse = parseAnthropicResponse(data);
-      return { ok: true, ...parsedResponse };
+      const responseCore = parseStructuredAssistantPayload(parsedResponse.replyText);
+      if (!responseCore.ok) {
+        return { ok: false, kind: 'validation', error: responseCore.error };
+      }
+
+      const languageValidation = validateReplyLanguage(responseCore.reply, config.replyLanguage);
+      if (languageValidation.status === 'MISMATCH') {
+        return {
+          ok: false,
+          kind: 'validation',
+          error: `回复语言异常：当前要求 ${languageLabel(config.replyLanguage)}`,
+          languageValidation
+        };
+      }
+
+      return {
+        ok: true,
+        ...parsedResponse,
+        reply: responseCore.reply,
+        expression: responseCore.expression,
+        languageValidation,
+        responseFormat: config.structuredOutputSupported ? 'json_schema' : 'prompt_json'
+      };
     } catch (e) {
       return { ok: false, kind: 'network', error: e.message };
     }
@@ -2024,12 +2310,12 @@
       chat.messages.push(thinkingMessage);
     }
 
-    const parsed = parseAiReply(result.replyText);
     const assistantMessage = {
       role: 'assistant',
-      content: result.replyText,
-      en: parsed.en,
-      zh: parsed.zh,
+      content: result.reply,
+      language: config.replyLanguage,
+      expression: result.expression,
+      expressionSchemaVersion: EXPRESSION_SCHEMA_VERSION,
       id: makeMessageId(),
       chatId,
       clientSeq: chat.messages.length,
@@ -2188,14 +2474,51 @@
     await generateAssistantReply(chatId);
   }
 
+  // ── P1-1 EXPRESSION SHADOW DEBUG ──────────────────────
+  function openExpressionDebug(messageId) {
+    const messages = chats[currentId]?.messages || [];
+    const msg = messages.find(message => message.id === messageId);
+    if (!msg || msg.role !== 'assistant') return;
+
+    const validation = msg.language ? validateReplyLanguage(msg.content, msg.language) : null;
+    const expression = msg.expression || null;
+    const cueText = expression?.expressiveCues?.length
+      ? expression.expressiveCues.map(cue => `${cue.type} · ${cue.strength}${cue.anchor ? ` · “${cue.anchor}”` : ''}`).join('\n')
+      : '[]';
+    const plannedProvider = msg.language === 'zh' ? 'Volcengine（尚未接入）' : msg.language === 'en' ? 'ElevenLabs' : 'Legacy';
+    const currentVoice = msg.language === 'en' ? `ElevenLabs · eleven_turbo_v2_5 · ${EL_VOICE}` : '—';
+
+    const rows = [
+      ['messageId', msg.id || '—'],
+      ['language', msg.language ? `${msg.language} (${languageLabel(msg.language)})` : 'legacy / 未记录'],
+      ['LanguageValidator', validation ? validation.status : '—'],
+      ['stance', expression?.stance || '—'],
+      ['affect', expression?.affect || '—'],
+      ['intensity', expression ? String(expression.intensity) : '—'],
+      ['expressiveCues', cueText],
+      ['Expression mode', expression ? 'shadow（已存储；当前不控制 TTS）' : 'none / legacy'],
+      ['planned voice route', plannedProvider],
+      ['current English TTS', currentVoice]
+    ];
+
+    document.getElementById('expressionDebugContent').innerHTML =
+      `<div class="expression-debug-grid">${rows.map(([key, value]) =>
+        `<div class="k">${escHtml(key)}</div><div class="v">${escHtml(value).replace(/\n/g, '<br>')}</div>`
+      ).join('')}</div>`;
+    document.getElementById('expressionDebugModal').classList.add('open');
+  }
+
   // ── 语音 ─────────────────────────────────────────────
   async function playVoice(btn) {
     const msgId = btn.dataset.msgId;
     const idx = parseInt(btn.dataset.index);
     const messages = chats[currentId]?.messages || [];
     const msg = (msgId ? messages.find(m => m.id === msgId) : null) ?? messages[idx] ?? null;
-    const text = msg?.en || parseAiReply(msg?.content || '').en;
-    if (!text) { setStatus('没有英文内容可播放', 'err'); return; }
+    if (msg?.language === 'zh') { setStatus('中文 TTS 尚未接入', 'err'); return; }
+    const text = msg?.language === 'en'
+      ? (msg.content || '')
+      : (msg?.en || parseAiReply(msg?.content || '').en);
+    if (!text) { setStatus('没有可供 ElevenLabs 播放的英文内容', 'err'); return; }
     if (!elKey) { setStatus('请先在左下角设置语音 Key', 'err'); return; }
 
     // 如果正在播放，停止
@@ -2610,6 +2933,24 @@
   // Post-processing layer over mergeMessagesSafe's output. Does NOT do identity/dedupe
   // decisions — those belong entirely to mergeMessagesSafe (P0-1 core, untouched).
   // Only completes temporal metadata for messages confirmed to be the same entity.
+  function reconcileEquivalentMessageMetadataFields(localMessage, incomingMessage) {
+    let merged = reconcileMessageTemporalMetadata(localMessage, incomingMessage);
+
+    // P1-1 metadata completion only. language/expression NEVER participate in identity or
+    // textual equivalence. If local already has a value, local wins; metadata disagreement
+    // must not fabricate a second message entity.
+    if (!merged.language && REPLY_LANGUAGES.has(incomingMessage.language)) {
+      merged = { ...merged, language: incomingMessage.language };
+    }
+    if (!merged.expression && incomingMessage.expression && typeof incomingMessage.expression === 'object') {
+      merged = { ...merged, expression: normalizeExpression(incomingMessage.expression) };
+    }
+    if (!merged.expressionSchemaVersion && Number.isFinite(incomingMessage.expressionSchemaVersion)) {
+      merged = { ...merged, expressionSchemaVersion: incomingMessage.expressionSchemaVersion };
+    }
+    return merged;
+  }
+
   function reconcileEquivalentMessageMetadata(mergedMessages, incomingMessages) {
     const incomingById = new Map(incomingMessages.filter(m => m.id).map(m => [m.id, m]));
     return mergedMessages.map(localMsg => {
@@ -2617,7 +2958,7 @@
       const incomingMsg = incomingById.get(localMsg.id);
       if (!incomingMsg) return localMsg; // no matching incoming id (includes conflict_ ids)
       if (!messagesEquivalent(localMsg, incomingMsg)) return localMsg; // id conflict, not same entity
-      return reconcileMessageTemporalMetadata(localMsg, incomingMsg);
+      return reconcileEquivalentMessageMetadataFields(localMsg, incomingMsg);
     });
   }
 
@@ -2893,6 +3234,8 @@
       message?.id,
       message?.role,
       message?.content,
+      message?.language,
+      message?.expression ? JSON.stringify(message.expression) : '',
       message?.en,
       message?.zh,
       message?.source,
@@ -2915,11 +3258,17 @@
     const extras = [
       message?.source ? `source=${message.source}` : '',
       message?.model ? `model=${message.model}` : '',
-      message?.thinkingDisplay ? `display=${message.thinkingDisplay}` : ''
+      message?.thinkingDisplay ? `display=${message.thinkingDisplay}` : '',
+      message?.language ? `language=${message.language}` : '',
+      message?.expressionSchemaVersion ? `expressionSchema=v${message.expressionSchemaVersion}` : ''
     ].filter(Boolean).join(' · ');
+    const expressionDetails = message?.expression
+      ? `<pre class="viewer-pre">expression = ${escHtml(JSON.stringify(message.expression, null, 2))}</pre>`
+      : '';
     return `<div class="viewer-message">
       <div class="viewer-message-head">${escHtml(message?.role || 'unknown')} · ${escHtml(time)} · id=${escHtml(message?.id || '—')} · clientSeq=${escHtml(message?.clientSeq ?? '—')}${extras ? ` · ${escHtml(extras)}` : ''}</div>
       <div class="viewer-message-body">${escHtml(body)}</div>
+      ${expressionDetails}
     </div>`;
   }
 
@@ -3058,7 +3407,7 @@
   // ── EXPORT / IMPORT ──────────────────────────────────
   function exportChats() {
     // Export uses a normalized COPY only — global `chats` and localStorage are untouched.
-    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 2 };
+    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 3 };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3282,6 +3631,7 @@
   function initializeApp() {
     applySkin(currentSkin);
     initializeModelRegistry();
+    renderReplyLanguageControl();
 
     const input = document.getElementById('input');
     input.addEventListener('input', handleDraftInput);
