@@ -2024,7 +2024,7 @@
         'tagsBefore/tagsAfter 是给 Eleven v3 的可执行声音表演指令，只描述听得出来的 delivery、tone、pacing 或 vocal event；它们不是对意图的解释。' +
         '每个数组元素只放一个独立 tag 的内容，不要包含方括号。tag 使用开放自然语言，不使用固定词表或预设枚举；应根据当前完整语境自由选择最合适的声音表演指令，但每个 tag 都必须短、具体、可听见、可执行。' +
         '不要写原因、背景说明、baseline、人际关系标签或抽象分析；不要在 tag 中引用、复述或嵌入任何正文原句；不要写 “after X / before X” 之类的定位说明，位置由 tagsBefore/tagsAfter 的结构本身表达。' +
-        '不要为了显得生动而给每个 part 强塞 tag；只在它确实能改善表达时添加。expression 与 deliveryBlocks 描述的是同一条回复，不应彼此矛盾，但 speechPlan 不需要从 expression 推导。'
+        '每个 block 会被 Eleven v3 独立合成，不能依赖前一个 block 的 tag 自动延续到后一个 block。若某个 block 按中性字面朗读会丢失你在完整语境中真正想表达的语气、节奏或声音动作，就应在该 block 内留下足够的局部 tag；但不要为了数量而机械地给每个 part 强塞 tag，也不要堆叠没有可听见作用的近义词。expression 与 deliveryBlocks 描述的是同一条回复，不应彼此矛盾，但 speechPlan 不需要从 expression 推导。'
       : '\n\n当前回复语言为中文。deliveryBlocks 仍负责把完整正文组织成 UI 展示单元，但 tagsBefore 与 tagsAfter 必须为空数组；当前版本不把 Eleven v3 英文 tag 用于中文 TTS。';
 
     let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。' +
@@ -2623,17 +2623,8 @@
     const plannedProvider = msg.language === 'zh' ? 'Volcengine（尚未接入）' : msg.language === 'en' ? 'ElevenLabs' : 'Legacy';
     const currentVoice = msg.language === 'en' ? `ElevenLabs · ${ELEVEN_TTS_MODEL} · ${EL_VOICE}` : '—';
     const blocks = Array.isArray(msg.deliveryBlocks) ? msg.deliveryBlocks : [];
-    const planText = blocks.length ? blocks.map((block, blockIndex) => {
-      const lines = (block.parts || []).map((part, partIndex) => {
-        const before = (part.tagsBefore || []).map(tag => `[${tag}]`).join(' ');
-        const after = (part.tagsAfter || []).map(tag => `[${tag}]`).join(' ');
-        return `  p${partIndex + 1}: ${before}${before ? ' ' : ''}${part.text}${after ? ' ' + after : ''}`;
-      }).join('\n');
-      return `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${lines}`;
-    }).join('\n\n') : '—';
-
-    const requestPreview = blocks.length ? blocks.map((block, blockIndex) =>
-      `b${blockIndex + 1}.text = ${compileDeliveryBlockForElevenV3(block)}`
+    const speechBlocksPreview = blocks.length ? blocks.map((block, blockIndex) =>
+      `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${compileDeliveryBlockForElevenV3(block)}`
     ).join('\n\n') : '—';
 
     const rows = [
@@ -2645,8 +2636,7 @@
       ['intensity', expression ? String(expression.intensity) : '—'],
       ['Expression mode', expression ? 'provider-neutral metadata；不控制 TTS' : 'none / legacy'],
       ['SpeechPlan schema', msg.speechPlanSchemaVersion ? `v${msg.speechPlanSchemaVersion}` : (blocks.length ? 'legacy / unversioned' : 'none')],
-      ['deliveryBlocks', planText],
-      ['Eleven v3 request preview', requestPreview],
+      ['Speech blocks / Eleven v3 text', speechBlocksPreview],
       ['planned voice route', plannedProvider],
       ['current English TTS', currentVoice]
     ];
