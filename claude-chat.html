@@ -505,6 +505,28 @@
   .status-bar.ok { color: #7A9E7E; }
   .status-bar.err { color: #C47A6A; }
 
+  /* Short-term per-chat reading position / new-reply affordance */
+  .new-reply-notice {
+    display: none;
+    width: max-content;
+    max-width: calc(100% - 24px);
+    margin: 0 auto 7px;
+    padding: 6px 11px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--input-bg);
+    color: var(--accent);
+    font-size: 12px;
+    font-family: 'Helvetica Neue', sans-serif;
+    cursor: pointer;
+    align-items: center;
+    gap: 5px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+  }
+
+  .new-reply-notice.show { display: inline-flex; }
+  .new-reply-notice:hover { background: var(--hover); }
+
   .request-failure {
     display: flex;
     flex-direction: column;
@@ -840,6 +862,9 @@
   </div>
 
   <footer>
+    <button class="new-reply-notice" id="newReplyNotice" type="button" aria-label="跳转到最新回复">
+      有新回复 <span aria-hidden="true">↓</span>
+    </button>
     <div class="status-bar" id="statusBar"></div>
     <div class="input-row">
       <textarea id="input" rows="1" placeholder="说点什么…" onkeydown="handleKey(event)"></textarea>
@@ -939,6 +964,9 @@
   const CURRENT_CHAT_KEY = 'claude_current_chat_v1';
   const DRAFTS_KEY = 'claude_drafts_v1';
   const NEW_CHAT_DRAFT_KEY = '__new__';
+  const SCROLL_MEMORY_KEY = 'claude_scroll_memory_v1';
+  const SCROLL_MEMORY_TTL_MS = 60 * 60 * 1000; // 1 hour
+  const CHAT_BOTTOM_THRESHOLD_PX = 100;
   const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
 
   // Offline/first-load fallback only. A successful GET /v1/models replaces this list.
@@ -1101,6 +1129,161 @@
     const input = event.currentTarget;
     autoResize(input);
     scheduleDraftSave(currentId, input.value);
+  }
+
+  // ── SHORT-TERM READING POSITION (sessionStorage) ───────
+  // Ephemeral UI state only. It is deliberately separate from chats/messages,
+  // export/import and long-term localStorage data.
+  const ScrollMemory = {
+    loadAll() {
+      try {
+        const parsed = JSON.parse(sessionStorage.getItem(SCROLL_MEMORY_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch (_) { return {}; }
+    },
+    get(chatId) {
+      if (!chatId) return null;
+      const all = this.loadAll();
+      const item = all[chatId] || null;
+      if (!item) return null;
+      if (!Number.isFinite(item.savedAt) || Date.now() - item.savedAt > SCROLL_MEMORY_TTL_MS) {
+        delete all[chatId];
+        sessionStorage.setItem(SCROLL_MEMORY_KEY, JSON.stringify(all));
+        return null;
+      }
+      return item;
+    },
+    set(chatId, value) {
+      if (!chatId) return;
+      const all = this.loadAll();
+      all[chatId] = value;
+      sessionStorage.setItem(SCROLL_MEMORY_KEY, JSON.stringify(all));
+    },
+    clear(chatId) {
+      if (!chatId) return;
+      const all = this.loadAll();
+      if (!(chatId in all)) return;
+      delete all[chatId];
+      sessionStorage.setItem(SCROLL_MEMORY_KEY, JSON.stringify(all));
+    }
+  };
+
+  function isChatAreaNearBottom(area, threshold = CHAT_BOTTOM_THRESHOLD_PX) {
+    if (!area) return true;
+    return area.scrollHeight - area.scrollTop - area.clientHeight <= threshold;
+  }
+
+  function getLastMessageId(chat) {
+    const messages = chat?.messages || [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.id) return messages[i].id;
+    }
+    return null;
+  }
+
+  function hasNewAssistantSince(chat, baselineMessageId, savedAt) {
+    const messages = chat?.messages || [];
+    if (!messages.length) return false;
+
+    if (baselineMessageId) {
+      const baselineIndex = messages.findIndex(message => message.id === baselineMessageId);
+      if (baselineIndex >= 0) {
+        return messages.slice(baselineIndex + 1).some(message => message.role === 'assistant');
+      }
+    }
+
+    // Fallback only when the old anchor no longer exists.
+    return messages.some(message =>
+      message.role === 'assistant' &&
+      isValidEpoch(message.createdAt) &&
+      Number.isFinite(savedAt) &&
+      message.createdAt > savedAt
+    );
+  }
+
+  function showNewReplyNotice() {
+    const notice = document.getElementById('newReplyNotice');
+    if (notice) notice.classList.add('show');
+  }
+
+  function hideNewReplyNotice() {
+    const notice = document.getElementById('newReplyNotice');
+    if (notice) notice.classList.remove('show');
+  }
+
+  function saveScrollPositionForChat(chatId = currentId) {
+    if (!chatId || !chats[chatId]) return;
+    const area = document.getElementById('chatArea');
+    if (!area) return;
+
+    if (isChatAreaNearBottom(area)) {
+      ScrollMemory.clear(chatId);
+      return;
+    }
+
+    const existing = ScrollMemory.get(chatId);
+    const pendingNewReply = !!existing?.pendingNewReply;
+    ScrollMemory.set(chatId, {
+      scrollTop: area.scrollTop,
+      savedAt: Date.now(),
+      baselineMessageId: pendingNewReply
+        ? (existing.baselineMessageId || null)
+        : getLastMessageId(chats[chatId]),
+      pendingNewReply
+    });
+  }
+
+  function restoreScrollPositionForChat(chatId) {
+    const area = document.getElementById('chatArea');
+    if (!area || !chatId || !chats[chatId]) {
+      hideNewReplyNotice();
+      return;
+    }
+
+    const saved = ScrollMemory.get(chatId);
+    if (!saved) {
+      hideNewReplyNotice();
+      area.scrollTop = area.scrollHeight;
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      if (currentId !== chatId) return;
+      const maxScrollTop = Math.max(0, area.scrollHeight - area.clientHeight);
+      area.scrollTop = Math.min(Math.max(0, Number(saved.scrollTop) || 0), maxScrollTop);
+
+      const pendingNewReply = !!saved.pendingNewReply ||
+        hasNewAssistantSince(chats[chatId], saved.baselineMessageId, saved.savedAt);
+
+      if (pendingNewReply) {
+        ScrollMemory.set(chatId, { ...saved, pendingNewReply: true });
+        showNewReplyNotice();
+      } else {
+        hideNewReplyNotice();
+      }
+    });
+  }
+
+  function markNewReplyWhileReading(chatId, scrollTop, baselineMessageId) {
+    if (!chatId || currentId !== chatId) return;
+    const existing = ScrollMemory.get(chatId);
+    ScrollMemory.set(chatId, {
+      scrollTop,
+      savedAt: Date.now(),
+      baselineMessageId: existing?.pendingNewReply
+        ? (existing.baselineMessageId || baselineMessageId || null)
+        : (baselineMessageId || getLastMessageId(chats[chatId])),
+      pendingNewReply: true
+    });
+    showNewReplyNotice();
+  }
+
+  function jumpToLatestReply() {
+    const area = document.getElementById('chatArea');
+    if (!area) return;
+    hideNewReplyNotice();
+    ScrollMemory.clear(currentId);
+    area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
   }
 
   // ── 皮肤 ─────────────────────────────────────────────
@@ -1520,10 +1703,13 @@
   }
 
   function loadChat(id) {
-    // Persist the previous chat's editor state before changing currentId. On initial
-    // bootstrap there is no rendered editor context yet, so do not overwrite a saved
-    // __new__ draft with the textarea's default empty value.
-    if (draftEditorInitialized) persistDraftNow(currentId);
+    // Persist the previous chat's editor + short-term reading position before changing currentId.
+    // On initial bootstrap there is no rendered editor context yet.
+    if (draftEditorInitialized) {
+      persistDraftNow(currentId);
+      saveScrollPositionForChat(currentId);
+    }
+    hideNewReplyNotice();
     currentId = id;
     if (id && chats[id]) localStorage.setItem(CURRENT_CHAT_KEY, id);
     else localStorage.removeItem(CURRENT_CHAT_KEY);
@@ -1535,6 +1721,7 @@
     const chat = chats[id];
     if (!chat || chat.messages.length === 0) {
       area.innerHTML = `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
+      ScrollMemory.clear(id);
       syncRequestStatusForChat(id);
       return;
     }
@@ -1542,7 +1729,7 @@
       if (m.role === 'thinking') renderThinking(m.content, false);
       else renderMsg(m.role === 'assistant' ? 'ai' : m.role, m, false, i);
     });
-    area.scrollTop = area.scrollHeight;
+    restoreScrollPositionForChat(id);
     syncRequestStatusForChat(id);
   }
 
@@ -1561,6 +1748,8 @@
     if (currentId === chatId) persistDraftNow(chatId);
     const result = moveChatToTrash(chatId);
     if (!result.ok) return;
+    ScrollMemory.clear(chatId);
+    hideNewReplyNotice();
     if (currentId === chatId) {
       currentId = null;
       localStorage.removeItem(CURRENT_CHAT_KEY);
@@ -1879,9 +2068,17 @@
       addTyping();
     }
 
+    const requestBaselineMessageId = getLastMessageId(chats[chatId]);
     const result = await requestAssistantReply(chatId, config);
 
-    if (currentId === chatId) removeTyping();
+    let preserveReadingPosition = false;
+    let readingScrollTop = 0;
+    if (currentId === chatId) {
+      const area = document.getElementById('chatArea');
+      preserveReadingPosition = !!area && !isChatAreaNearBottom(area);
+      readingScrollTop = area?.scrollTop || 0;
+      removeTyping();
+    }
 
     let committed = null;
     if (result.ok) committed = commitAssistantReply(chatId, result, config);
@@ -1910,6 +2107,14 @@
     if (currentId === chatId) {
       if (committed.thinkingMessage) renderThinking(committed.thinkingMessage.content);
       renderMsg('ai', committed.assistantMessage, true, committed.assistantIndex);
+      if (preserveReadingPosition) {
+        const area = document.getElementById('chatArea');
+        if (area) area.scrollTop = readingScrollTop;
+        markNewReplyWhileReading(chatId, readingScrollTop, requestBaselineMessageId);
+      } else {
+        hideNewReplyNotice();
+        ScrollMemory.clear(chatId);
+      }
       if (result.unknownBlockTypes?.length) {
         flashStatus(`Anthropic 响应包含未支持的新类型：${result.unknownBlockTypes.join(', ')}`, 'err', 4200);
       } else {
@@ -3080,7 +3285,22 @@
 
     const input = document.getElementById('input');
     input.addEventListener('input', handleDraftInput);
-    window.addEventListener('pagehide', () => persistDraftNow(currentId));
+    window.addEventListener('pagehide', () => {
+      persistDraftNow(currentId);
+      saveScrollPositionForChat(currentId);
+    });
+
+    const chatArea = document.getElementById('chatArea');
+    const newReplyNotice = document.getElementById('newReplyNotice');
+    newReplyNotice.addEventListener('click', jumpToLatestReply);
+    chatArea.addEventListener('scroll', () => {
+      // Only consume pending-new-reply state when the notice is actually active.
+      // Programmatic rendering can also move scrollTop, so do not clear ordinary memory here.
+      if (newReplyNotice.classList.contains('show') && isChatAreaNearBottom(chatArea)) {
+        hideNewReplyNotice();
+        ScrollMemory.clear(currentId);
+      }
+    });
 
     const viewerRefresh = document.getElementById('viewerRefreshBtn');
     const viewerKeyword = document.getElementById('viewerKeyword');
