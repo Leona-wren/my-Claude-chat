@@ -778,6 +778,77 @@
   .expression-debug-grid .k { color: var(--text-soft); }
   .expression-debug-grid .v { color: var(--text); word-break: break-word; }
 
+  /* P1-2 Eleven v3 Voice Lab: experimental UI only; no production TTS/cache coupling. */
+  .voice-lab {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .voice-lab-title { font-size: 13px; color: var(--accent); font-weight: 500; }
+  .voice-lab-note { font-size: 11px; color: var(--text-soft); line-height: 1.5; }
+  .voice-lab-controls { display: grid; grid-template-columns: 1fr 130px; gap: 8px; align-items: end; }
+  .voice-lab-field { display: flex; flex-direction: column; gap: 4px; }
+  .voice-lab-field label { font-size: 10.5px; color: var(--text-soft); }
+  .voice-lab-field textarea, .voice-lab-field select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 9px;
+    color: var(--text);
+    font-size: 11.5px;
+    line-height: 1.45;
+    outline: none;
+  }
+  .voice-lab-field textarea:focus, .voice-lab-field select:focus { border-color: var(--accent); }
+  .voice-lab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .voice-lab-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+  }
+  .voice-lab-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .voice-lab-card-title { font-size: 12px; color: var(--text); font-weight: 500; }
+  .voice-lab-card-desc { font-size: 10.5px; color: var(--text-soft); line-height: 1.4; }
+  .voice-lab-preview {
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 150px;
+    overflow: auto;
+    padding: 7px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--input-bg);
+    color: var(--text-soft);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .voice-lab-btn {
+    align-self: flex-start;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: transparent;
+    color: var(--accent);
+    padding: 5px 8px;
+    font-size: 10.5px;
+    cursor: pointer;
+  }
+  .voice-lab-btn:hover { background: var(--hover); }
+  .voice-lab-btn:disabled { opacity: 0.45; cursor: default; }
+  .voice-lab-status { min-height: 14px; font-size: 10.5px; color: var(--text-soft); }
+  @media (max-width: 700px) {
+    .voice-lab-grid { grid-template-columns: 1fr; }
+    .voice-lab-controls { grid-template-columns: 1fr; }
+  }
+
   /* AI气泡里英文+中文分区（仅 legacy 双语消息兼容） */
   .bubble-en { font-size: 14.5px; line-height: 1.7; }
   .bubble-zh { font-size: 13px; color: var(--text-soft); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); line-height: 1.65; }
@@ -943,9 +1014,9 @@
 
 <!-- P1-1 EXPRESSION SHADOW DEBUG (temporary observability; read-only) -->
 <div class="modal-overlay" id="expressionDebugModal">
-  <div class="modal">
-    <h2>Response Debug</h2>
-    <p>临时 shadow 观察：Expression 已保存到 assistant message，但当前不会控制 ElevenLabs。</p>
+  <div class="modal" style="max-width:820px;max-height:88dvh;overflow-y:auto;">
+    <h2>Response Debug + Eleven v3 Voice Lab</h2>
+    <p>Expression 会持久保存；正式“播放”仍走原来的 ElevenLabs v2.5。Voice Lab 是独立实验支路，不读写正式音频缓存。</p>
     <div id="expressionDebugContent"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('expressionDebugModal')">关闭</button>
@@ -1047,12 +1118,23 @@
   const CHAT_BOTTOM_THRESHOLD_PX = 100;
   const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
   const REPLY_LANGUAGE_KEY = 'claude_reply_language_v1';
-  const EXPRESSION_SCHEMA_VERSION = 1;
+  const EXPRESSION_SCHEMA_VERSION = 2;
+  // DEFERRED REQUIRED: replace this experiment-only baseline with a chat-level, slowly evolving
+  // ConversationDeliveryState derived from interaction history. Do not treat this local Voice Lab value as final architecture.
+  const VOICE_LAB_BASELINE_KEY = 'claude_voice_lab_baseline_v1';
+  const VOICE_LAB_STABILITY_KEY = 'claude_voice_lab_stability_v1';
+  const DEFAULT_VOICE_LAB_BASELINE = 'Natural, restrained and conversational; familiar rather than formal; emotionally responsive; low theatricality.';
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
   const EXPRESSION_STANCES = ['neutral', 'warm', 'playful', 'teasing', 'serious', 'reassuring', 'reflective', 'tender'];
   const EXPRESSION_AFFECTS = ['neutral', 'calm', 'amused', 'pleased', 'excited', 'concerned', 'sad', 'surprised', 'frustrated', 'affectionate'];
-  const EXPRESSION_CUE_TYPES = ['soft_laugh', 'laugh', 'sigh', 'whisper', 'hesitation', 'emphasis'];
+  const EXPRESSION_CUE_TYPES = [
+    'soft_laugh', 'laugh', 'chuckle', 'giggle',
+    'sigh', 'exhale', 'inhale', 'gasp', 'snort', 'throat_clear',
+    'whisper', 'lowered_voice', 'hesitation', 'short_pause', 'long_pause',
+    'emphasis', 'trailing_off', 'soften', 'breathy'
+  ];
   const EXPRESSION_CUE_STRENGTHS = ['low', 'medium', 'high'];
+  const EXPRESSION_CUE_PLACEMENTS = ['start', 'before', 'on', 'after', 'end'];
 
   // Offline/first-load fallback only. A successful GET /v1/models replaces this list.
   // Capabilities here intentionally cover only the controls this frontend needs.
@@ -1086,6 +1168,8 @@
   let elKey = localStorage.getItem('el_key') || '';
   const EL_VOICE = '0qHbGTWOPgPUvThY4Te6';
   let currentAudio = null;
+  let currentVoiceLabAudio = null;
+  let currentVoiceLabMessageId = null;
   let currentSkin = localStorage.getItem('claude_skin') || 'warm';
   let currentReplyLanguage = REPLY_LANGUAGES.has(localStorage.getItem(REPLY_LANGUAGE_KEY))
     ? localStorage.getItem(REPLY_LANGUAGE_KEY)
@@ -1976,16 +2060,19 @@
 
   function buildSystemPrompt(config) {
     const languageRule = config.replyLanguage === 'zh'
-      ? '回复正文必须直接用自然、母语化的中文构思和表达。用户输入可以是任何语言；不要因为用户使用英语就切换回复语言。'
+      ? '回复正文必须直接用自然、母语化的中文构思和表达。用户输入可以是任何语言；不要因为用户使用英语就切换回复语言。中文语境中自然出现的英文术语、专名或简短日常表达可以保留。'
       : '回复正文必须直接用自然、地道的英语构思和表达，不要先用中文构思再翻译。用户输入可以是任何语言；不要因为用户使用中文就切换回复语言。';
 
     let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。' +
       '\n\n回复语言规则：' + languageRule +
       '\n\n你的最终输出包含 reply 与 expression 两部分。reply 是用户真正看到的正文。' +
-      'expression 是 provider-neutral 的表达元数据，用来记录这条回复的 stance、affect、intensity，以及少量真正发生的 expressive cues。' +
-      '不要把 expression 写成声音导演说明，不要规定音高、语速、停顿秒数、声学参数或任何 TTS provider 专属标签。' +
-      'expressiveCues 默认应为空；只有当确实存在轻笑、笑、叹息、耳语、真实迟疑或需要特别强调的局部表达事件时才添加，最多 4 个。' +
-      '不要为了显得有情绪而制造 cue。stance/affect 描述这条回复本身的表达姿态，不是对用户心理的诊断。' +
+      'expression 是 provider-neutral 的表达记录，供后续 TTS / sticker / avatar 等渲染层使用，不会作为普通历史对话内容重新注入。' +
+      '\n\nexpression 的层级含义：' +
+      '\n1) stance、affect、intensity 描述这条回复当前的整体表达状态；这是当前消息层的主要意图。' +
+      '\n2) deliveryIntent 用很短的英文自然语言补充文字本身不容易看出的 intention / subtext；若正文已经充分表达，可以为空字符串。' +
+      '\n3) expressiveCues 只记录局部、可感知的 vocal event 或局部 delivery event，例如笑、叹息、吸气、停顿、压低声音、拖尾等。cue 用来细化当前表达，不重新定义整条回复的 stance/affect。最多 6 个。' +
+      '\n4) performanceDirection 是当前 Voice Lab 的实验字段。测试阶段每条回复都必须给出一条简短但具体的英文 delivery direction，即使是平静普通的回复也要给。它可以描述相对的 pace、pitch movement、volume、intonation、rhythm、stress、pause、phrase ending、breath/voice texture 等，但不要写精确数值或任何 TTS provider 专属标签。它负责“怎么演”，同时保持 reply 的语义、stance/affect 和 cues 所表达的意图；只描述有意义的相对趋势，不逐词微操，把具体声学实现和自然微变化留给 TTS。' +
+      '\n\n不要把用户的心理状态当作 expression 字段；这些字段描述你自己的这条回复如何表达。' +
       '\n\n回复通常保持自然对话长度；若用户明确要求详细内容，则按任务需要展开。';
 
     if (!config.structuredOutputSupported) {
@@ -2011,24 +2098,27 @@
         expression: {
           type: 'object',
           additionalProperties: false,
-          required: ['stance', 'affect', 'intensity', 'expressiveCues'],
+          required: ['stance', 'affect', 'intensity', 'deliveryIntent', 'expressiveCues', 'performanceDirection'],
           properties: {
             stance: { type: 'string', enum: EXPRESSION_STANCES },
             affect: { type: 'string', enum: EXPRESSION_AFFECTS },
             intensity: { type: 'number' },
+            deliveryIntent: { type: 'string' },
             expressiveCues: {
               type: 'array',
               items: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['type', 'anchor', 'strength'],
+                required: ['type', 'anchor', 'placement', 'strength'],
                 properties: {
                   type: { type: 'string', enum: EXPRESSION_CUE_TYPES },
                   anchor: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                  placement: { type: 'string', enum: EXPRESSION_CUE_PLACEMENTS },
                   strength: { type: 'string', enum: EXPRESSION_CUE_STRENGTHS }
                 }
               }
-            }
+            },
+            performanceDirection: { type: 'string' }
           }
         }
       }
@@ -2117,17 +2207,21 @@
     const affect = EXPRESSION_AFFECTS.includes(source.affect) ? source.affect : 'neutral';
     const rawIntensity = Number(source.intensity);
     const intensity = Number.isFinite(rawIntensity) ? Math.min(1, Math.max(0, rawIntensity)) : 0;
+    const deliveryIntent = typeof source.deliveryIntent === 'string' ? source.deliveryIntent.trim() : '';
+    const performanceDirection = typeof source.performanceDirection === 'string' ? source.performanceDirection.trim() : '';
     const expressiveCues = Array.isArray(source.expressiveCues)
-      ? source.expressiveCues.slice(0, 4).flatMap(cue => {
+      ? source.expressiveCues.slice(0, 6).flatMap(cue => {
           if (!cue || !EXPRESSION_CUE_TYPES.includes(cue.type) || !EXPRESSION_CUE_STRENGTHS.includes(cue.strength)) return [];
+          const placement = EXPRESSION_CUE_PLACEMENTS.includes(cue.placement) ? cue.placement : 'after';
           return [{
             type: cue.type,
             anchor: typeof cue.anchor === 'string' && cue.anchor.trim() ? cue.anchor.trim() : null,
+            placement,
             strength: cue.strength
           }];
         })
       : [];
-    return { stance, affect, intensity, expressiveCues };
+    return { stance, affect, intensity, deliveryIntent, expressiveCues, performanceDirection };
   }
 
   function parseStructuredAssistantPayload(rawText) {
@@ -2142,10 +2236,14 @@
     if (!payload || typeof payload !== 'object' || typeof payload.reply !== 'string' || !payload.reply.trim()) {
       return { ok: false, error: 'Response Core 缺少 reply' };
     }
+    const expression = normalizeExpression(payload.expression);
+    if (!expression.performanceDirection) {
+      return { ok: false, error: 'Response Core 缺少 Voice Lab performanceDirection' };
+    }
     return {
       ok: true,
       reply: payload.reply.trim(),
-      expression: normalizeExpression(payload.expression)
+      expression
     };
   }
 
@@ -2474,16 +2572,276 @@
     await generateAssistantReply(chatId);
   }
 
-  // ── P1-1 EXPRESSION SHADOW DEBUG ──────────────────────
+  // ── P1-2 EXPRESSION DEBUG + ELEVEN v3 VOICE LAB ───────
+  // Voice Lab is an experimental branch. It never changes the production playVoice()
+  // provider/model/settings and never reads/writes the production IndexedDB audio cache.
+  const VoiceLabConfigStore = {
+    getBaseline() {
+      return (localStorage.getItem(VOICE_LAB_BASELINE_KEY) || DEFAULT_VOICE_LAB_BASELINE).trim();
+    },
+    setBaseline(value) {
+      const clean = String(value || '').trim();
+      if (clean) localStorage.setItem(VOICE_LAB_BASELINE_KEY, clean);
+      else localStorage.removeItem(VOICE_LAB_BASELINE_KEY);
+    },
+    getStability() {
+      const value = Number(localStorage.getItem(VOICE_LAB_STABILITY_KEY));
+      return [0.35, 0.5, 0.7].includes(value) ? value : 0.5;
+    },
+    setStability(value) {
+      const numeric = Number(value);
+      if ([0.35, 0.5, 0.7].includes(numeric)) localStorage.setItem(VOICE_LAB_STABILITY_KEY, String(numeric));
+    }
+  };
+
+  function intensityToDeliveryLabel(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 'low-key';
+    if (n <= 0.2) return 'very low intensity';
+    if (n <= 0.4) return 'low intensity';
+    if (n <= 0.65) return 'moderate intensity';
+    if (n <= 0.85) return 'high intensity';
+    return 'very high intensity';
+  }
+
+  function buildVoiceLabContextTag(expression, baseline) {
+    const parts = [];
+    const cleanBaseline = String(baseline || '').trim();
+    if (cleanBaseline) parts.push(`Baseline style: ${cleanBaseline}`);
+    const current = [expression?.stance, expression?.affect].filter(Boolean).join(', ');
+    parts.push(`Current response takes precedence: ${current || 'neutral'}, ${intensityToDeliveryLabel(expression?.intensity)}`);
+    if (expression?.deliveryIntent) parts.push(`Intent/subtext: ${expression.deliveryIntent}`);
+    return `[${parts.join('. ')}]`;
+  }
+
+  function cueToElevenV3Tag(cue) {
+    const strength = cue?.strength || 'medium';
+    const map = {
+      soft_laugh: { low: '[small soft laugh]', medium: '[laughs softly]', high: '[clear soft laugh]' },
+      laugh: { low: '[brief laugh]', medium: '[laughs]', high: '[laughs openly]' },
+      chuckle: { low: '[small chuckle]', medium: '[chuckles]', high: '[deep chuckle]' },
+      giggle: { low: '[small giggle]', medium: '[giggles]', high: '[bright giggle]' },
+      sigh: { low: '[small sigh]', medium: '[sighs]', high: '[deep sigh]' },
+      exhale: { low: '[soft exhale]', medium: '[exhales]', high: '[long exhale]' },
+      inhale: { low: '[small inhale]', medium: '[inhales]', high: '[sharp inhale]' },
+      gasp: { low: '[small gasp]', medium: '[gasps]', high: '[sharp gasp]' },
+      snort: { low: '[small amused snort]', medium: '[snorts]', high: '[clear snort]' },
+      throat_clear: { low: '[quietly clears throat]', medium: '[clears throat]', high: '[clears throat firmly]' },
+      whisper: { low: '[slightly hushed]', medium: '[whispers]', high: '[whispers closely]' },
+      lowered_voice: { low: '[slightly lowers voice]', medium: '[lowered voice]', high: '[voice drops noticeably]' },
+      hesitation: { low: '[brief hesitation]', medium: '[hesitates]', high: '[clear hesitation]' },
+      short_pause: { low: '[tiny pause]', medium: '[brief pause]', high: '[short deliberate pause]' },
+      long_pause: { low: '[pause]', medium: '[long pause]', high: '[long deliberate pause]' },
+      emphasis: { low: '[light emphasis]', medium: '[emphasizes]', high: '[strong emphasis]' },
+      trailing_off: { low: '[slight trailing off]', medium: '[trails off]', high: '[voice trails off clearly]' },
+      soften: { low: '[slightly softens]', medium: '[softens]', high: '[voice softens noticeably]' },
+      breathy: { low: '[slightly breathy]', medium: '[breathy]', high: '[very breathy]' }
+    };
+    return map[cue?.type]?.[strength] || `[${String(cue?.type || 'natural').replace(/_/g, ' ')}]`;
+  }
+
+  function applyVoiceLabCueTags(text, cues) {
+    let output = String(text || '');
+    const deferredEnd = [];
+    (Array.isArray(cues) ? cues : []).forEach(cue => {
+      const tag = cueToElevenV3Tag(cue);
+      const placement = EXPRESSION_CUE_PLACEMENTS.includes(cue?.placement) ? cue.placement : 'after';
+      const anchor = typeof cue?.anchor === 'string' ? cue.anchor.trim() : '';
+
+      if (placement === 'start') {
+        output = `${tag} ${output}`;
+        return;
+      }
+      if (placement === 'end') {
+        deferredEnd.push(tag);
+        return;
+      }
+      if (anchor) {
+        const index = output.indexOf(anchor);
+        if (index >= 0) {
+          if (placement === 'after') {
+            const at = index + anchor.length;
+            output = `${output.slice(0, at)} ${tag}${output.slice(at)}`;
+          } else {
+            // "before" and "on" both place a delivery tag immediately before the anchored span;
+            // "on" semantically means the tag applies to that span rather than a separate event.
+            output = `${output.slice(0, index)}${tag} ${output.slice(index)}`;
+          }
+          return;
+        }
+      }
+      // Missing/unstable anchor: preserve the cue without guessing a false text location.
+      if (placement === 'before' || placement === 'on') output = `${tag} ${output}`;
+      else deferredEnd.push(tag);
+    });
+    if (deferredEnd.length) output = `${output} ${deferredEnd.join(' ')}`;
+    return output.trim();
+  }
+
+  function buildVoiceLabVariants(message, baseline = VoiceLabConfigStore.getBaseline()) {
+    if (!message || message.role !== 'assistant' || message.language !== 'en') return null;
+    const expression = message.expression || normalizeExpression(null);
+    const raw = String(message.content || '').trim();
+    const contextTag = buildVoiceLabContextTag(expression, baseline);
+    const withContext = `${contextTag}\n${raw}`.trim();
+    const cueText = applyVoiceLabCueTags(raw, expression.expressiveCues || []);
+    const withCues = `${contextTag}\n${cueText}`.trim();
+    const direction = String(expression.performanceDirection || '').trim();
+    const directionTag = direction ? `[Detailed performance direction: ${direction}]` : '[Detailed performance direction unavailable for this older message]';
+    const directed = `${contextTag}\n${directionTag}\n${cueText}`.trim();
+    return {
+      A: { label: 'A · Raw', description: '正文原样；Eleven v3 自己从文字推断表演。', text: raw },
+      B: { label: 'B · Context', description: '加 baseline + 当前 stance/affect/intensity + 隐含 deliveryIntent；不指定具体动作。', text: withContext },
+      C: { label: 'C · Cues', description: '在 B 基础上增加局部 vocal cues / placement / strength；仍不做细粒度导演。', text: withCues },
+      D: { label: 'D · Directed', description: '在 C 基础上加入 Claude 的具体 delivery direction（快慢、高低、语调、重音、节奏等）。', text: directed, available: !!direction }
+    };
+  }
+
+  function getVoiceLabMessage(messageId = currentVoiceLabMessageId) {
+    const messages = chats[currentId]?.messages || [];
+    return messages.find(message => message.id === messageId) || null;
+  }
+
+  function renderVoiceLab(message) {
+    if (!message || message.language !== 'en') {
+      return `<div class="voice-lab"><div class="voice-lab-title">Eleven v3 Voice Lab</div><div class="voice-lab-note">当前只测试英文 ElevenLabs 路线；中文留给后续 Volcengine adapter。</div></div>`;
+    }
+    const baseline = VoiceLabConfigStore.getBaseline();
+    const stability = VoiceLabConfigStore.getStability();
+    const variants = buildVoiceLabVariants(message, baseline);
+    const cards = Object.entries(variants).map(([key, variant]) => `
+      <div class="voice-lab-card">
+        <div class="voice-lab-card-head"><div class="voice-lab-card-title">${escHtml(variant.label)}</div></div>
+        <div class="voice-lab-card-desc">${escHtml(variant.description)}</div>
+        <div class="voice-lab-preview" id="voiceLabPreview${key}">${escHtml(variant.text)}</div>
+        <button class="voice-lab-btn" type="button" data-voice-lab-variant="${key}" ${variant.available === false ? 'disabled' : ''}>生成 ${key} 样本</button>
+        <div class="voice-lab-status" id="voiceLabStatus${key}">${variant.available === false ? '这条旧消息没有 Claude 生成的 performanceDirection；请用新回复测试 D。' : ''}</div>
+      </div>`).join('');
+
+    return `<div class="voice-lab">
+      <div class="voice-lab-title">Eleven v3 Voice Lab · 同一 voice / 同一 settings / 逐层增加信息</div>
+      <div class="voice-lab-note">实验 baseline 只是临时模拟未来的 ConversationDeliveryState，不写进 chat schema。B/C/D 使用同一 baseline 与同一 message expression；后一级只增加信息，不撤掉前一级。Voice Lab 每次都重新请求 v3，不使用正式缓存。</div>
+      <div class="voice-lab-controls">
+        <div class="voice-lab-field">
+          <label for="voiceLabBaseline">实验 conversation baseline（开放文本，可临时改写）</label>
+          <textarea id="voiceLabBaseline" rows="3">${escHtml(baseline)}</textarea>
+        </div>
+        <div class="voice-lab-field">
+          <label for="voiceLabStability">Eleven v3 Stability（四档共用）</label>
+          <select id="voiceLabStability">
+            <option value="0.35" ${stability === 0.35 ? 'selected' : ''}>0.35 · expressive</option>
+            <option value="0.5" ${stability === 0.5 ? 'selected' : ''}>0.50 · balanced</option>
+            <option value="0.7" ${stability === 0.7 ? 'selected' : ''}>0.70 · steadier</option>
+          </select>
+        </div>
+      </div>
+      <div class="voice-lab-note">Voice: ${escHtml(EL_VOICE)} · model: eleven_v3 · similarity 0.75 · style 0 · speed 1.0</div>
+      <div class="voice-lab-grid">${cards}</div>
+    </div>`;
+  }
+
+  function refreshVoiceLabPreviews() {
+    const message = getVoiceLabMessage();
+    if (!message || message.language !== 'en') return;
+    const baselineInput = document.getElementById('voiceLabBaseline');
+    const baseline = baselineInput ? baselineInput.value.trim() : VoiceLabConfigStore.getBaseline();
+    const variants = buildVoiceLabVariants(message, baseline);
+    if (!variants) return;
+    Object.entries(variants).forEach(([key, variant]) => {
+      const preview = document.getElementById(`voiceLabPreview${key}`);
+      if (preview) preview.textContent = variant.text;
+    });
+  }
+
+  function stopVoiceLabAudio() {
+    if (!currentVoiceLabAudio) return;
+    try { currentVoiceLabAudio.pause(); } catch (_) {}
+    if (currentVoiceLabAudio._blobUrl) URL.revokeObjectURL(currentVoiceLabAudio._blobUrl);
+    currentVoiceLabAudio = null;
+  }
+
+  async function generateVoiceLabSample(messageId, variantKey, button) {
+    const message = getVoiceLabMessage(messageId);
+    if (!message || message.language !== 'en') return;
+    if (!elKey) { flashStatus('请先在左下角设置 ElevenLabs Key', 'err', 2400); return; }
+
+    const baseline = (document.getElementById('voiceLabBaseline')?.value || VoiceLabConfigStore.getBaseline()).trim();
+    VoiceLabConfigStore.setBaseline(baseline);
+    const stability = Number(document.getElementById('voiceLabStability')?.value || VoiceLabConfigStore.getStability());
+    VoiceLabConfigStore.setStability(stability);
+    const variants = buildVoiceLabVariants(message, baseline);
+    const variant = variants?.[variantKey];
+    if (!variant || variant.available === false || !variant.text) return;
+
+    const status = document.getElementById(`voiceLabStatus${variantKey}`);
+    const original = button?.textContent || `生成 ${variantKey} 样本`;
+    if (button) { button.disabled = true; button.textContent = '生成中…'; }
+    if (status) status.textContent = '请求 Eleven v3…';
+
+    try {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': elKey },
+        body: JSON.stringify({
+          text: variant.text,
+          model_id: 'eleven_v3',
+          voice_settings: {
+            stability,
+            similarity_boost: 0.75,
+            style: 0,
+            use_speaker_boost: true,
+            speed: 1
+          }
+        })
+      });
+      if (!res.ok) {
+        let detail = null;
+        try { detail = await res.json(); } catch (_) {}
+        throw new Error(detail?.detail?.message || detail?.detail || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      stopVoiceLabAudio();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio._blobUrl = url;
+      currentVoiceLabAudio = audio;
+      audio.onended = () => {
+        if (currentVoiceLabAudio === audio) currentVoiceLabAudio = null;
+        URL.revokeObjectURL(url);
+        if (status) status.textContent = '播放完成；再次点击会重新生成一个随机样本。';
+      };
+      await audio.play();
+      if (status) status.textContent = '播放中…';
+    } catch (error) {
+      if (status) status.textContent = `失败：${error.message}`;
+    } finally {
+      if (button) { button.disabled = false; button.textContent = original; }
+    }
+  }
+
+  function bindVoiceLabControls(messageId) {
+    const baseline = document.getElementById('voiceLabBaseline');
+    const stability = document.getElementById('voiceLabStability');
+    if (baseline) {
+      baseline.addEventListener('input', () => refreshVoiceLabPreviews());
+      baseline.addEventListener('change', () => VoiceLabConfigStore.setBaseline(baseline.value));
+    }
+    if (stability) stability.addEventListener('change', () => VoiceLabConfigStore.setStability(stability.value));
+    document.querySelectorAll('[data-voice-lab-variant]').forEach(button => {
+      button.addEventListener('click', () => generateVoiceLabSample(messageId, button.dataset.voiceLabVariant, button));
+    });
+  }
+
   function openExpressionDebug(messageId) {
     const messages = chats[currentId]?.messages || [];
     const msg = messages.find(message => message.id === messageId);
     if (!msg || msg.role !== 'assistant') return;
+    currentVoiceLabMessageId = messageId;
 
     const validation = msg.language ? validateReplyLanguage(msg.content, msg.language) : null;
     const expression = msg.expression || null;
     const cueText = expression?.expressiveCues?.length
-      ? expression.expressiveCues.map(cue => `${cue.type} · ${cue.strength}${cue.anchor ? ` · “${cue.anchor}”` : ''}`).join('\n')
+      ? expression.expressiveCues.map(cue => `${cue.type} · ${cue.strength} · ${cue.placement || 'legacy'}${cue.anchor ? ` · “${cue.anchor}”` : ''}`).join('\n')
       : '[]';
     const plannedProvider = msg.language === 'zh' ? 'Volcengine（尚未接入）' : msg.language === 'en' ? 'ElevenLabs' : 'Legacy';
     const currentVoice = msg.language === 'en' ? `ElevenLabs · eleven_turbo_v2_5 · ${EL_VOICE}` : '—';
@@ -2495,17 +2853,20 @@
       ['stance', expression?.stance || '—'],
       ['affect', expression?.affect || '—'],
       ['intensity', expression ? String(expression.intensity) : '—'],
+      ['deliveryIntent', expression?.deliveryIntent || ''],
       ['expressiveCues', cueText],
-      ['Expression mode', expression ? 'shadow（已存储；当前不控制 TTS）' : 'none / legacy'],
+      ['performanceDirection', expression?.performanceDirection || '— (legacy / schema v1)'],
+      ['Expression mode', expression ? 'persisted metadata · Voice Lab may consume it' : 'none / legacy'],
       ['planned voice route', plannedProvider],
-      ['current English TTS', currentVoice]
+      ['production English TTS', currentVoice]
     ];
 
     document.getElementById('expressionDebugContent').innerHTML =
       `<div class="expression-debug-grid">${rows.map(([key, value]) =>
         `<div class="k">${escHtml(key)}</div><div class="v">${escHtml(value).replace(/\n/g, '<br>')}</div>`
-      ).join('')}</div>`;
+      ).join('')}</div>${renderVoiceLab(msg)}`;
     document.getElementById('expressionDebugModal').classList.add('open');
+    bindVoiceLabControls(messageId);
   }
 
   // ── 语音 ─────────────────────────────────────────────
@@ -2635,7 +2996,13 @@
     closeModal('elModal');
     flashStatus('语音 Key 已保存 ✓', 'ok', 2000);
   }
-  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    if (id === 'expressionDebugModal') {
+      stopVoiceLabAudio();
+      currentVoiceLabMessageId = null;
+    }
+  }
 
   // ── TRASH UI ─────────────────────────────────────────
   // UI only: displays state and forwards clicks to domain lifecycle functions.
@@ -2689,7 +3056,14 @@
   }
 
   document.querySelectorAll('.modal-overlay').forEach(el => {
-    el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+    el.addEventListener('click', e => {
+      if (e.target !== el) return;
+      el.classList.remove('open');
+      if (el.id === 'expressionDebugModal') {
+        stopVoiceLabAudio();
+        currentVoiceLabMessageId = null;
+      }
+    });
   });
 
   // ── MESSAGE IDENTITY UTILS (P0 merge/import fix) ─────
@@ -3407,7 +3781,7 @@
   // ── EXPORT / IMPORT ──────────────────────────────────
   function exportChats() {
     // Export uses a normalized COPY only — global `chats` and localStorage are untouched.
-    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 3 };
+    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 4 };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
