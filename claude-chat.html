@@ -432,6 +432,16 @@
   .msg.user { align-self: flex-end; align-items: flex-end; }
   .msg.ai   { align-self: flex-start; align-items: flex-start; }
 
+  .delivery-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    max-width: 100%;
+  }
+  .delivery-block + .delivery-block { margin-top: 4px; }
+  .delivery-block .bubble { max-width: 100%; }
+
   .bubble {
     padding: 12px 16px;
     border-radius: 20px;
@@ -778,25 +788,6 @@
   .expression-debug-grid .k { color: var(--text-soft); }
   .expression-debug-grid .v { color: var(--text); word-break: break-word; }
 
-
-  /* Manual Eleven v3 Lab — experimental, ElevenLabs-only, no Claude call/cache. */
-  .voice-lab-modal { max-width: 760px; max-height: 90dvh; overflow-y: auto; }
-  .voice-lab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .voice-lab-field { display: flex; flex-direction: column; gap: 5px; }
-  .voice-lab-field.full { grid-column: 1 / -1; }
-  .voice-lab-label { font-size: 11px; color: var(--text-soft); font-family: 'Helvetica Neue', sans-serif; }
-  .voice-lab-help { font-size: 11px; line-height: 1.45; color: var(--text-soft); }
-  .voice-lab-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .voice-lab-status { min-height: 18px; font-size: 12px; color: var(--text-soft); }
-  .voice-lab-status.err { color: #C47A6A; }
-  .voice-lab-status.ok { color: #7A9E7E; }
-  .voice-lab-samples { display: flex; flex-direction: column; gap: 8px; }
-  .voice-lab-sample { border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; background: var(--bg); }
-  .voice-lab-sample-head { font-size: 11px; color: var(--text-soft); margin-bottom: 6px; }
-  .voice-lab-sample audio { width: 100%; height: 34px; }
-  .voice-lab-fixed { font-size: 11px; color: var(--text-soft); padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
-  @media (max-width: 720px) { .voice-lab-grid { grid-template-columns: 1fr; } .voice-lab-field.full { grid-column: auto; } }
-
   /* AI气泡里英文+中文分区（仅 legacy 双语消息兼容） */
   .bubble-en { font-size: 14.5px; line-height: 1.7; }
   .bubble-zh { font-size: 13px; color: var(--text-soft); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); line-height: 1.65; }
@@ -905,7 +896,6 @@
     <button class="sidebar-btn" onclick="openMemory()">🧠 记忆设置</button>
     <button class="sidebar-btn" onclick="openKey()">🔑 API Key</button>
     <button class="sidebar-btn" onclick="openElKey()">🔊 语音 Key</button>
-    <button class="sidebar-btn" onclick="openManualVoiceLab()">🧪 Eleven v3 Lab</button>
     <button class="sidebar-btn" onclick="openViewer()">🔎 本地数据</button>
     <button class="sidebar-btn" onclick="openTrash()">🗑 回收站</button>
   </div>
@@ -965,7 +955,7 @@
 <div class="modal-overlay" id="expressionDebugModal">
   <div class="modal">
     <h2>Response Debug</h2>
-    <p>临时 shadow 观察：Expression 已保存到 assistant message，但当前不会控制 ElevenLabs。</p>
+    <p>Response Core 观察：Expression 仅作 provider-neutral 元数据；SpeechPlan 会编译为 Eleven v3 的实际输入。</p>
     <div id="expressionDebugContent"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('expressionDebugModal')">关闭</button>
@@ -1009,67 +999,6 @@
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('elModal')">取消</button>
       <button class="btn-save" onclick="saveElKey()">保存</button>
-    </div>
-  </div>
-</div>
-
-
-<!-- MANUAL ELEVEN V3 LAB (experimental; direct ElevenLabs call only) -->
-<div class="modal-overlay" id="manualVoiceLabModal">
-  <div class="modal voice-lab-modal">
-    <h2>Manual Eleven v3 Lab</h2>
-    <p>直接调用 ElevenLabs <code>eleven_v3</code>。不会调用 Claude，不写入正式音频缓存。每次 Generate 都会消耗 ElevenLabs credits。</p>
-
-    <div class="voice-lab-grid">
-      <div class="voice-lab-field full">
-        <div class="voice-lab-label">Text</div>
-        <textarea id="voiceLabText" rows="4" placeholder="粘贴要朗读的正文…"></textarea>
-        <div class="voice-lab-help">可只填这里，然后用 Tags 组装；也可以完全跳过 Text/Tags，直接编辑下面的 Final ElevenLabs input。</div>
-      </div>
-
-      <div class="voice-lab-field full">
-        <div class="voice-lab-label">Tags · 每行一个</div>
-        <textarea id="voiceLabTags" rows="5" placeholder="curious&#10;hesitant&#10;soft laugh"></textarea>
-        <div class="voice-lab-help">点击“组装”后，每一行会变成独立方括号，例如 <code>[curious] [hesitant] [soft laugh]</code>。已经写了 [] 也可以。</div>
-      </div>
-
-      <div class="voice-lab-field full">
-        <div class="voice-lab-actions">
-          <button class="btn-cancel" type="button" onclick="assembleManualVoiceLabInput()">组装到 Final input</button>
-          <button class="btn-cancel" type="button" onclick="loadLatestEnglishReplyIntoVoiceLab()">载入当前最新英文回复</button>
-        </div>
-      </div>
-
-      <div class="voice-lab-field full">
-        <div class="voice-lab-label">Final ElevenLabs input · 实际发送内容，可直接编辑</div>
-        <textarea id="voiceLabFinalInput" rows="8" placeholder="这里的内容会原样发送给 Eleven v3。你可以自由移动 tag、改标点、插入局部 tag。"></textarea>
-      </div>
-
-      <div class="voice-lab-field">
-        <div class="voice-lab-label">Stability · 0–1</div>
-        <input id="voiceLabStability" type="number" min="0" max="1" step="0.05" value="0.35" />
-        <div class="voice-lab-help">低值通常变化和表达幅度更大；测试 tag 时建议固定一个值再比较。</div>
-      </div>
-
-      <div class="voice-lab-field">
-        <div class="voice-lab-label">固定条件</div>
-        <div class="voice-lab-fixed">Voice: 当前自定义 voice<br>Model: eleven_v3<br>Similarity: 0.75<br>Style: 0<br>Speed: 1.0</div>
-      </div>
-    </div>
-
-    <div class="voice-lab-actions">
-      <button class="btn-save" id="voiceLabGenerateBtn" type="button" onclick="generateManualVoiceLabSample()">Generate</button>
-      <button class="btn-cancel" type="button" onclick="clearManualVoiceLabSamples()">清空本次样本</button>
-    </div>
-    <div class="voice-lab-status" id="voiceLabStatus"></div>
-
-    <div class="voice-lab-field">
-      <div class="voice-lab-label">本次页面会话样本 · 不写 IndexedDB</div>
-      <div class="voice-lab-samples" id="voiceLabSamples"><div class="voice-lab-help">还没有生成样本。</div></div>
-    </div>
-
-    <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal('manualVoiceLabModal')">关闭</button>
     </div>
   </div>
 </div>
@@ -1128,12 +1057,14 @@
   const CHAT_BOTTOM_THRESHOLD_PX = 100;
   const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
   const REPLY_LANGUAGE_KEY = 'claude_reply_language_v1';
-  const EXPRESSION_SCHEMA_VERSION = 1;
+  const EXPRESSION_SCHEMA_VERSION = 2;
+  const SPEECH_PLAN_SCHEMA_VERSION = 1;
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
   const EXPRESSION_STANCES = ['neutral', 'warm', 'playful', 'teasing', 'serious', 'reassuring', 'reflective', 'tender'];
   const EXPRESSION_AFFECTS = ['neutral', 'calm', 'amused', 'pleased', 'excited', 'concerned', 'sad', 'surprised', 'frustrated', 'affectionate'];
-  const EXPRESSION_CUE_TYPES = ['soft_laugh', 'laugh', 'sigh', 'whisper', 'hesitation', 'emphasis'];
-  const EXPRESSION_CUE_STRENGTHS = ['low', 'medium', 'high'];
+  const ELEVEN_TTS_MODEL = 'eleven_v3';
+  const ELEVEN_RENDER_VERSION = 1;
+  const ELEVEN_V3_VOICE_SETTINGS = { stability: 0.35, similarity_boost: 0.75, style: 0, speed: 1 };
 
   // Offline/first-load fallback only. A successful GET /v1/models replaces this list.
   // Capabilities here intentionally cover only the controls this frontend needs.
@@ -1167,8 +1098,6 @@
   let elKey = localStorage.getItem('el_key') || '';
   const EL_VOICE = '0qHbGTWOPgPUvThY4Te6';
   let currentAudio = null;
-  let manualVoiceLabSamples = [];
-  let manualVoiceLabGenerating = false;
   let currentSkin = localStorage.getItem('claude_skin') || 'warm';
   let currentReplyLanguage = REPLY_LANGUAGES.has(localStorage.getItem(REPLY_LANGUAGE_KEY))
     ? localStorage.getItem(REPLY_LANGUAGE_KEY)
@@ -1977,15 +1906,32 @@
       const isSingleLanguage = !!msg?.language && REPLY_LANGUAGES.has(msg.language);
 
       if (isSingleLanguage) {
-        const hasVoice = msg.language === 'en' && !!msg.content && !!elKey;
-        const hasDebug = !!msg.expression || !!msg.language;
-        div.innerHTML = `
-          <div class="bubble">${escHtml(msg.content || '')}</div>
-          ${hasVoice ? `<button class="play-btn" data-msg-id="${msg.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
-            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
-          </button>` : ''}
-          ${hasDebug ? `<button class="debug-btn" type="button" onclick="openExpressionDebug('${msg.id || ''}')">Debug</button>` : ''}
-          <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
+        const hasDebug = !!msg.expression || !!msg.language || !!msg.deliveryBlocks;
+        const blocks = Array.isArray(msg.deliveryBlocks) && msg.deliveryBlocks.length ? msg.deliveryBlocks : null;
+        if (blocks) {
+          const blockHtml = blocks.map((block, blockIndex) => {
+            const blockText = getDeliveryBlockCleanText(block);
+            const hasVoice = msg.language === 'en' && !!blockText && !!elKey;
+            return `<div class="delivery-block">
+              <div class="bubble">${escHtml(blockText)}</div>
+              ${hasVoice ? `<button class="play-btn" data-msg-id="${msg.id || ''}" data-index="${msgIndex}" data-block-index="${blockIndex}" onclick="playVoice(this)">
+                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
+              </button>` : ''}
+            </div>`;
+          }).join('');
+          div.innerHTML = `${blockHtml}
+            ${hasDebug ? `<button class="debug-btn" type="button" onclick="openExpressionDebug('${msg.id || ''}')">Debug</button>` : ''}
+            <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
+        } else {
+          const hasVoice = msg.language === 'en' && !!msg.content && !!elKey;
+          div.innerHTML = `
+            <div class="bubble">${escHtml(msg.content || '')}</div>
+            ${hasVoice ? `<button class="play-btn" data-msg-id="${msg.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
+              <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
+            </button>` : ''}
+            ${hasDebug ? `<button class="debug-btn" type="button" onclick="openExpressionDebug('${msg.id || ''}')">Debug</button>` : ''}
+            <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
+        }
       } else {
         // Legacy [EN]/[ZH] messages keep their historical display and ElevenLabs behavior.
         const en = msg?.en ?? parseAiReply(rawText).en;
@@ -2062,17 +2008,26 @@
       ? '回复正文必须直接用自然、母语化的中文构思和表达。用户输入可以是任何语言；不要因为用户使用英语就切换回复语言。'
       : '回复正文必须直接用自然、地道的英语构思和表达，不要先用中文构思再翻译。用户输入可以是任何语言；不要因为用户使用中文就切换回复语言。';
 
+    const speechPlanRule = config.replyLanguage === 'en'
+      ? '\n\nSpeechPlan 规则：deliveryBlocks 与正文是在同一次完整语境理解中共同构成的，不是在正文落定后只看字面补标签。你必须参考完整对话历史、当前语义、隐含意义、subtext、互动情境以及你真正打算如何说这句话，再决定每个局部的表演指令。' +
+        'tagsBefore/tagsAfter 是给 Eleven v3 的可执行声音表演指令，只描述听得出来的 delivery、tone、pacing 或 vocal event；它们不是对意图的解释。' +
+        '每个数组元素只放一个独立 tag 的内容，不要包含方括号。tag 使用开放自然语言，不使用固定词表或预设枚举；应根据当前完整语境自由选择最合适的声音表演指令，但每个 tag 都必须短、具体、可听见、可执行。' +
+        '不要写原因、背景说明、baseline、人际关系标签或抽象分析；不要在 tag 中引用、复述或嵌入任何正文原句；不要写 “after X / before X” 之类的定位说明，位置由 tagsBefore/tagsAfter 的结构本身表达。' +
+        '不要为了显得生动而给每个 part 强塞 tag；只在它确实能改善表达时添加。expression 与 deliveryBlocks 描述的是同一条回复，不应彼此矛盾，但 speechPlan 不需要从 expression 推导。'
+      : '\n\n当前回复语言为中文。deliveryBlocks 仍负责把完整正文组织成 UI 展示单元，但 tagsBefore 与 tagsAfter 必须为空数组；当前版本不把 Eleven v3 英文 tag 用于中文 TTS。';
+
     let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。' +
       '\n\n回复语言规则：' + languageRule +
-      '\n\n你的最终输出包含 reply 与 expression 两部分。reply 是用户真正看到的正文。' +
-      'expression 是 provider-neutral 的表达元数据，用来记录这条回复的 stance、affect、intensity，以及少量真正发生的 expressive cues。' +
-      '不要把 expression 写成声音导演说明，不要规定音高、语速、停顿秒数、声学参数或任何 TTS provider 专属标签。' +
-      'expressiveCues 默认应为空；只有当确实存在轻笑、笑、叹息、耳语、真实迟疑或需要特别强调的局部表达事件时才添加，最多 4 个。' +
-      '不要为了显得有情绪而制造 cue。stance/affect 描述这条回复本身的表达姿态，不是对用户心理的诊断。' +
+      '\n\n你的最终输出包含 deliveryBlocks 与 expression 两部分，不再额外重复输出一份 reply。所有 deliveryBlocks.parts[].text 按顺序拼接起来，就是用户真正看到、并写入历史的完整正文。' +
+      '\n\ndeliveryBlocks 同时是 UI/TTS 的播放单元。短的日常对话，通常让一个自然句子或紧密相连的短表达成为一个 block；如果回复是几个较长段落，则优先按自然段或完整语义段落分 block，不要机械地把长篇内容逐句切碎。' +
+      '一个 block 内如果需要在中间改变语气、停顿、轻笑、放慢等，可以拆成多个 parts；parts 必须按实际朗读顺序排列，text 只包含真实可见、可朗读的正文。' +
+      '每个 block 的 joinAfter 只用于重建干净正文：相邻日常句用 space，真正换段用 paragraph。最后一个 block 的 joinAfter 值不会影响正文。' +
+      speechPlanRule +
+      '\n\nexpression 是 provider-neutral 的粗粒度表达元数据，只保留 stance、affect、intensity；它不直接控制 TTS，也不要包含 voice cue、音高、语速、停顿或 provider 专属说明。stance/affect 描述这条回复本身的表达姿态，不是对用户心理的诊断。' +
       '\n\n回复通常保持自然对话长度；若用户明确要求详细内容，则按任务需要展开。';
 
     if (!config.structuredOutputSupported) {
-      system += '\n\n当前模型未声明 Structured Outputs capability。请严格只输出一个合法 JSON 对象，不要 Markdown code fence、不要额外文字；字段必须与应用要求的 reply/expression schema 一致。';
+      system += '\n\n当前模型未声明 Structured Outputs capability。请严格只输出一个合法 JSON 对象，不要 Markdown code fence、不要额外文字；字段必须与应用要求的 deliveryBlocks/expression schema 一致。';
     }
     if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
     return system;
@@ -2088,30 +2043,40 @@
     return {
       type: 'object',
       additionalProperties: false,
-      required: ['reply', 'expression'],
+      required: ['deliveryBlocks', 'expression'],
       properties: {
-        reply: { type: 'string' },
-        expression: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['stance', 'affect', 'intensity', 'expressiveCues'],
-          properties: {
-            stance: { type: 'string', enum: EXPRESSION_STANCES },
-            affect: { type: 'string', enum: EXPRESSION_AFFECTS },
-            intensity: { type: 'number' },
-            expressiveCues: {
-              type: 'array',
-              items: {
-                type: 'object',
-                additionalProperties: false,
-                required: ['type', 'anchor', 'strength'],
-                properties: {
-                  type: { type: 'string', enum: EXPRESSION_CUE_TYPES },
-                  anchor: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                  strength: { type: 'string', enum: EXPRESSION_CUE_STRENGTHS }
+        deliveryBlocks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['joinAfter', 'parts'],
+            properties: {
+              joinAfter: { type: 'string', enum: ['space', 'paragraph'] },
+              parts: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['text', 'tagsBefore', 'tagsAfter'],
+                  properties: {
+                    text: { type: 'string' },
+                    tagsBefore: { type: 'array', items: { type: 'string' } },
+                    tagsAfter: { type: 'array', items: { type: 'string' } }
+                  }
                 }
               }
             }
+          }
+        },
+        expression: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['stance', 'affect', 'intensity'],
+          properties: {
+            stance: { type: 'string', enum: EXPRESSION_STANCES },
+            affect: { type: 'string', enum: EXPRESSION_AFFECTS },
+            intensity: { type: 'number' }
           }
         }
       }
@@ -2151,7 +2116,7 @@
       config.thinkingEnabled ||
       !config.controls.canToggleThinking
     );
-    const desired = thinkingMayRun ? 16000 : 1024;
+    const desired = thinkingMayRun ? 16000 : 4096;
     const modelMax = Number(config.modelInfo?.max_tokens);
     return Number.isFinite(modelMax) && modelMax >= 1024 ? Math.min(desired, modelMax) : desired;
   }
@@ -2200,20 +2165,90 @@
     const affect = EXPRESSION_AFFECTS.includes(source.affect) ? source.affect : 'neutral';
     const rawIntensity = Number(source.intensity);
     const intensity = Number.isFinite(rawIntensity) ? Math.min(1, Math.max(0, rawIntensity)) : 0;
-    const expressiveCues = Array.isArray(source.expressiveCues)
-      ? source.expressiveCues.slice(0, 4).flatMap(cue => {
-          if (!cue || !EXPRESSION_CUE_TYPES.includes(cue.type) || !EXPRESSION_CUE_STRENGTHS.includes(cue.strength)) return [];
-          return [{
-            type: cue.type,
-            anchor: typeof cue.anchor === 'string' && cue.anchor.trim() ? cue.anchor.trim() : null,
-            strength: cue.strength
-          }];
-        })
-      : [];
-    return { stance, affect, intensity, expressiveCues };
+    return { stance, affect, intensity };
   }
 
-  function parseStructuredAssistantPayload(rawText) {
+  function normalizeSpeechTag(tag) {
+    let value = typeof tag === 'string' ? tag.trim() : '';
+    if (!value) return null;
+    value = value.replace(/^\[+|\]+$/g, '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!value || value.includes('[') || value.includes(']')) return null;
+    // Open vocabulary is intentional; this is only a transport-safety bound, not an allowlist.
+    if (value.length > 120) return null;
+    return value;
+  }
+
+  function normalizeTagList(list, language) {
+    if (language !== 'en' || !Array.isArray(list)) return [];
+    const seen = new Set();
+    return list.slice(0, 6).flatMap(item => {
+      const tag = normalizeSpeechTag(item);
+      if (!tag || seen.has(tag)) return [];
+      seen.add(tag);
+      return [tag];
+    });
+  }
+
+  function normalizeDeliveryBlocks(blocks, language) {
+    if (!Array.isArray(blocks)) return [];
+    return blocks.slice(0, 60).flatMap((block, blockIndex) => {
+      if (!block || !Array.isArray(block.parts)) return [];
+      const parts = block.parts.slice(0, 20).flatMap(part => {
+        if (!part || typeof part.text !== 'string') return [];
+        const text = part.text.trim();
+        if (!text) return [];
+        return [{
+          text,
+          tagsBefore: normalizeTagList(part.tagsBefore, language),
+          tagsAfter: normalizeTagList(part.tagsAfter, language)
+        }];
+      });
+      if (!parts.length) return [];
+      return [{
+        blockId: `b${blockIndex + 1}`,
+        joinAfter: block.joinAfter === 'paragraph' ? 'paragraph' : 'space',
+        parts
+      }];
+    });
+  }
+
+  function joinVisibleFragments(parts) {
+    let result = '';
+    (parts || []).forEach(part => {
+      const text = typeof part === 'string' ? part : part?.text;
+      if (!text) return;
+      const clean = String(text).trim();
+      if (!clean) return;
+      if (!result) {
+        result = clean;
+        return;
+      }
+      const noSpaceBefore = /^[,.;:!?…%\)\]\}]/.test(clean);
+      const noSpaceAfterPrevious = /[\(\[\{“‘]$/.test(result);
+      result += (noSpaceBefore || noSpaceAfterPrevious ? '' : ' ') + clean;
+    });
+    return result;
+  }
+
+  function getDeliveryBlockCleanText(block) {
+    return joinVisibleFragments(block?.parts || []);
+  }
+
+  function deriveContentFromDeliveryBlocks(blocks) {
+    let result = '';
+    (blocks || []).forEach((block, index) => {
+      const blockText = getDeliveryBlockCleanText(block);
+      if (!blockText) return;
+      if (result) {
+        const previous = blocks[index - 1];
+        result += previous?.joinAfter === 'paragraph' ? '\n\n' : ' ';
+      }
+      result += blockText;
+    });
+    return result.trim();
+  }
+
+  function parseStructuredAssistantPayload(rawText, language) {
     let text = String(rawText || '').trim();
     if (!text) return { ok: false, error: 'Claude 返回了空回复' };
     if (text.startsWith('```')) {
@@ -2222,12 +2257,18 @@
     let payload;
     try { payload = JSON.parse(text); }
     catch (_) { return { ok: false, error: 'Response Core 不是合法 JSON' }; }
-    if (!payload || typeof payload !== 'object' || typeof payload.reply !== 'string' || !payload.reply.trim()) {
-      return { ok: false, error: 'Response Core 缺少 reply' };
+    if (!payload || typeof payload !== 'object') {
+      return { ok: false, error: 'Response Core 不是对象' };
+    }
+    const deliveryBlocks = normalizeDeliveryBlocks(payload.deliveryBlocks, language);
+    const content = deriveContentFromDeliveryBlocks(deliveryBlocks);
+    if (!deliveryBlocks.length || !content) {
+      return { ok: false, error: 'Response Core 缺少有效 deliveryBlocks' };
     }
     return {
       ok: true,
-      reply: payload.reply.trim(),
+      content,
+      deliveryBlocks,
       expression: normalizeExpression(payload.expression)
     };
   }
@@ -2341,12 +2382,12 @@
 
       const data = await res.json();
       const parsedResponse = parseAnthropicResponse(data);
-      const responseCore = parseStructuredAssistantPayload(parsedResponse.replyText);
+      const responseCore = parseStructuredAssistantPayload(parsedResponse.replyText, config.replyLanguage);
       if (!responseCore.ok) {
         return { ok: false, kind: 'validation', error: responseCore.error };
       }
 
-      const languageValidation = validateReplyLanguage(responseCore.reply, config.replyLanguage);
+      const languageValidation = validateReplyLanguage(responseCore.content, config.replyLanguage);
       if (languageValidation.status === 'MISMATCH') {
         return {
           ok: false,
@@ -2359,7 +2400,8 @@
       return {
         ok: true,
         ...parsedResponse,
-        reply: responseCore.reply,
+        content: responseCore.content,
+        deliveryBlocks: responseCore.deliveryBlocks,
         expression: responseCore.expression,
         languageValidation,
         responseFormat: config.structuredOutputSupported ? 'json_schema' : 'prompt_json'
@@ -2395,10 +2437,12 @@
 
     const assistantMessage = {
       role: 'assistant',
-      content: result.reply,
+      content: result.content,
       language: config.replyLanguage,
       expression: result.expression,
       expressionSchemaVersion: EXPRESSION_SCHEMA_VERSION,
+      deliveryBlocks: result.deliveryBlocks,
+      speechPlanSchemaVersion: SPEECH_PLAN_SCHEMA_VERSION,
       id: makeMessageId(),
       chatId,
       clientSeq: chat.messages.length,
@@ -2565,11 +2609,25 @@
 
     const validation = msg.language ? validateReplyLanguage(msg.content, msg.language) : null;
     const expression = msg.expression || null;
-    const cueText = expression?.expressiveCues?.length
-      ? expression.expressiveCues.map(cue => `${cue.type} · ${cue.strength}${cue.anchor ? ` · “${cue.anchor}”` : ''}`).join('\n')
-      : '[]';
     const plannedProvider = msg.language === 'zh' ? 'Volcengine（尚未接入）' : msg.language === 'en' ? 'ElevenLabs' : 'Legacy';
-    const currentVoice = msg.language === 'en' ? `ElevenLabs · eleven_turbo_v2_5 · ${EL_VOICE}` : '—';
+    const currentVoice = msg.language === 'en' ? `ElevenLabs · ${ELEVEN_TTS_MODEL} · ${EL_VOICE}` : '—';
+    const blocks = Array.isArray(msg.deliveryBlocks) ? msg.deliveryBlocks : [];
+    const planText = blocks.length ? blocks.map((block, blockIndex) => {
+      const lines = (block.parts || []).map((part, partIndex) => {
+        const before = (part.tagsBefore || []).map(tag => `[${tag}]`).join(' ');
+        const after = (part.tagsAfter || []).map(tag => `[${tag}]`).join(' ');
+        return `  p${partIndex + 1}: ${before}${before ? ' ' : ''}${part.text}${after ? ' ' + after : ''}`;
+      }).join('\n');
+      return `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${lines}`;
+    }).join('\n\n') : '—';
+
+    const requestPreview = blocks.length ? blocks.map((block, blockIndex) => {
+      const context = getAdjacentCleanContext(blocks, blockIndex);
+      const lines = [`b${blockIndex + 1}.text = ${compileDeliveryBlockForElevenV3(block)}`];
+      if (context.previous) lines.push(`  previous_text = ${context.previous}`);
+      if (context.next) lines.push(`  next_text = ${context.next}`);
+      return lines.join('\n');
+    }).join('\n\n') : '—';
 
     const rows = [
       ['messageId', msg.id || '—'],
@@ -2578,31 +2636,91 @@
       ['stance', expression?.stance || '—'],
       ['affect', expression?.affect || '—'],
       ['intensity', expression ? String(expression.intensity) : '—'],
-      ['expressiveCues', cueText],
-      ['Expression mode', expression ? 'shadow（已存储；当前不控制 TTS）' : 'none / legacy'],
+      ['Expression mode', expression ? 'provider-neutral metadata；不控制 TTS' : 'none / legacy'],
+      ['SpeechPlan schema', msg.speechPlanSchemaVersion ? `v${msg.speechPlanSchemaVersion}` : (blocks.length ? 'legacy / unversioned' : 'none')],
+      ['deliveryBlocks', planText],
+      ['Eleven v3 request preview', requestPreview],
       ['planned voice route', plannedProvider],
       ['current English TTS', currentVoice]
     ];
 
     document.getElementById('expressionDebugContent').innerHTML =
       `<div class="expression-debug-grid">${rows.map(([key, value]) =>
-        `<div class="k">${escHtml(key)}</div><div class="v">${escHtml(value).replace(/\n/g, '<br>')}</div>`
+        `<div class="k">${escHtml(key)}</div><div class="v">${escHtml(String(value)).replace(/\n/g, '<br>')}</div>`
       ).join('')}</div>`;
     document.getElementById('expressionDebugModal').classList.add('open');
+  }
+
+  function normalizeTtsInlineText(text) {
+    return String(text || '').replace(/[\r\n]+/g, ' ').replace(/[ \t]+/g, ' ').trim();
+  }
+
+  function bracketSpeechTag(tag) {
+    const normalized = normalizeSpeechTag(tag);
+    return normalized ? `[${normalized}]` : '';
+  }
+
+  // Provider adapter only: no semantic inference here. It emits one continuous inline stream,
+  // one bracket pair per stored tag, and never emits field names such as tagsBefore/tagsAfter.
+  function compileDeliveryBlockForElevenV3(block) {
+    const tokens = [];
+    (block?.parts || []).forEach(part => {
+      (part.tagsBefore || []).forEach(tag => {
+        const token = bracketSpeechTag(tag);
+        if (token) tokens.push(token);
+      });
+      const text = normalizeTtsInlineText(part.text);
+      if (text) tokens.push(text);
+      (part.tagsAfter || []).forEach(tag => {
+        const token = bracketSpeechTag(tag);
+        if (token) tokens.push(token);
+      });
+    });
+    return tokens.join(' ').replace(/[ \t]+/g, ' ').trim();
+  }
+
+  function getAdjacentCleanContext(blocks, blockIndex) {
+    const previous = blockIndex > 0 ? normalizeTtsInlineText(getDeliveryBlockCleanText(blocks[blockIndex - 1])) : '';
+    const next = blockIndex >= 0 && blockIndex < blocks.length - 1
+      ? normalizeTtsInlineText(getDeliveryBlockCleanText(blocks[blockIndex + 1]))
+      : '';
+    return { previous, next };
   }
 
   // ── 语音 ─────────────────────────────────────────────
   async function playVoice(btn) {
     const msgId = btn.dataset.msgId;
     const idx = parseInt(btn.dataset.index);
+    const requestedBlockIndex = Number.isInteger(Number(btn.dataset.blockIndex)) ? Number(btn.dataset.blockIndex) : null;
     const messages = chats[currentId]?.messages || [];
     const msg = (msgId ? messages.find(m => m.id === msgId) : null) ?? messages[idx] ?? null;
     if (msg?.language === 'zh') { setStatus('中文 TTS 尚未接入', 'err'); return; }
-    const text = msg?.language === 'en'
-      ? (msg.content || '')
-      : (msg?.en || parseAiReply(msg?.content || '').en);
-    if (!text) { setStatus('没有可供 ElevenLabs 播放的英文内容', 'err'); return; }
     if (!elKey) { setStatus('请先在左下角设置语音 Key', 'err'); return; }
+
+    const blocks = Array.isArray(msg?.deliveryBlocks) && msg.deliveryBlocks.length ? msg.deliveryBlocks : null;
+    let text = '';
+    let previousText = '';
+    let nextText = '';
+    let audioKey = null;
+
+    if (blocks && requestedBlockIndex !== null && blocks[requestedBlockIndex]) {
+      const block = blocks[requestedBlockIndex];
+      text = compileDeliveryBlockForElevenV3(block);
+      const context = getAdjacentCleanContext(blocks, requestedBlockIndex);
+      previousText = context.previous;
+      nextText = context.next;
+      const blockId = block.blockId || `b${requestedBlockIndex + 1}`;
+      audioKey = msgId ? `${currentId}_${msgId}__${blockId}__en__${ELEVEN_TTS_MODEL}__rv${ELEVEN_RENDER_VERSION}` : null;
+    } else {
+      // Legacy single-bubble messages have no SpeechPlan. They still remain playable,
+      // but are sent as raw text to v3 with no fabricated tags.
+      text = msg?.language === 'en'
+        ? normalizeTtsInlineText(msg.content || '')
+        : normalizeTtsInlineText(msg?.en || parseAiReply(msg?.content || '').en);
+      audioKey = msgId ? `${currentId}_${msgId}__legacy__en__${ELEVEN_TTS_MODEL}__rv${ELEVEN_RENDER_VERSION}` : null;
+    }
+
+    if (!text) { setStatus('没有可供 ElevenLabs 播放的英文内容', 'err'); return; }
 
     // 如果正在播放，停止
     if (currentAudio) {
@@ -2618,8 +2736,6 @@
     btn.classList.add('playing', 'was-playing');
     btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> 播放中…';
 
-    const audioKey = msgId ? `${currentId}_${msgId}` : null;
-
     function playBlob(blob) {
       const url = URL.createObjectURL(blob);
       currentAudio = new Audio(url);
@@ -2634,7 +2750,6 @@
     }
 
     try {
-      // 优先读缓存
       if (audioKey) {
         const cached = await getAudio(audioKey);
         if (cached) { playBlob(cached); return; }
@@ -2642,22 +2757,29 @@
 
       setStatus('生成语音中…');
       const elUrl = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`;
+      const requestBody = {
+        text,
+        model_id: ELEVEN_TTS_MODEL,
+        voice_settings: { ...ELEVEN_V3_VOICE_SETTINGS }
+      };
+      // IMPORTANT: previous_text / next_text are conditioning context only. ElevenLabs
+      // synthesizes only requestBody.text. Adjacent clean text is never inserted into text.
+      if (previousText) requestBody.previous_text = previousText;
+      if (nextText) requestBody.next_text = nextText;
+
       const res = await fetch(elUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'xi-api-key': elKey
         },
-        body: JSON.stringify({
-          text,
-          model_id: 'eleven_turbo_v2_5',
-          voice_settings: { stability: 0.4, similarity_boost: 0.75, style: 0.45, use_speaker_boost: true }
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        setStatus('语音出错：' + (err.detail?.message || res.status), 'err');
+        let err = null;
+        try { err = await res.json(); } catch (_) {}
+        setStatus('语音出错：' + (err?.detail?.message || err?.detail || res.status), 'err');
         btn.classList.remove('playing', 'was-playing');
         btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
         return;
@@ -2672,174 +2794,6 @@
       btn.classList.remove('playing', 'was-playing');
       btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
     }
-  }
-
-
-  // ── MANUAL ELEVEN V3 LAB ──────────────────────────────
-  // Experimental provider-only path. It never calls Anthropic, never mutates chat history,
-  // and never reads/writes the production IndexedDB audio cache.
-  const ManualElevenV3LabService = {
-    async generate({ text, stability }) {
-      if (!elKey) return { ok: false, error: '请先设置 ElevenLabs 语音 Key' };
-      const finalText = String(text || '').trim();
-      if (!finalText) return { ok: false, error: 'Final ElevenLabs input 不能为空' };
-
-      const stable = Number(stability);
-      const safeStability = Number.isFinite(stable) ? Math.min(1, Math.max(0, stable)) : 0.35;
-      const url = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`;
-
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'xi-api-key': elKey
-          },
-          body: JSON.stringify({
-            text: finalText,
-            model_id: 'eleven_v3',
-            voice_settings: {
-              stability: safeStability,
-              similarity_boost: 0.75,
-              style: 0,
-              speed: 1
-            }
-          })
-        });
-
-        if (!res.ok) {
-          let detail = null;
-          try { detail = await res.json(); } catch (_) {}
-          return { ok: false, error: detail?.detail?.message || detail?.detail || `HTTP ${res.status}` };
-        }
-
-        const blob = await res.blob();
-        return {
-          ok: true,
-          blob,
-          stability: safeStability,
-          text: finalText,
-          requestId: res.headers.get('request-id') || res.headers.get('x-request-id') || null
-        };
-      } catch (e) {
-        return { ok: false, error: e.message };
-      }
-    }
-  };
-
-  function openManualVoiceLab() {
-    setManualVoiceLabStatus('');
-    renderManualVoiceLabSamples();
-    document.getElementById('manualVoiceLabModal').classList.add('open');
-  }
-
-  function setManualVoiceLabStatus(message, type = '') {
-    const el = document.getElementById('voiceLabStatus');
-    if (!el) return;
-    el.textContent = message || '';
-    el.className = 'voice-lab-status' + (type ? ' ' + type : '');
-  }
-
-  function normalizeManualVoiceLabTag(line) {
-    let tag = String(line || '').trim();
-    if (!tag) return '';
-    if (tag.startsWith('[') && tag.endsWith(']')) tag = tag.slice(1, -1).trim();
-    return tag.replace(/[\r\n]+/g, ' ').trim();
-  }
-
-  function assembleManualVoiceLabInput() {
-    const text = document.getElementById('voiceLabText').value.trim();
-    const lines = document.getElementById('voiceLabTags').value.split(/\r?\n/);
-    const tags = lines.map(normalizeManualVoiceLabTag).filter(Boolean);
-    const tagPrefix = tags.map(tag => `[${tag}]`).join(' ');
-    const finalText = [tagPrefix, text].filter(Boolean).join('\n\n');
-    document.getElementById('voiceLabFinalInput').value = finalText;
-    setManualVoiceLabStatus(tags.length ? `已组装 ${tags.length} 个独立 tag` : '已组装正文（无 tag）', 'ok');
-  }
-
-  function loadLatestEnglishReplyIntoVoiceLab() {
-    const messages = chats[currentId]?.messages || [];
-    let text = '';
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (msg?.role !== 'assistant') continue;
-      if (msg.language === 'en' && msg.content) { text = msg.content; break; }
-      const legacyEn = msg.en || parseAiReply(msg.content || '').en;
-      if (legacyEn) { text = legacyEn; break; }
-    }
-    if (!text) {
-      setManualVoiceLabStatus('当前对话没有可载入的英文 assistant 回复', 'err');
-      return;
-    }
-    document.getElementById('voiceLabText').value = text;
-    setManualVoiceLabStatus('已载入当前最新英文回复；需要时再点“组装”', 'ok');
-  }
-
-  function renderManualVoiceLabSamples() {
-    const list = document.getElementById('voiceLabSamples');
-    if (!list) return;
-    if (!manualVoiceLabSamples.length) {
-      list.innerHTML = '<div class="voice-lab-help">还没有生成样本。</div>';
-      return;
-    }
-    list.innerHTML = '';
-    manualVoiceLabSamples.slice().reverse().forEach(sample => {
-      const card = document.createElement('div');
-      card.className = 'voice-lab-sample';
-      const head = document.createElement('div');
-      head.className = 'voice-lab-sample-head';
-      const kb = (sample.blob.size / 1024).toFixed(1);
-      head.textContent = `Sample ${sample.number} · stability ${sample.stability.toFixed(2)} · ${kb} KB${sample.requestId ? ` · request ${sample.requestId}` : ''}`;
-      const audio = document.createElement('audio');
-      audio.controls = true;
-      audio.preload = 'metadata';
-      audio.src = sample.url;
-      card.append(head, audio);
-      list.appendChild(card);
-    });
-  }
-
-  async function generateManualVoiceLabSample() {
-    if (manualVoiceLabGenerating) return;
-    const finalInput = document.getElementById('voiceLabFinalInput').value;
-    const stability = document.getElementById('voiceLabStability').value;
-    const button = document.getElementById('voiceLabGenerateBtn');
-
-    manualVoiceLabGenerating = true;
-    button.disabled = true;
-    setManualVoiceLabStatus('Eleven v3 生成中…');
-
-    const result = await ManualElevenV3LabService.generate({ text: finalInput, stability });
-
-    manualVoiceLabGenerating = false;
-    button.disabled = false;
-
-    if (!result.ok) {
-      setManualVoiceLabStatus('生成失败：' + result.error, 'err');
-      return;
-    }
-
-    const sample = {
-      number: manualVoiceLabSamples.length + 1,
-      blob: result.blob,
-      url: URL.createObjectURL(result.blob),
-      stability: result.stability,
-      requestId: result.requestId,
-      text: result.text,
-      createdAt: Date.now()
-    };
-    manualVoiceLabSamples.push(sample);
-    renderManualVoiceLabSamples();
-    setManualVoiceLabStatus(`Sample ${sample.number} 已生成；未写入正式缓存`, 'ok');
-  }
-
-  function clearManualVoiceLabSamples() {
-    manualVoiceLabSamples.forEach(sample => {
-      try { URL.revokeObjectURL(sample.url); } catch (_) {}
-    });
-    manualVoiceLabSamples = [];
-    renderManualVoiceLabSamples();
-    setManualVoiceLabStatus('本次样本已清空');
   }
 
   // ── MODALS ───────────────────────────────────────────
@@ -3199,6 +3153,12 @@
     if (!merged.expressionSchemaVersion && Number.isFinite(incomingMessage.expressionSchemaVersion)) {
       merged = { ...merged, expressionSchemaVersion: incomingMessage.expressionSchemaVersion };
     }
+    if ((!Array.isArray(merged.deliveryBlocks) || !merged.deliveryBlocks.length) && Array.isArray(incomingMessage.deliveryBlocks) && incomingMessage.deliveryBlocks.length) {
+      merged = { ...merged, deliveryBlocks: incomingMessage.deliveryBlocks };
+    }
+    if (!merged.speechPlanSchemaVersion && Number.isFinite(incomingMessage.speechPlanSchemaVersion)) {
+      merged = { ...merged, speechPlanSchemaVersion: incomingMessage.speechPlanSchemaVersion };
+    }
     return merged;
   }
 
@@ -3487,6 +3447,7 @@
       message?.content,
       message?.language,
       message?.expression ? JSON.stringify(message.expression) : '',
+      message?.deliveryBlocks ? JSON.stringify(message.deliveryBlocks) : '',
       message?.en,
       message?.zh,
       message?.source,
@@ -3511,15 +3472,20 @@
       message?.model ? `model=${message.model}` : '',
       message?.thinkingDisplay ? `display=${message.thinkingDisplay}` : '',
       message?.language ? `language=${message.language}` : '',
-      message?.expressionSchemaVersion ? `expressionSchema=v${message.expressionSchemaVersion}` : ''
+      message?.expressionSchemaVersion ? `expressionSchema=v${message.expressionSchemaVersion}` : '',
+      message?.speechPlanSchemaVersion ? `speechPlanSchema=v${message.speechPlanSchemaVersion}` : ''
     ].filter(Boolean).join(' · ');
     const expressionDetails = message?.expression
       ? `<pre class="viewer-pre">expression = ${escHtml(JSON.stringify(message.expression, null, 2))}</pre>`
+      : '';
+    const speechPlanDetails = Array.isArray(message?.deliveryBlocks)
+      ? `<pre class="viewer-pre">deliveryBlocks = ${escHtml(JSON.stringify(message.deliveryBlocks, null, 2))}</pre>`
       : '';
     return `<div class="viewer-message">
       <div class="viewer-message-head">${escHtml(message?.role || 'unknown')} · ${escHtml(time)} · id=${escHtml(message?.id || '—')} · clientSeq=${escHtml(message?.clientSeq ?? '—')}${extras ? ` · ${escHtml(extras)}` : ''}</div>
       <div class="viewer-message-body">${escHtml(body)}</div>
       ${expressionDetails}
+      ${speechPlanDetails}
     </div>`;
   }
 
@@ -3658,7 +3624,7 @@
   // ── EXPORT / IMPORT ──────────────────────────────────
   function exportChats() {
     // Export uses a normalized COPY only — global `chats` and localStorage are untouched.
-    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 3 };
+    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 4 };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
