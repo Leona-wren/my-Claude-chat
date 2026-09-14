@@ -701,6 +701,88 @@
   /* AI气泡里英文+中文分区 */
   .bubble-en { font-size: 14.5px; line-height: 1.7; }
   .bubble-zh { font-size: 13px; color: var(--text-soft); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); line-height: 1.65; }
+
+
+  /* P0-3 Local Data Viewer */
+  .viewer-modal { max-width: 920px; max-height: 86dvh; overflow: hidden; }
+  .viewer-toolbar {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 150px 150px auto;
+    gap: 8px;
+    align-items: end;
+  }
+  .viewer-field { display: flex; flex-direction: column; gap: 4px; }
+  .viewer-field label { font-size: 11px; color: var(--text-soft); }
+  .viewer-field input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--text);
+    outline: none;
+  }
+  .viewer-field input:focus { border-color: var(--accent); }
+  .viewer-scroll { overflow-y: auto; padding-right: 2px; display: flex; flex-direction: column; gap: 14px; }
+  .viewer-summary { display: flex; flex-wrap: wrap; gap: 7px; }
+  .viewer-chip {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 9px;
+    font-size: 11px;
+    color: var(--text-soft);
+    background: var(--bg);
+  }
+  .viewer-section { display: flex; flex-direction: column; gap: 7px; }
+  .viewer-section-title { font-size: 13px; color: var(--accent); font-weight: 500; }
+  .viewer-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 11px;
+    background: var(--bg);
+  }
+  .viewer-card summary { cursor: pointer; font-size: 12.5px; color: var(--text); }
+  .viewer-meta { margin-top: 6px; font-size: 11px; color: var(--text-soft); line-height: 1.55; word-break: break-all; }
+  .viewer-message {
+    margin-top: 7px;
+    padding-top: 7px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .viewer-message-head { color: var(--text-soft); font-size: 10.5px; margin-bottom: 3px; word-break: break-all; }
+  .viewer-message-body { white-space: pre-wrap; word-break: break-word; }
+  .viewer-pre {
+    margin-top: 7px;
+    max-height: 260px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 11px;
+    line-height: 1.45;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    color: var(--text-soft);
+  }
+  .viewer-empty { font-size: 12px; color: var(--text-soft); padding: 4px 0; }
+  .viewer-open-chat {
+    margin-top: 7px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-soft);
+    border-radius: 7px;
+    padding: 4px 8px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .viewer-open-chat:hover { background: var(--hover); color: var(--text); }
+  @media (max-width: 720px) {
+    .viewer-toolbar { grid-template-columns: 1fr 1fr; }
+    .viewer-toolbar .viewer-keyword { grid-column: 1 / -1; }
+  }
 </style>
 </head>
 <body class="skin-warm">
@@ -724,6 +806,7 @@
     <button class="sidebar-btn" onclick="openMemory()">🧠 记忆设置</button>
     <button class="sidebar-btn" onclick="openKey()">🔑 API Key</button>
     <button class="sidebar-btn" onclick="openElKey()">🔊 语音 Key</button>
+    <button class="sidebar-btn" onclick="openViewer()">🔎 本地数据</button>
     <button class="sidebar-btn" onclick="openTrash()">🗑 回收站</button>
   </div>
 </div>
@@ -759,7 +842,7 @@
   <footer>
     <div class="status-bar" id="statusBar"></div>
     <div class="input-row">
-      <textarea id="input" rows="1" placeholder="说点什么…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <textarea id="input" rows="1" placeholder="说点什么…" onkeydown="handleKey(event)"></textarea>
       <button class="send-btn" id="sendBtn" onclick="send()" disabled>
         <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
       </button>
@@ -819,12 +902,42 @@
   </div>
 </div>
 
+
+<!-- P0-3 LOCAL DATA VIEWER (read-only) -->
+<div class="modal-overlay" id="viewerModal">
+  <div class="modal viewer-modal">
+    <h2>本地数据</h2>
+    <p>只读查看当前浏览器保存的数据。Viewer 不修改聊天、回收站、草稿或音频缓存。</p>
+    <div class="viewer-toolbar">
+      <div class="viewer-field viewer-keyword">
+        <label for="viewerKeyword">关键词</label>
+        <input id="viewerKeyword" type="search" placeholder="内容 / 标题 / ID / role…" />
+      </div>
+      <div class="viewer-field">
+        <label for="viewerDateFrom">开始日期</label>
+        <input id="viewerDateFrom" type="date" />
+      </div>
+      <div class="viewer-field">
+        <label for="viewerDateTo">结束日期</label>
+        <input id="viewerDateTo" type="date" />
+      </div>
+      <button class="btn-cancel" type="button" id="viewerRefreshBtn">刷新</button>
+    </div>
+    <div class="viewer-scroll" id="viewerContent"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('viewerModal')">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const API_URL = 'https://api.anthropic.com/v1/messages';
   const MODELS_URL = 'https://api.anthropic.com/v1/models?limit=1000';
   const MODEL_CACHE_KEY = 'claude_model_registry_v1';
   const MODEL_PREFS_KEY = 'claude_model_prefs_v1';
   const MODEL_SELECTION_KEY = 'claude_model';
+  const DRAFTS_KEY = 'claude_drafts_v1';
+  const NEW_CHAT_DRAFT_KEY = '__new__';
   const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
 
   // Offline/first-load fallback only. A successful GET /v1/models replaces this list.
@@ -861,6 +974,8 @@
   let currentAudio = null;
   let currentSkin = localStorage.getItem('claude_skin') || 'warm';
   let audioDB = null;
+  let draftSaveTimer = null;
+  let draftEditorInitialized = false;
 
   (function openAudioDB() {
     const req = indexedDB.open('claude_audio', 1);
@@ -909,6 +1024,83 @@
       });
     }
   };
+
+  // ── DRAFT STORE (P0-4) ─────────────────────────────────
+  // Storage/domain layer only. Drafts are keyed by chatId and are not chat messages.
+  // They do not participate in message identity, merge/import, or chat JSON export.
+  const DraftStore = {
+    loadAll() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch (_) { return {}; }
+    },
+    get(key) {
+      if (!key) return null;
+      return this.loadAll()[key] || null;
+    },
+    set(key, text) {
+      if (!key) return;
+      const drafts = this.loadAll();
+      if (!text) {
+        delete drafts[key];
+      } else {
+        drafts[key] = { text, updatedAt: Date.now() };
+      }
+      localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+    },
+    clear(key) {
+      if (!key) return;
+      const drafts = this.loadAll();
+      if (!(key in drafts)) return;
+      delete drafts[key];
+      localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+    },
+    clearMany(keys) {
+      const drafts = this.loadAll();
+      let changed = false;
+      (keys || []).forEach(key => {
+        if (key && key in drafts) { delete drafts[key]; changed = true; }
+      });
+      if (changed) localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+    }
+  };
+
+  function getDraftKey(chatId = currentId) {
+    return chatId || NEW_CHAT_DRAFT_KEY;
+  }
+
+  function persistDraftNow(chatId = currentId, text = null) {
+    if (draftSaveTimer) {
+      clearTimeout(draftSaveTimer);
+      draftSaveTimer = null;
+    }
+    const input = document.getElementById('input');
+    const value = text === null ? (input?.value || '') : text;
+    DraftStore.set(getDraftKey(chatId), value);
+  }
+
+  function scheduleDraftSave(chatId, text) {
+    if (draftSaveTimer) clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(() => {
+      draftSaveTimer = null;
+      DraftStore.set(getDraftKey(chatId), text);
+    }, 300);
+  }
+
+  function restoreDraftForChat(chatId = currentId) {
+    const input = document.getElementById('input');
+    if (!input) return;
+    const draft = DraftStore.get(getDraftKey(chatId));
+    input.value = draft?.text || '';
+    autoResize(input);
+  }
+
+  function handleDraftInput(event) {
+    const input = event.currentTarget;
+    autoResize(input);
+    scheduleDraftSave(currentId, input.value);
+  }
 
   // ── 皮肤 ─────────────────────────────────────────────
   function setSkin(name) {
@@ -1327,7 +1519,13 @@
   }
 
   function loadChat(id) {
+    // Persist the previous chat's editor state before changing currentId. On initial
+    // bootstrap there is no rendered editor context yet, so do not overwrite a saved
+    // __new__ draft with the textarea's default empty value.
+    if (draftEditorInitialized) persistDraftNow(currentId);
     currentId = id;
+    restoreDraftForChat(id);
+    draftEditorInitialized = true;
     renderSidebar();
     const area = document.getElementById('chatArea');
     area.innerHTML = '';
@@ -1357,10 +1555,12 @@
   }
 
   function handleMoveChatToTrash(chatId) {
+    if (currentId === chatId) persistDraftNow(chatId);
     const result = moveChatToTrash(chatId);
     if (!result.ok) return;
     if (currentId === chatId) {
       currentId = null;
+      restoreDraftForChat(null);
       document.getElementById('chatArea').innerHTML =
         `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
     }
@@ -1729,6 +1929,7 @@
     const text = input.value.trim();
     if (!text) return;
 
+    const sourceDraftKey = getDraftKey(currentId);
     if (!currentId) newChat();
 
     // Lock the parent chat identity before any await.
@@ -1751,6 +1952,13 @@
     if (chat.title === '新对话') chat.title = text.slice(0, 24) + (text.length > 24 ? '…' : '');
     chat.updatedAt = Date.now();
     save();
+    // Once the user turn is durably stored as a message, the editor draft is no longer needed.
+    // Cancel any pending debounce first so stale pre-send text cannot be written back later.
+    if (draftSaveTimer) {
+      clearTimeout(draftSaveTimer);
+      draftSaveTimer = null;
+    }
+    DraftStore.clearMany([sourceDraftKey, requestChatId]);
 
     if (currentId === requestChatId) renderMsg('user', userMsg);
     renderSidebar();
@@ -2283,6 +2491,7 @@
     if (!trash[chatId]) return { ok: false, reason: 'TRASH_ITEM_NOT_FOUND' };
     delete trash[chatId];
     saveTrash(trash);
+    DraftStore.clear(chatId);
     // Text snapshot deletion above is already committed; audio cleanup failure
     // must not block or reverse it — deleteAudioWithFallback queues a retry instead.
     deleteAudioWithFallback(chatId);
@@ -2300,6 +2509,7 @@
       }
     });
     if (purged.length) saveTrash(trash);
+    DraftStore.clearMany(purged);
     purged.forEach(chatId => deleteAudioWithFallback(chatId));
     return { ok: true, action: 'purged', chatIds: purged };
   }
@@ -2365,6 +2575,275 @@
       saveTrash(trash);
     }
     return result;
+  }
+
+  // ── LOCAL DATA VIEWER (P0-3, READ-ONLY) ───────────────
+  // Data collectors below only read storage/domain state. Renderer/UI code consumes
+  // the snapshot but never writes through the Viewer.
+
+  function approximateBytes(value) {
+    try { return new Blob([String(value ?? '')]).size; }
+    catch (_) { return String(value ?? '').length; }
+  }
+
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 0) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  function collectProjectLocalStorage() {
+    const sensitive = new Set(['claude_key', 'el_key']);
+    const entries = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !(key.startsWith('claude_') || key === 'el_key')) continue;
+      const raw = localStorage.getItem(key) ?? '';
+      let parsed = null;
+      let kind = 'string';
+      try {
+        parsed = JSON.parse(raw);
+        kind = Array.isArray(parsed) ? 'array' : (parsed && typeof parsed === 'object' ? 'object' : typeof parsed);
+      } catch (_) {}
+      entries.push({
+        key,
+        raw,
+        parsed,
+        kind,
+        bytes: approximateBytes(raw),
+        sensitive: sensitive.has(key)
+      });
+    }
+    return entries.sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  function collectChatRecords() {
+    return chatOrder
+      .filter(chatId => chats[chatId])
+      .map(chatId => ({ chatId, chat: chats[chatId], location: 'active' }));
+  }
+
+  function collectTrashRecords() {
+    const trash = loadTrash();
+    return Object.keys(trash).map(chatId => ({
+      chatId,
+      chat: trash[chatId].chat,
+      item: trash[chatId],
+      location: 'trash'
+    }));
+  }
+
+  function collectDraftRecords() {
+    const drafts = DraftStore.loadAll();
+    return Object.entries(drafts)
+      .map(([key, value]) => ({ key, text: value?.text || '', updatedAt: value?.updatedAt || null }))
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  }
+
+  function readAudioInventory() {
+    return new Promise(resolve => {
+      if (!audioDB) return resolve({ ready: false, items: [], totalBytes: 0 });
+      const items = [];
+      let totalBytes = 0;
+      try {
+        const req = audioDB.transaction('audio').objectStore('audio').openCursor();
+        req.onsuccess = event => {
+          const cursor = event.target.result;
+          if (!cursor) return resolve({ ready: true, items, totalBytes });
+          const record = cursor.value || {};
+          const size = Number(record.blob?.size || 0);
+          items.push({ key: String(cursor.key), bytes: size, type: record.blob?.type || '' });
+          totalBytes += size;
+          cursor.continue();
+        };
+        req.onerror = () => resolve({ ready: true, items, totalBytes, error: '读取失败' });
+      } catch (_) {
+        resolve({ ready: true, items, totalBytes, error: '读取失败' });
+      }
+    });
+  }
+
+  function getViewerFilters() {
+    const keyword = (document.getElementById('viewerKeyword')?.value || '').trim().toLocaleLowerCase();
+    const fromRaw = document.getElementById('viewerDateFrom')?.value || '';
+    const toRaw = document.getElementById('viewerDateTo')?.value || '';
+    const from = fromRaw ? new Date(`${fromRaw}T00:00:00`).getTime() : null;
+    const to = toRaw ? new Date(`${toRaw}T23:59:59.999`).getTime() : null;
+    return { keyword, from, to };
+  }
+
+  function messageMatchesViewerFilters(message, chat, chatId, filters) {
+    const createdAt = isValidEpoch(message?.createdAt) ? message.createdAt : null;
+    if (filters.from !== null && (createdAt === null || createdAt < filters.from)) return false;
+    if (filters.to !== null && (createdAt === null || createdAt > filters.to)) return false;
+    if (!filters.keyword) return true;
+    const haystack = [
+      chatId,
+      chat?.title,
+      message?.id,
+      message?.role,
+      message?.content,
+      message?.en,
+      message?.zh,
+      message?.source,
+      message?.model,
+      message?.thinkingDisplay,
+      message?.apiResponseId
+    ].filter(Boolean).join('\n').toLocaleLowerCase();
+    return haystack.includes(filters.keyword);
+  }
+
+  function filterRecordMessages(record, filters) {
+    const messages = Array.isArray(record.chat?.messages) ? record.chat.messages : [];
+    if (!filters.keyword && filters.from === null && filters.to === null) return messages;
+    return messages.filter(message => messageMatchesViewerFilters(message, record.chat, record.chatId, filters));
+  }
+
+  function viewerMessageHtml(message) {
+    const time = isValidEpoch(message?.createdAt) ? formatMessageTimestamp(message) : '时间未知';
+    const body = message?.content || message?.zh || message?.en || message?.text || '';
+    const extras = [
+      message?.source ? `source=${message.source}` : '',
+      message?.model ? `model=${message.model}` : '',
+      message?.thinkingDisplay ? `display=${message.thinkingDisplay}` : ''
+    ].filter(Boolean).join(' · ');
+    return `<div class="viewer-message">
+      <div class="viewer-message-head">${escHtml(message?.role || 'unknown')} · ${escHtml(time)} · id=${escHtml(message?.id || '—')} · clientSeq=${escHtml(message?.clientSeq ?? '—')}${extras ? ` · ${escHtml(extras)}` : ''}</div>
+      <div class="viewer-message-body">${escHtml(body)}</div>
+    </div>`;
+  }
+
+  function viewerChatCardHtml(record, filteredMessages, canOpen) {
+    const chat = record.chat || {};
+    const totalMessages = Array.isArray(chat.messages) ? chat.messages.length : 0;
+    const filtered = filteredMessages.length;
+    const title = chat.title || '新对话';
+    const created = isValidEpoch(chat.createdAt) ? new Date(chat.createdAt).toLocaleString('zh-CN') : '时间未知';
+    const updated = isValidEpoch(chat.updatedAt) ? new Date(chat.updatedAt).toLocaleString('zh-CN') : '时间未知';
+    return `<details class="viewer-card">
+      <summary>${escHtml(title)} · ${filtered}/${totalMessages} messages</summary>
+      <div class="viewer-meta">chatId=${escHtml(record.chatId)}<br>createdAt=${escHtml(String(chat.createdAt ?? '—'))} (${escHtml(created)})<br>createdTimeZone=${escHtml(chat.createdTimeZone || '—')}<br>updatedAt=${escHtml(String(chat.updatedAt ?? '—'))} (${escHtml(updated)})</div>
+      ${canOpen ? `<button class="viewer-open-chat" type="button" data-viewer-chat-id="${escHtml(encodeURIComponent(record.chatId))}">打开对话</button>` : ''}
+      ${filteredMessages.map(viewerMessageHtml).join('') || '<div class="viewer-empty">没有匹配消息</div>'}
+    </details>`;
+  }
+
+  function renderViewerLocalStorage(entries) {
+    if (!entries.length) return '<div class="viewer-empty">没有项目 localStorage 数据</div>';
+    return entries.map(entry => {
+      let display;
+      if (entry.sensitive) {
+        display = '••••••••（敏感值已隐藏）';
+      } else if (entry.parsed !== null) {
+        try { display = JSON.stringify(entry.parsed, null, 2); }
+        catch (_) { display = entry.raw; }
+      } else {
+        display = entry.raw;
+      }
+      return `<details class="viewer-card">
+        <summary>${escHtml(entry.key)} · ${escHtml(entry.kind)} · 约 ${escHtml(formatBytes(entry.bytes))}</summary>
+        <pre class="viewer-pre">${escHtml(display)}</pre>
+      </details>`;
+    }).join('');
+  }
+
+  function renderViewerDrafts(drafts) {
+    if (!drafts.length) return '<div class="viewer-empty">没有未发送草稿</div>';
+    return drafts.map(draft => {
+      const title = draft.key === NEW_CHAT_DRAFT_KEY
+        ? '未绑定新对话'
+        : (chats[draft.key]?.title || loadTrash()[draft.key]?.chat?.title || draft.key);
+      const time = isValidEpoch(draft.updatedAt) ? new Date(draft.updatedAt).toLocaleString('zh-CN') : '时间未知';
+      return `<details class="viewer-card">
+        <summary>${escHtml(title)} · ${escHtml(time)}</summary>
+        <div class="viewer-meta">draftKey=${escHtml(draft.key)} · updatedAt=${escHtml(String(draft.updatedAt ?? '—'))}</div>
+        <div class="viewer-message-body" style="margin-top:7px;">${escHtml(draft.text)}</div>
+      </details>`;
+    }).join('');
+  }
+
+  function renderViewerAudio(audio) {
+    if (!audio.ready) return '<div class="viewer-empty">IndexedDB 正在打开，请稍后点“刷新”</div>';
+    if (audio.error) return `<div class="viewer-empty">Audio cache ${escHtml(audio.error)}</div>`;
+    if (!audio.items.length) return '<div class="viewer-empty">没有音频缓存</div>';
+    return audio.items.map(item => `<div class="viewer-card">
+      <div class="viewer-meta" style="margin-top:0;">${escHtml(item.key)} · ${escHtml(formatBytes(item.bytes))}${item.type ? ` · ${escHtml(item.type)}` : ''}</div>
+    </div>`).join('');
+  }
+
+  async function renderLocalDataViewer() {
+    const content = document.getElementById('viewerContent');
+    if (!content) return;
+    const filters = getViewerFilters();
+    const activeRecords = collectChatRecords();
+    const trashRecords = collectTrashRecords();
+    const drafts = collectDraftRecords();
+    const storage = collectProjectLocalStorage();
+
+    const activeMatches = activeRecords
+      .map(record => ({ record, messages: filterRecordMessages(record, filters) }))
+      .filter(item => item.messages.length > 0 || (!filters.keyword && filters.from === null && filters.to === null));
+    const trashMatches = trashRecords
+      .map(record => ({ record, messages: filterRecordMessages(record, filters) }))
+      .filter(item => item.messages.length > 0 || (!filters.keyword && filters.from === null && filters.to === null));
+
+    const totalMessages = activeRecords.reduce((sum, record) => sum + (record.chat.messages?.length || 0), 0);
+    const trashMessages = trashRecords.reduce((sum, record) => sum + (record.chat.messages?.length || 0), 0);
+
+    content.innerHTML = `
+      <div class="viewer-summary">
+        <span class="viewer-chip">Active chats ${activeRecords.length}</span>
+        <span class="viewer-chip">Messages ${totalMessages}</span>
+        <span class="viewer-chip">Trash ${trashRecords.length} / ${trashMessages} msgs</span>
+        <span class="viewer-chip">Drafts ${drafts.length}</span>
+        <span class="viewer-chip">localStorage ${storage.length} keys</span>
+        <span class="viewer-chip" id="viewerAudioSummary">Audio …</span>
+      </div>
+      <div class="viewer-section">
+        <div class="viewer-section-title">Chats</div>
+        ${activeMatches.map(item => viewerChatCardHtml(item.record, item.messages, true)).join('') || '<div class="viewer-empty">没有匹配的 active chat/message</div>'}
+      </div>
+      <div class="viewer-section">
+        <div class="viewer-section-title">Trash</div>
+        ${trashMatches.map(item => viewerChatCardHtml(item.record, item.messages, false)).join('') || '<div class="viewer-empty">没有匹配的 trash chat/message</div>'}
+      </div>
+      <div class="viewer-section">
+        <div class="viewer-section-title">Drafts</div>
+        ${renderViewerDrafts(drafts)}
+      </div>
+      <div class="viewer-section">
+        <div class="viewer-section-title">Audio / IndexedDB</div>
+        <div id="viewerAudioList"><div class="viewer-empty">读取中…</div></div>
+      </div>
+      <div class="viewer-section">
+        <div class="viewer-section-title">localStorage</div>
+        ${renderViewerLocalStorage(storage)}
+      </div>`;
+
+    content.querySelectorAll('[data-viewer-chat-id]').forEach(button => {
+      button.addEventListener('click', () => openViewerChat(decodeURIComponent(button.dataset.viewerChatId)));
+    });
+
+    const audio = await readAudioInventory();
+    // The modal may have been closed/re-rendered while IndexedDB was being read.
+    const audioList = document.getElementById('viewerAudioList');
+    const audioSummary = document.getElementById('viewerAudioSummary');
+    if (audioList) audioList.innerHTML = renderViewerAudio(audio);
+    if (audioSummary) audioSummary.textContent = audio.ready
+      ? `Audio ${audio.items.length} / ${formatBytes(audio.totalBytes)}`
+      : 'Audio DB opening';
+  }
+
+  function openViewer() {
+    document.getElementById('viewerModal').classList.add('open');
+    renderLocalDataViewer();
+  }
+
+  function openViewerChat(chatId) {
+    if (!chats[chatId]) return;
+    closeModal('viewerModal');
+    loadChat(chatId);
   }
 
   // ── EXPORT / IMPORT ──────────────────────────────────
@@ -2594,9 +3073,27 @@
   function initializeApp() {
     applySkin(currentSkin);
     initializeModelRegistry();
+
+    const input = document.getElementById('input');
+    input.addEventListener('input', handleDraftInput);
+    window.addEventListener('pagehide', () => persistDraftNow(currentId));
+
+    const viewerRefresh = document.getElementById('viewerRefreshBtn');
+    const viewerKeyword = document.getElementById('viewerKeyword');
+    const viewerDateFrom = document.getElementById('viewerDateFrom');
+    const viewerDateTo = document.getElementById('viewerDateTo');
+    viewerRefresh.addEventListener('click', renderLocalDataViewer);
+    viewerKeyword.addEventListener('input', renderLocalDataViewer);
+    viewerDateFrom.addEventListener('change', renderLocalDataViewer);
+    viewerDateTo.addEventListener('change', renderLocalDataViewer);
+
     if (!apiKey) setTimeout(() => openKey(), 400);
     renderSidebar();
     if (chatOrder.length > 0) loadChat(chatOrder[0]);
+    else {
+      restoreDraftForChat(null);
+      draftEditorInitialized = true;
+    }
     updateSendAvailability();
     if (apiKey) refreshModelRegistry();
   }
