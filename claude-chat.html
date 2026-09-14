@@ -936,6 +936,7 @@
   const MODEL_CACHE_KEY = 'claude_model_registry_v1';
   const MODEL_PREFS_KEY = 'claude_model_prefs_v1';
   const MODEL_SELECTION_KEY = 'claude_model';
+  const CURRENT_CHAT_KEY = 'claude_current_chat_v1';
   const DRAFTS_KEY = 'claude_drafts_v1';
   const NEW_CHAT_DRAFT_KEY = '__new__';
   const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -1524,6 +1525,8 @@
     // __new__ draft with the textarea's default empty value.
     if (draftEditorInitialized) persistDraftNow(currentId);
     currentId = id;
+    if (id && chats[id]) localStorage.setItem(CURRENT_CHAT_KEY, id);
+    else localStorage.removeItem(CURRENT_CHAT_KEY);
     restoreDraftForChat(id);
     draftEditorInitialized = true;
     renderSidebar();
@@ -1560,6 +1563,7 @@
     if (!result.ok) return;
     if (currentId === chatId) {
       currentId = null;
+      localStorage.removeItem(CURRENT_CHAT_KEY);
       restoreDraftForChat(null);
       document.getElementById('chatArea').innerHTML =
         `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
@@ -3089,8 +3093,17 @@
 
     if (!apiKey) setTimeout(() => openKey(), 400);
     renderSidebar();
-    if (chatOrder.length > 0) loadChat(chatOrder[0]);
+
+    // Restore the last active chat on this browser profile. If that chat no longer
+    // exists in active chats (for example it was moved to trash), fall back safely
+    // to the first active chat rather than keeping a stale identity.
+    const savedCurrentChatId = localStorage.getItem(CURRENT_CHAT_KEY);
+    const initialChatId = savedCurrentChatId && chats[savedCurrentChatId]
+      ? savedCurrentChatId
+      : (chatOrder.length > 0 ? chatOrder[0] : null);
+    if (initialChatId) loadChat(initialChatId);
     else {
+      localStorage.removeItem(CURRENT_CHAT_KEY);
       restoreDraftForChat(null);
       draftEditorInitialized = true;
     }
