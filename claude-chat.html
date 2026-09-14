@@ -2604,96 +2604,105 @@
     return 'very high intensity';
   }
 
-  function buildVoiceLabContextTag(expression, baseline) {
-    const parts = [];
-    const cleanBaseline = String(baseline || '').trim();
-    if (cleanBaseline) parts.push(`Baseline style: ${cleanBaseline}`);
-    const current = [expression?.stance, expression?.affect].filter(Boolean).join(', ');
-    parts.push(`Current response takes precedence: ${current || 'neutral'}, ${intensityToDeliveryLabel(expression?.intensity)}`);
-    if (expression?.deliveryIntent) parts.push(`Intent/subtext: ${expression.deliveryIntent}`);
-    return `[${parts.join('. ')}]`;
+  function normalizeVoiceLabTagPhrase(value) {
+    return String(value || '')
+      .replace(/[\[\]]/g, '')
+      .replace(/[;\n\r]+/g, ', ')
+      .replace(/[.!?]+\s+(?=\S)/g, ', ')
+      .replace(/[.!?]+$/g, '')
+      .replace(/\s*,\s*/g, ', ')
+      .replace(/,\s*,+/g, ', ')
+      .replace(/\s+/g, ' ')
+      .replace(/^\s*[,]+|[,]+\s*$/g, '')
+      .trim();
   }
 
-  function cueToElevenV3Tag(cue) {
+  function cueToElevenV3Phrase(cue) {
     const strength = cue?.strength || 'medium';
     const map = {
-      soft_laugh: { low: '[small soft laugh]', medium: '[laughs softly]', high: '[clear soft laugh]' },
-      laugh: { low: '[brief laugh]', medium: '[laughs]', high: '[laughs openly]' },
-      chuckle: { low: '[small chuckle]', medium: '[chuckles]', high: '[deep chuckle]' },
-      giggle: { low: '[small giggle]', medium: '[giggles]', high: '[bright giggle]' },
-      sigh: { low: '[small sigh]', medium: '[sighs]', high: '[deep sigh]' },
-      exhale: { low: '[soft exhale]', medium: '[exhales]', high: '[long exhale]' },
-      inhale: { low: '[small inhale]', medium: '[inhales]', high: '[sharp inhale]' },
-      gasp: { low: '[small gasp]', medium: '[gasps]', high: '[sharp gasp]' },
-      snort: { low: '[small amused snort]', medium: '[snorts]', high: '[clear snort]' },
-      throat_clear: { low: '[quietly clears throat]', medium: '[clears throat]', high: '[clears throat firmly]' },
-      whisper: { low: '[slightly hushed]', medium: '[whispers]', high: '[whispers closely]' },
-      lowered_voice: { low: '[slightly lowers voice]', medium: '[lowered voice]', high: '[voice drops noticeably]' },
-      hesitation: { low: '[brief hesitation]', medium: '[hesitates]', high: '[clear hesitation]' },
-      short_pause: { low: '[tiny pause]', medium: '[brief pause]', high: '[short deliberate pause]' },
-      long_pause: { low: '[pause]', medium: '[long pause]', high: '[long deliberate pause]' },
-      emphasis: { low: '[light emphasis]', medium: '[emphasizes]', high: '[strong emphasis]' },
-      trailing_off: { low: '[slight trailing off]', medium: '[trails off]', high: '[voice trails off clearly]' },
-      soften: { low: '[slightly softens]', medium: '[softens]', high: '[voice softens noticeably]' },
-      breathy: { low: '[slightly breathy]', medium: '[breathy]', high: '[very breathy]' }
+      soft_laugh: { low: 'small soft laugh', medium: 'laughs softly', high: 'clear soft laugh' },
+      laugh: { low: 'brief laugh', medium: 'laughs', high: 'laughs openly' },
+      chuckle: { low: 'small chuckle', medium: 'chuckles', high: 'deep chuckle' },
+      giggle: { low: 'small giggle', medium: 'giggles', high: 'bright giggle' },
+      sigh: { low: 'small sigh', medium: 'sighs', high: 'deep sigh' },
+      exhale: { low: 'soft exhale', medium: 'exhales', high: 'long exhale' },
+      inhale: { low: 'small inhale', medium: 'inhales', high: 'sharp inhale' },
+      gasp: { low: 'small gasp', medium: 'gasps', high: 'sharp gasp' },
+      snort: { low: 'small amused snort', medium: 'snorts', high: 'clear snort' },
+      throat_clear: { low: 'quietly clears throat', medium: 'clears throat', high: 'clears throat firmly' },
+      whisper: { low: 'slightly hushed', medium: 'whispers', high: 'whispers closely' },
+      lowered_voice: { low: 'slightly lowers voice', medium: 'lowered voice', high: 'voice drops noticeably' },
+      hesitation: { low: 'brief hesitation', medium: 'hesitates', high: 'clear hesitation' },
+      short_pause: { low: 'tiny pause', medium: 'brief pause', high: 'short deliberate pause' },
+      long_pause: { low: 'pause', medium: 'long pause', high: 'long deliberate pause' },
+      emphasis: { low: 'light emphasis', medium: 'emphasizes', high: 'strong emphasis' },
+      trailing_off: { low: 'slight trailing off', medium: 'trails off', high: 'voice trails off clearly' },
+      soften: { low: 'slightly softens', medium: 'softens', high: 'voice softens noticeably' },
+      breathy: { low: 'slightly breathy', medium: 'breathy', high: 'very breathy' }
     };
-    return map[cue?.type]?.[strength] || `[${String(cue?.type || 'natural').replace(/_/g, ' ')}]`;
+
+    let phrase = map[cue?.type]?.[strength] || String(cue?.type || 'natural').replace(/_/g, ' ');
+    const placement = EXPRESSION_CUE_PLACEMENTS.includes(cue?.placement) ? cue.placement : 'after';
+    const anchor = normalizeVoiceLabTagPhrase(cue?.anchor);
+
+    if (anchor && ['before', 'on', 'after'].includes(placement)) {
+      const relation = placement === 'on' ? 'on' : placement;
+      phrase += ` ${relation} “${anchor}”`;
+    } else if (placement === 'start') {
+      phrase += ' at the start';
+    } else if (placement === 'end') {
+      phrase += ' at the end';
+    }
+    return normalizeVoiceLabTagPhrase(phrase);
   }
 
-  function applyVoiceLabCueTags(text, cues) {
-    let output = String(text || '');
-    const deferredEnd = [];
-    (Array.isArray(cues) ? cues : []).forEach(cue => {
-      const tag = cueToElevenV3Tag(cue);
-      const placement = EXPRESSION_CUE_PLACEMENTS.includes(cue?.placement) ? cue.placement : 'after';
-      const anchor = typeof cue?.anchor === 'string' ? cue.anchor.trim() : '';
+  function buildVoiceLabTagParts(expression, baseline, options = {}) {
+    const parts = [];
+    const push = value => {
+      const clean = normalizeVoiceLabTagPhrase(value);
+      if (clean) parts.push(clean);
+    };
 
-      if (placement === 'start') {
-        output = `${tag} ${output}`;
-        return;
-      }
-      if (placement === 'end') {
-        deferredEnd.push(tag);
-        return;
-      }
-      if (anchor) {
-        const index = output.indexOf(anchor);
-        if (index >= 0) {
-          if (placement === 'after') {
-            const at = index + anchor.length;
-            output = `${output.slice(0, at)} ${tag}${output.slice(at)}`;
-          } else {
-            // "before" and "on" both place a delivery tag immediately before the anchored span;
-            // "on" semantically means the tag applies to that span rather than a separate event.
-            output = `${output.slice(0, index)}${tag} ${output.slice(index)}`;
-          }
-          return;
-        }
-      }
-      // Missing/unstable anchor: preserve the cue without guessing a false text location.
-      if (placement === 'before' || placement === 'on') output = `${tag} ${output}`;
-      else deferredEnd.push(tag);
-    });
-    if (deferredEnd.length) output = `${output} ${deferredEnd.join(' ')}`;
-    return output.trim();
+    push(baseline);
+    push(expression?.stance);
+    push(expression?.affect);
+    push(intensityToDeliveryLabel(expression?.intensity));
+    push(expression?.deliveryIntent);
+
+    if (options.includeCues) {
+      (Array.isArray(expression?.expressiveCues) ? expression.expressiveCues : [])
+        .map(cueToElevenV3Phrase)
+        .forEach(push);
+    }
+
+    if (options.includeDirection) push(expression?.performanceDirection);
+    return parts;
+  }
+
+  function buildSingleVoiceLabTag(parts) {
+    const clean = (parts || []).map(normalizeVoiceLabTagPhrase).filter(Boolean);
+    return clean.length ? `[${clean.join(', ')}]` : '';
   }
 
   function buildVoiceLabVariants(message, baseline = VoiceLabConfigStore.getBaseline()) {
     if (!message || message.role !== 'assistant' || message.language !== 'en') return null;
     const expression = message.expression || normalizeExpression(null);
     const raw = String(message.content || '').trim();
-    const contextTag = buildVoiceLabContextTag(expression, baseline);
-    const withContext = `${contextTag}\n${raw}`.trim();
-    const cueText = applyVoiceLabCueTags(raw, expression.expressiveCues || []);
-    const withCues = `${contextTag}\n${cueText}`.trim();
+
+    const bParts = buildVoiceLabTagParts(expression, baseline);
+    const cParts = buildVoiceLabTagParts(expression, baseline, { includeCues: true });
+    const dParts = buildVoiceLabTagParts(expression, baseline, { includeCues: true, includeDirection: true });
+
+    const bTag = buildSingleVoiceLabTag(bParts);
+    const cTag = buildSingleVoiceLabTag(cParts);
+    const dTag = buildSingleVoiceLabTag(dParts);
     const direction = String(expression.performanceDirection || '').trim();
-    const directionTag = direction ? `[Detailed performance direction: ${direction}]` : '[Detailed performance direction unavailable for this older message]';
-    const directed = `${contextTag}\n${directionTag}\n${cueText}`.trim();
+
     return {
       A: { label: 'A · Raw', description: '正文原样；Eleven v3 自己从文字推断表演。', text: raw },
-      B: { label: 'B · Context', description: '加 baseline + 当前 stance/affect/intensity + 隐含 deliveryIntent；不指定具体动作。', text: withContext },
-      C: { label: 'C · Cues', description: '在 B 基础上增加局部 vocal cues / placement / strength；仍不做细粒度导演。', text: withCues },
-      D: { label: 'D · Directed', description: '在 C 基础上加入 Claude 的具体 delivery direction（快慢、高低、语调、重音、节奏等）。', text: directed, available: !!direction }
+      B: { label: 'B · Context', description: '单一方括号：baseline + stance/affect/intensity + deliveryIntent；不带逻辑标题。', text: `${bTag}\n${raw}`.trim() },
+      C: { label: 'C · Cues', description: '在同一个方括号里继续累加 vocal cues / placement / strength。', text: `${cTag}\n${raw}`.trim() },
+      D: { label: 'D · Directed', description: '继续在同一个方括号里累加 performanceDirection（快慢、高低、语调、重音、节奏等）。', text: `${dTag}\n${raw}`.trim(), available: !!direction }
     };
   }
 
