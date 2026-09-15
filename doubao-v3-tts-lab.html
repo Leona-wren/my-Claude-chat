@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Doubao V3 TTS Lab</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:Canvas; color:CanvasText; }
+  .wrap { max-width:860px; margin:0 auto; padding:28px 18px 48px; }
+  h1 { font-size:22px; margin:0 0 8px; }
+  .sub { opacity:.72; margin:0 0 24px; line-height:1.6; }
+  .card { border:1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius:16px; padding:18px; margin:14px 0; }
+  label { display:block; font-size:13px; opacity:.78; margin:12px 0 6px; }
+  input, textarea, button { box-sizing:border-box; font:inherit; }
+  input, textarea { width:100%; padding:11px 12px; border-radius:10px; border:1px solid color-mix(in srgb, CanvasText 20%, transparent); background:Canvas; color:CanvasText; }
+  textarea { min-height:120px; resize:vertical; line-height:1.55; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; align-items:center; }
+  button { padding:10px 14px; border-radius:10px; border:1px solid color-mix(in srgb, CanvasText 22%, transparent); background:Canvas; color:CanvasText; cursor:pointer; }
+  button.primary { font-weight:650; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  audio { width:100%; margin-top:14px; }
+  pre { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.45; max-height:320px; overflow:auto; padding:12px; border-radius:10px; background:color-mix(in srgb, CanvasText 6%, transparent); }
+  .status { margin-top:12px; line-height:1.5; }
+  .ok { color:#268a45; }
+  .err { color:#b94747; }
+  .hint { font-size:12px; opacity:.7; line-height:1.55; }
+  @media (max-width:640px){ .row{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Doubao V3 TTS Lab</h1>
+  <p class="sub">只测试新版豆包语音 V3 浏览器直连。不会调用 Claude，不会修改聊天数据，也不会写入正式音频缓存。</p>
+
+  <div class="card">
+    <label for="apiKey">API Key</label>
+    <input id="apiKey" type="password" autocomplete="off" placeholder="只保存在本机 localStorage（可选）">
+
+    <div class="row">
+      <div>
+        <label for="speaker">Speaker ID</label>
+        <input id="speaker" value="zh_male_shenyeboke_uranus_bigtts">
+      </div>
+      <div>
+        <label for="resourceId">Resource ID</label>
+        <input id="resourceId" value="seed-tts-2.0">
+      </div>
+    </div>
+
+    <label for="text">测试文本</label>
+    <textarea id="text">你好，这是豆包语音合成模型二点零的浏览器直连测试。</textarea>
+
+    <div class="row">
+      <div>
+        <label for="speechRate">speech_rate（-50 ~ 100）</label>
+        <input id="speechRate" type="number" min="-50" max="100" step="1" value="0">
+      </div>
+      <div>
+        <label for="pitchRate">pitch（-12 ~ 12）</label>
+        <input id="pitchRate" type="number" min="-12" max="12" step="1" value="0">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="saveKey">保存 Key 到本机</button>
+      <button id="clearKey">清除本机 Key</button>
+      <button id="generate" class="primary">生成测试语音</button>
+    </div>
+
+    <div id="status" class="status"></div>
+    <audio id="audio" controls hidden></audio>
+    <p class="hint">如果浏览器报 CORS / Failed to fetch，说明新版 V3 接口不允许 GitHub Pages 这种 browser-direct 调用；这不是音色或请求正文的问题。此测试页不会影响正式前端。</p>
+  </div>
+
+  <div class="card">
+    <label>实际请求预览（Key 已隐藏）</label>
+    <pre id="preview"></pre>
+  </div>
+
+  <div class="card">
+    <label>原始响应 / 错误</label>
+    <pre id="debug">尚未请求。</pre>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional/sse';
+  const KEY_STORAGE = 'personal_ai_volcengine_speech_api_key_v1';
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    apiKey: $('apiKey'), speaker: $('speaker'), resourceId: $('resourceId'), text: $('text'),
+    speechRate: $('speechRate'), pitchRate: $('pitchRate'), saveKey: $('saveKey'), clearKey: $('clearKey'),
+    generate: $('generate'), status: $('status'), audio: $('audio'), preview: $('preview'), debug: $('debug')
+  };
+
+  let currentAudioUrl = null;
+  els.apiKey.value = localStorage.getItem(KEY_STORAGE) || '';
+
+  function clampInt(value, min, max, fallback = 0) {
+    const n = Number.parseInt(value, 10);
+    return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+  }
+
+  function requestId() {
+    return (crypto && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function buildRequest() {
+    const additions = {
+      post_process: { pitch: clampInt(els.pitchRate.value, -12, 12, 0) },
+      disable_markdown_filter: true,
+      enable_latex_tn: false,
+      latex_parser: 'v2'
+    };
+    const body = {
+      user: { uid: 'personal_ai_frontend' },
+      req_params: {
+        text: els.text.value.trim(),
+        speaker: els.speaker.value.trim(),
+        sample_rate: 24000,
+        audio_params: {
+          format: 'mp3',
+          speech_rate: clampInt(els.speechRate.value, -50, 100, 0),
+          loudness_rate: 0,
+          bit_rate: 64000
+        },
+        additions: JSON.stringify(additions)
+      }
+    };
+    return {
+      endpoint: ENDPOINT,
+      resourceId: els.resourceId.value.trim() || 'seed-tts-2.0',
+      speaker: els.speaker.value.trim(),
+      text: els.text.value.trim(),
+      body
+    };
+  }
+
+  function updatePreview() {
+    const req = buildRequest();
+    els.preview.textContent = JSON.stringify({
+      method: 'POST',
+      endpoint: req.endpoint,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': '***hidden***',
+        'X-Api-Resource-Id': req.resourceId,
+        'X-Api-Request-Id': '<new UUID each request>'
+      },
+      body: req.body
+    }, null, 2);
+  }
+
+  ['input','change'].forEach(evt => {
+    [els.speaker, els.resourceId, els.text, els.speechRate, els.pitchRate].forEach(el => el.addEventListener(evt, updatePreview));
+  });
+
+  els.saveKey.addEventListener('click', () => {
+    const key = els.apiKey.value.trim();
+    if (!key) {
+      localStorage.removeItem(KEY_STORAGE);
+      els.status.className = 'status';
+      els.status.textContent = 'Key 为空；未保存。';
+      return;
+    }
+    localStorage.setItem(KEY_STORAGE, key);
+    els.status.className = 'status ok';
+    els.status.textContent = 'API Key 已仅保存到当前浏览器 localStorage。';
+  });
+
+  els.clearKey.addEventListener('click', () => {
+    localStorage.removeItem(KEY_STORAGE);
+    els.apiKey.value = '';
+    els.status.className = 'status';
+    els.status.textContent = '本机保存的 API Key 已清除。';
+  });
+
+  function concatUint8Arrays(chunks) {
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.length; }
+    return out;
+  }
+
+  function base64ToBytes(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  function parseSseText(raw) {
+    const audioChunks = [];
+    const events = [];
+    for (const line of raw.split(/\r?\n/)) {
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      let obj;
+      try { obj = JSON.parse(payload); }
+      catch (err) { events.push({ parseError: String(err), payload }); continue; }
+      events.push(obj);
+      const code = obj?.code;
+      if (code != null && code !== 0 && code !== 20000000) {
+        throw new Error(`Volcengine API error ${code}: ${obj?.message || 'Unknown error'}`);
+      }
+      if (typeof obj?.data === 'string' && obj.data) audioChunks.push(base64ToBytes(obj.data));
+    }
+    if (!audioChunks.length) throw new Error('接口返回中没有找到音频 data。请查看下方原始响应。');
+    return { audioBytes: concatUint8Arrays(audioChunks), events };
+  }
+
+  els.generate.addEventListener('click', async () => {
+    const apiKey = els.apiKey.value.trim();
+    const req = buildRequest();
+    if (!apiKey) { els.status.className = 'status err'; els.status.textContent = '请先填入 API Key。'; return; }
+    if (!req.text) { els.status.className = 'status err'; els.status.textContent = '测试文本不能为空。'; return; }
+    if (!req.speaker) { els.status.className = 'status err'; els.status.textContent = 'Speaker ID 不能为空。'; return; }
+
+    els.generate.disabled = true;
+    els.status.className = 'status';
+    els.status.textContent = '正在请求豆包 V3…';
+    els.debug.textContent = '请求中…';
+    const rid = requestId();
+
+    try {
+      const response = await fetch(req.endpoint, {
+        method: 'POST', mode: 'cors',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+          'X-Api-Resource-Id': req.resourceId,
+          'X-Api-Request-Id': rid
+        },
+        body: JSON.stringify(req.body)
+      });
+
+      const raw = await response.text();
+      els.debug.textContent = JSON.stringify({ httpStatus: response.status, ok: response.ok, requestId: rid, responseText: raw }, null, 2);
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${raw.slice(0, 800)}`);
+
+      const parsed = parseSseText(raw);
+      const blob = new Blob([parsed.audioBytes], { type: 'audio/mpeg' });
+      if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+      currentAudioUrl = URL.createObjectURL(blob);
+      els.audio.src = currentAudioUrl;
+      els.audio.hidden = false;
+      els.status.className = 'status ok';
+      els.status.textContent = `成功：收到 ${(blob.size / 1024).toFixed(1)} KB MP3。`;
+      els.debug.textContent = JSON.stringify({ httpStatus: response.status, ok: response.ok, requestId: rid, parsedEvents: parsed.events }, null, 2);
+    } catch (err) {
+      els.status.className = 'status err';
+      els.status.textContent = (err instanceof TypeError && /fetch/i.test(String(err)))
+        ? '请求失败：浏览器可能被 CORS / 网络层拦截。请看下方错误。'
+        : `请求失败：${err.message || err}`;
+      els.debug.textContent += `\n\nERROR:\n${err?.stack || err}`;
+    } finally {
+      els.generate.disabled = false;
+    }
+  });
+
+  window.addEventListener('beforeunload', () => { if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl); });
+  updatePreview();
+})();
+</script>
+</body>
+</html>
