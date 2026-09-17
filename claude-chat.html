@@ -252,6 +252,89 @@
     margin-bottom: 2px;
   }
 
+  .settings-launch-btn {
+    width: 100%;
+    height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-soft);
+    font-size: 13px;
+    font-family: 'Helvetica Neue', sans-serif;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+
+  .settings-launch-btn:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+
+  .settings-modal {
+    max-width: 520px;
+    max-height: 84dvh;
+    overflow-y: auto;
+    gap: 18px;
+  }
+
+  .settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .settings-section-title {
+    font-size: 11px;
+    color: var(--text-soft);
+    font-family: 'Helvetica Neue', sans-serif;
+    letter-spacing: 0.04em;
+    padding: 0 2px;
+  }
+
+  .settings-actions {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  .settings-action {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 13px;
+    font-family: 'Helvetica Neue', sans-serif;
+    padding: 10px 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .settings-action:last-child { border-bottom: 0; }
+  .settings-action:hover { background: var(--hover); }
+
+  .settings-skin-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg);
+    padding: 11px 12px;
+  }
+
+  .settings-skin-name {
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-right: 2px;
+  }
+
   /* MAIN */
   .main {
     flex: 1;
@@ -740,7 +823,7 @@
     .chat-area { padding: 14px; }
   }
 
-  /* 语音播放按钮 */
+  /* Legacy standalone play button is kept for old bilingual messages only. */
   .play-btn {
     display: inline-flex;
     align-items: center;
@@ -760,6 +843,145 @@
   .play-btn:hover { background: var(--hover); color: var(--text); }
   .play-btn.playing { color: var(--accent); border-color: var(--accent); }
   .play-btn svg { width: 12px; height: 12px; fill: currentColor; flex-shrink: 0; }
+
+  /* Current assistant voice-message presentation.
+     This is presentation only: the hidden trigger still calls the existing playVoice(). */
+  .voice-bar {
+    width: var(--voice-width, 148px);
+    min-width: 104px;
+    max-width: min(220px, 58vw);
+    height: 36px;
+    padding: 0 10px 0 11px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--hover) 82%, var(--input-bg));
+    color: var(--text-soft);
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+    user-select: none;
+    outline: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.035);
+    transition: border-color 0.16s, background 0.16s, color 0.16s, transform 0.1s, box-shadow 0.16s;
+  }
+
+  .voice-bar:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--hover) 68%, var(--input-bg));
+  }
+
+  .voice-bar:active { transform: scale(0.985); }
+
+  .voice-bar:focus-visible {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  .voice-bar:has(.voice-engine-trigger.playing) {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, var(--input-bg));
+  }
+
+  .voice-bar-icon {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    opacity: 0.78;
+  }
+
+  .voice-bar-icon path,
+  .voice-bar-icon circle {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .voice-wave {
+    flex: 1;
+    height: 18px;
+    min-width: 28px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    opacity: 0.58;
+  }
+
+  .voice-wave i {
+    display: block;
+    width: 2px;
+    flex: 1 1 auto;
+    max-width: 3px;
+    border-radius: 999px;
+    background: currentColor;
+    transform-origin: center;
+    transition: height 0.16s ease;
+  }
+
+  .voice-wave i:nth-child(1) { height: 5px; }
+  .voice-wave i:nth-child(2) { height: 9px; }
+  .voice-wave i:nth-child(3) { height: 13px; }
+  .voice-wave i:nth-child(4) { height: 8px; }
+  .voice-wave i:nth-child(5) { height: 16px; }
+  .voice-wave i:nth-child(6) { height: 11px; }
+  .voice-wave i:nth-child(7) { height: 6px; }
+  .voice-wave i:nth-child(8) { height: 12px; }
+  .voice-wave i:nth-child(9) { height: 7px; }
+
+  .voice-bar:has(.voice-engine-trigger.playing) .voice-wave i {
+    animation: voicePulse 0.72s ease-in-out infinite alternate;
+  }
+  .voice-bar:has(.voice-engine-trigger.playing) .voice-wave i:nth-child(2n) { animation-delay: -0.28s; }
+  .voice-bar:has(.voice-engine-trigger.playing) .voice-wave i:nth-child(3n) { animation-delay: -0.46s; }
+
+  @keyframes voicePulse {
+    from { transform: scaleY(0.72); opacity: 0.62; }
+    to   { transform: scaleY(1.18); opacity: 1; }
+  }
+
+  .voice-cache-slot {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 8px;
+    display: grid;
+    place-items: center;
+  }
+
+  .voice-unheard-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    transform: scale(0.7);
+    transition: opacity 0.16s, transform 0.16s;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 9%, transparent);
+  }
+
+  .voice-bar.cache-missing .voice-unheard-dot {
+    opacity: 0.76;
+    transform: scale(1);
+  }
+
+  /* Existing TTS button object remains the engine trigger, but is not part of the visible UI. */
+  .voice-engine-trigger {
+    display: none !important;
+  }
+
+  .transcript-bubble {
+    margin-top: 2px;
+  }
+
+  @media (max-width: 580px) {
+    .voice-bar {
+      min-width: 98px;
+      max-width: min(190px, 56vw);
+      height: 34px;
+    }
+  }
 
   /* Temporary P1-1 shadow/debug affordance. Expression remains hidden from normal chat text. */
   .debug-btn {
@@ -896,19 +1118,9 @@
   </div>
   <div class="chat-list" id="chatList"></div>
   <div class="sidebar-footer">
-    <div class="skin-label">外观</div>
-    <div class="skin-row">
-      <div class="skin-dot dot-warm selected" title="自然绿" onclick="setSkin('warm')"></div>
-      <div class="skin-dot dot-dark" title="墨夜" onclick="setSkin('dark')"></div>
-      <div class="skin-dot dot-wa" title="WhatsApp" onclick="setSkin('wa')"></div>
-    </div>
-    <button class="sidebar-btn" onclick="exportChats()">💾 导出聊天记录</button>
-    <button class="sidebar-btn" onclick="document.getElementById('importFile').click()">📂 导入聊天记录</button>
-    <button class="sidebar-btn" onclick="openMemory()">🧠 记忆设置</button>
-    <button class="sidebar-btn" onclick="openKey()">🔑 API Key</button>
-    <button class="sidebar-btn" onclick="openElKey()">🔊 语音 Key</button>
-    <button class="sidebar-btn" onclick="openViewer()">🔎 本地数据</button>
-    <button class="sidebar-btn" onclick="openTrash()">🗑 回收站</button>
+    <button class="settings-launch-btn" type="button" onclick="openSettings()" aria-label="打开设置">
+      <span aria-hidden="true">⚙︎</span><span>设置</span>
+    </button>
   </div>
 </div>
 
@@ -960,6 +1172,58 @@
       </button>
     </div>
   </footer>
+</div>
+
+<!-- SETTINGS: presentation/navigation only; existing feature functions remain unchanged. -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal settings-modal">
+    <h2>设置</h2>
+
+    <div class="settings-section">
+      <div class="settings-section-title">外观</div>
+      <div class="settings-skin-row">
+        <span class="settings-skin-name">皮肤</span>
+        <div class="skin-dot dot-warm selected" title="自然绿" onclick="setSkin('warm')"></div>
+        <div class="skin-dot dot-dark" title="墨夜" onclick="setSkin('dark')"></div>
+        <div class="skin-dot dot-wa" title="WhatsApp" onclick="setSkin('wa')"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">数据</div>
+      <div class="settings-actions">
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');exportChats()">导出聊天记录</button>
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');document.getElementById('importFile').click()">导入聊天记录</button>
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openTrash()">回收站</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">AI</div>
+      <div class="settings-actions">
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openMemory()">记忆设置</button>
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openKey()">Anthropic API Key</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">语音</div>
+      <div class="settings-actions">
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openElKey()">语音 Key</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">开发</div>
+      <div class="settings-actions">
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openViewer()">本地数据</button>
+      </div>
+    </div>
+
+    <div class="modal-btns">
+      <button class="btn-cancel" type="button" onclick="closeModal('settingsModal')">关闭</button>
+    </div>
+  </div>
 </div>
 
 <!-- P1-1 EXPRESSION SHADOW DEBUG (temporary observability; read-only) -->
@@ -1912,6 +2176,127 @@
     };
   }
 
+  // ── VOICE MESSAGE PRESENTATION (UI only) ─────────────────
+  // These helpers read existing message/cache state and forward clicks to playVoice().
+  // They never write message fields or participate in identity/import/merge/TTS routing.
+
+  function voiceBarDisplayWidth(text) {
+    const source = String(text || '');
+    let units = 0;
+    for (const ch of source) {
+      if (/[\u3400-\u9fff]/.test(ch)) units += 1;
+      else if (/\s/.test(ch)) units += 0.18;
+      else units += 0.52;
+    }
+    const width = Math.round(96 + Math.sqrt(Math.max(1, units)) * 15);
+    return Math.max(108, Math.min(214, width));
+  }
+
+  function voiceWaveMarkup() {
+    return '<span class="voice-wave" aria-hidden="true">' +
+      '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>' +
+    '</span>';
+  }
+
+  function voiceBarMarkup(msg, msgIndex, blockIndex, cleanText) {
+    const isBlock = Number.isInteger(blockIndex);
+    const block = isBlock ? msg?.deliveryBlocks?.[blockIndex] : null;
+    const blockId = isBlock ? (block?.blockId || `b${blockIndex + 1}`) : 'legacy';
+    const width = voiceBarDisplayWidth(cleanText);
+    const blockIndexAttr = isBlock ? ` data-block-index="${blockIndex}"` : '';
+    const chatId = msg?.chatId || currentId || '';
+    const language = msg?.language || '';
+
+    return `<button class="voice-bar cache-unknown" type="button"
+        style="--voice-width:${width}px"
+        data-voice-chat-id="${chatId}"
+        data-voice-message-id="${msg?.id || ''}"
+        data-voice-block-id="${blockId}"
+        data-voice-language="${language}"
+        onclick="playVoiceFromBar(this)"
+        aria-label="播放语音">
+      <svg class="voice-bar-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 10v4"></path>
+        <path d="M9 7v10"></path>
+        <path d="M13 5v14"></path>
+        <path d="M17 8v8"></path>
+        <path d="M21 10v4"></path>
+      </svg>
+      ${voiceWaveMarkup()}
+      <span class="voice-cache-slot" aria-hidden="true"><span class="voice-unheard-dot"></span></span>
+      <span class="play-btn voice-engine-trigger"
+        data-msg-id="${msg?.id || ''}"
+        data-index="${msgIndex}"${blockIndexAttr}></span>
+    </button>`;
+  }
+
+  function getVoiceBarCachePrefix(bar) {
+    const chatId = bar?.dataset?.voiceChatId || '';
+    const messageId = bar?.dataset?.voiceMessageId || '';
+    const blockId = bar?.dataset?.voiceBlockId || '';
+    const language = bar?.dataset?.voiceLanguage || '';
+    if (!chatId || !messageId || !blockId || !language) return null;
+    return `${chatId}_${messageId}__${blockId}__${language}__`;
+  }
+
+  function hasCachedAudioWithPrefix(prefix) {
+    return new Promise(resolve => {
+      if (!prefix) return resolve(false);
+      if (!audioDB) return resolve(null);
+      try {
+        const lower = prefix;
+        const upper = prefix + '\uffff';
+        const range = IDBKeyRange.bound(lower, upper);
+        const req = audioDB.transaction('audio').objectStore('audio').openCursor(range);
+        req.onsuccess = event => resolve(!!event.target.result);
+        req.onerror = () => resolve(false);
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  }
+
+  async function syncVoiceBarCacheState(bar) {
+    if (!bar?.isConnected) return;
+    const prefix = getVoiceBarCachePrefix(bar);
+    const cached = await hasCachedAudioWithPrefix(prefix);
+
+    if (cached === null) {
+      const retry = Number(bar.dataset.cacheProbeRetry || 0);
+      if (retry < 20) {
+        bar.dataset.cacheProbeRetry = String(retry + 1);
+        setTimeout(() => syncVoiceBarCacheState(bar), 120);
+      }
+      return;
+    }
+
+    bar.classList.remove('cache-unknown', 'cache-missing', 'cache-ready');
+    bar.classList.add(cached ? 'cache-ready' : 'cache-missing');
+    bar.dataset.cacheProbeRetry = '0';
+  }
+
+  function hydrateVoiceBarCacheState(root) {
+    root?.querySelectorAll?.('.voice-bar').forEach(bar => syncVoiceBarCacheState(bar));
+  }
+
+  async function playVoiceFromBar(bar) {
+    const trigger = bar?.querySelector('.voice-engine-trigger');
+    if (!trigger) return;
+    await playVoice(trigger);
+
+    // putAudio() is intentionally left untouched; this presentation layer merely
+    // re-reads IndexedDB until a newly generated cache record becomes visible.
+    let attempts = 0;
+    const refresh = async () => {
+      if (!bar.isConnected) return;
+      await syncVoiceBarCacheState(bar);
+      if (bar.classList.contains('cache-ready') || attempts >= 40) return;
+      attempts += 1;
+      setTimeout(refresh, 350);
+    };
+    setTimeout(refresh, 120);
+  }
+
   function renderMsg(role, msgOrText, animate = true, msgIndex = -1) {
     const area = document.getElementById('chatArea');
     const hint = document.getElementById('emptyHint');
@@ -1933,10 +2318,8 @@
             const blockText = getDeliveryBlockCleanText(block);
             const hasVoice = !!blockText && ((msg.language === 'en' && !!elKey) || (msg.language === 'zh' && !!doubaoProxyToken));
             return `<div class="delivery-block">
-              <div class="bubble">${escHtml(blockText)}</div>
-              ${hasVoice ? `<button class="play-btn" data-msg-id="${msg.id || ''}" data-index="${msgIndex}" data-block-index="${blockIndex}" onclick="playVoice(this)">
-                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
-              </button>` : ''}
+              ${hasVoice ? voiceBarMarkup(msg, msgIndex, blockIndex, blockText) : ''}
+              <div class="bubble transcript-bubble">${escHtml(blockText)}</div>
             </div>`;
           }).join('');
           div.innerHTML = `${blockHtml}
@@ -1945,10 +2328,8 @@
         } else {
           const hasVoice = !!msg.content && ((msg.language === 'en' && !!elKey) || (msg.language === 'zh' && !!doubaoProxyToken));
           div.innerHTML = `
-            <div class="bubble">${escHtml(msg.content || '')}</div>
-            ${hasVoice ? `<button class="play-btn" data-msg-id="${msg.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
-              <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
-            </button>` : ''}
+            ${hasVoice ? voiceBarMarkup(msg, msgIndex, null, msg.content || '') : ''}
+            <div class="bubble transcript-bubble">${escHtml(msg.content || '')}</div>
             ${hasDebug ? `<button class="debug-btn" type="button" onclick="openExpressionDebug('${msg.id || ''}')">Debug</button>` : ''}
             <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
         }
@@ -1974,6 +2355,7 @@
     }
 
     area.appendChild(div);
+    hydrateVoiceBarCacheState(div);
     area.scrollTop = area.scrollHeight;
   }
 
@@ -2942,6 +3324,10 @@
   }
 
   // ── MODALS ───────────────────────────────────────────
+  function openSettings() {
+    document.getElementById('settingsModal').classList.add('open');
+  }
+
   function openKey() {
     document.getElementById('keyInput').value = apiKey ? '••••••••••••••••' : '';
     document.getElementById('keyModal').classList.add('open');
