@@ -966,7 +966,7 @@
 <div class="modal-overlay" id="expressionDebugModal">
   <div class="modal expression-debug-modal">
     <h2>Response Debug</h2>
-    <p>Response Core 观察：Expression 仅作 provider-neutral 元数据；SpeechPlan 会编译为 Eleven v3 的实际输入。</p>
+    <p>Response Core 观察：Expression 仅作 provider-neutral 元数据；SpeechPlan 按回复语言编译到对应 TTS provider。</p>
     <div id="expressionDebugContent"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('expressionDebugModal')">关闭</button>
@@ -1001,12 +1001,15 @@
 </div>
 
 
-<!-- EL KEY MODAL -->
+<!-- VOICE KEY MODAL -->
 <div class="modal-overlay" id="elModal">
   <div class="modal">
     <h2>语音 Key</h2>
-    <p>输入你的 ElevenLabs API Key，保存在本地浏览器。没有 Key 则不显示播放按钮。</p>
+    <p>English：ElevenLabs API Key。中文：阿里 FC Proxy Token。都只保存在本地浏览器。</p>
+    <label for="elKeyInput">ElevenLabs API Key</label>
     <input type="password" id="elKeyInput" placeholder="sk_..." />
+    <label for="doubaoProxyTokenInput">中文 TTS Proxy Token</label>
+    <input type="password" id="doubaoProxyTokenInput" placeholder="Proxy Token" />
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('elModal')">取消</button>
       <button class="btn-save" onclick="saveElKey()">保存</button>
@@ -1076,6 +1079,11 @@
   const ELEVEN_TTS_MODEL = 'eleven_v3';
   const ELEVEN_RENDER_VERSION = 1;
   const ELEVEN_V3_VOICE_SETTINGS = { stability: 0.35, similarity_boost: 0.75, style: 0, speed: 1 };
+  const DOUBAO_PROXY_URL = 'https://persona-gateway-oxcpmcibhq.cn-beijing.fcapp.run';
+  const DOUBAO_PROXY_TOKEN_KEY = 'personal_ai_tts_proxy_token_v1';
+  const DOUBAO_TTS_MODEL = 'seed-tts-2.0';
+  const DOUBAO_VOICE_ID = 'ICL_uranus_zh_male_dichenqianquan_tob';
+  const DOUBAO_RENDER_VERSION = 1;
 
   // Offline/first-load fallback only. A successful GET /v1/models replaces this list.
   // Capabilities here intentionally cover only the controls this frontend needs.
@@ -1107,6 +1115,7 @@
   let modelPrefs = JSON.parse(localStorage.getItem(MODEL_PREFS_KEY) || '{}');
   let modelRegistry = [];
   let elKey = localStorage.getItem('el_key') || '';
+  let doubaoProxyToken = localStorage.getItem(DOUBAO_PROXY_TOKEN_KEY) || '';
   const EL_VOICE = '0qHbGTWOPgPUvThY4Te6';
   let currentAudio = null;
   let currentSkin = localStorage.getItem('claude_skin') || 'warm';
@@ -1922,7 +1931,7 @@
         if (blocks) {
           const blockHtml = blocks.map((block, blockIndex) => {
             const blockText = getDeliveryBlockCleanText(block);
-            const hasVoice = msg.language === 'en' && !!blockText && !!elKey;
+            const hasVoice = !!blockText && ((msg.language === 'en' && !!elKey) || (msg.language === 'zh' && !!doubaoProxyToken));
             return `<div class="delivery-block">
               <div class="bubble">${escHtml(blockText)}</div>
               ${hasVoice ? `<button class="play-btn" data-msg-id="${msg.id || ''}" data-index="${msgIndex}" data-block-index="${blockIndex}" onclick="playVoice(this)">
@@ -1934,7 +1943,7 @@
             ${hasDebug ? `<button class="debug-btn" type="button" onclick="openExpressionDebug('${msg.id || ''}')">Debug</button>` : ''}
             <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
         } else {
-          const hasVoice = msg.language === 'en' && !!msg.content && !!elKey;
+          const hasVoice = !!msg.content && ((msg.language === 'en' && !!elKey) || (msg.language === 'zh' && !!doubaoProxyToken));
           div.innerHTML = `
             <div class="bubble">${escHtml(msg.content || '')}</div>
             ${hasVoice ? `<button class="play-btn" data-msg-id="${msg.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
@@ -2025,7 +2034,7 @@
         '每个数组元素只放一个独立 tag 的内容，不要包含方括号。tag 使用开放自然语言，不使用固定词表或预设枚举；应根据当前完整语境自由选择最合适的声音表演指令，但每个 tag 都必须短、具体、可听见、可执行。' +
         '不要写原因、背景说明、baseline、人际关系标签或抽象分析；不要在 tag 中引用、复述或嵌入任何正文原句；不要写 “after X / before X” 之类的定位说明，位置由 tagsBefore/tagsAfter 的结构本身表达。' +
         '每个 block 会被 Eleven v3 独立合成，不能依赖前一个 block 的 tag 自动延续到后一个 block。若某个 block 按中性字面朗读会丢失你在完整语境中真正想表达的语气、节奏或声音动作，就应在该 block 内留下足够的局部 tag；但不要为了数量而机械地给每个 part 强塞 tag，也不要堆叠没有可听见作用的近义词。expression 与 deliveryBlocks 描述的是同一条回复，不应彼此矛盾，但 speechPlan 不需要从 expression 推导。'
-      : '\n\n当前回复语言为中文。deliveryBlocks 仍负责把完整正文组织成 UI 展示单元，但 tagsBefore 与 tagsAfter 必须为空数组；当前版本不把 Eleven v3 英文 tag 用于中文 TTS。';
+      : '\n\nSpeechPlan 规则：中文 deliveryBlocks 与正文在同一次完整语境理解中共同构成。tagsBefore/tagsAfter 是给豆包 TTS 的自然语言表演提示，应结合完整对话语境、当前语义以及你真正打算如何说这句话来生成。每个数组元素只写一项简洁、具体的表演要求，不包含方括号或 #；使用自然中文和开放表达。';
 
     let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。' +
       '\n\n回复语言规则：' + languageRule +
@@ -2190,7 +2199,7 @@
   }
 
   function normalizeTagList(list, language) {
-    if (language !== 'en' || !Array.isArray(list)) return [];
+    if (!REPLY_LANGUAGES.has(language) || !Array.isArray(list)) return [];
     const seen = new Set();
     return list.slice(0, 6).flatMap(item => {
       const tag = normalizeSpeechTag(item);
@@ -2620,12 +2629,20 @@
 
     const validation = msg.language ? validateReplyLanguage(msg.content, msg.language) : null;
     const expression = msg.expression || null;
-    const plannedProvider = msg.language === 'zh' ? 'Volcengine（尚未接入）' : msg.language === 'en' ? 'ElevenLabs' : 'Legacy';
-    const currentVoice = msg.language === 'en' ? `ElevenLabs · ${ELEVEN_TTS_MODEL} · ${EL_VOICE}` : '—';
+    const plannedProvider = msg.language === 'zh' ? 'Doubao via Aliyun FC' : msg.language === 'en' ? 'ElevenLabs' : 'Legacy';
+    const currentVoice = msg.language === 'en'
+      ? `ElevenLabs · ${ELEVEN_TTS_MODEL} · ${EL_VOICE}`
+      : msg.language === 'zh'
+        ? `Doubao · ${DOUBAO_TTS_MODEL} · ${DOUBAO_VOICE_ID}`
+        : '—';
     const blocks = Array.isArray(msg.deliveryBlocks) ? msg.deliveryBlocks : [];
-    const speechBlocksPreview = blocks.length ? blocks.map((block, blockIndex) =>
-      `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${compileDeliveryBlockForElevenV3(block)}`
-    ).join('\n\n') : '—';
+    const speechBlocksPreview = blocks.length ? blocks.map((block, blockIndex) => {
+      if (msg.language === 'zh') {
+        const compiled = compileDeliveryBlockForDoubao(block);
+        return `b${blockIndex + 1} · joinAfter=${block.joinAfter}\ninstruction: ${compiled.instruction || '（无）'}\ntext: ${compiled.text}`;
+      }
+      return `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${compileDeliveryBlockForElevenV3(block)}`;
+    }).join('\n\n') : '—';
 
     const rows = [
       ['messageId', msg.id || '—'],
@@ -2636,9 +2653,9 @@
       ['intensity', expression ? String(expression.intensity) : '—'],
       ['Expression mode', expression ? 'provider-neutral metadata；不控制 TTS' : 'none / legacy'],
       ['SpeechPlan schema', msg.speechPlanSchemaVersion ? `v${msg.speechPlanSchemaVersion}` : (blocks.length ? 'legacy / unversioned' : 'none')],
-      ['Speech blocks / Eleven v3 text', speechBlocksPreview],
+      ['Speech blocks / provider input', speechBlocksPreview],
       ['planned voice route', plannedProvider],
-      ['current English TTS', currentVoice]
+      ['current TTS', currentVoice]
     ];
 
     document.getElementById('expressionDebugContent').innerHTML =
@@ -2676,6 +2693,150 @@
     return tokens.join(' ').replace(/[ \t]+/g, ' ').trim();
   }
 
+  // Provider adapter only: the same stored speech tags are compiled into Doubao's
+  // single guidance form. Claude never spends output tokens on [# ...] syntax.
+  function compileDeliveryBlockForDoubao(block) {
+    const text = normalizeTtsInlineText(getDeliveryBlockCleanText(block));
+    const tags = [];
+    const seen = new Set();
+
+    (block?.parts || []).forEach(part => {
+      [...(part.tagsBefore || []), ...(part.tagsAfter || [])].forEach(rawTag => {
+        const normalized = normalizeSpeechTag(rawTag);
+        if (!normalized) return;
+        const clean = normalized.replace(/^#\s*/, '').trim();
+        if (!clean || seen.has(clean)) return;
+        seen.add(clean);
+        tags.push(clean);
+      });
+    });
+
+    return {
+      text,
+      instruction: tags.length ? `[#${tags.join('，')}]` : ''
+    };
+  }
+
+  function base64ToAudioBlob(base64, contentType = 'audio/mpeg') {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: contentType });
+  }
+
+  async function playDoubaoVoice(btn, msg, requestedBlockIndex) {
+    if (!doubaoProxyToken) {
+      setStatus('请先在左下角设置中文 TTS Proxy Token', 'err');
+      return;
+    }
+
+    const msgId = msg?.id || btn.dataset.msgId || '';
+    const blocks = Array.isArray(msg?.deliveryBlocks) && msg.deliveryBlocks.length ? msg.deliveryBlocks : null;
+    let text = '';
+    let instruction = '';
+    let blockId = 'legacy';
+
+    if (blocks && requestedBlockIndex !== null && blocks[requestedBlockIndex]) {
+      const block = blocks[requestedBlockIndex];
+      const compiled = compileDeliveryBlockForDoubao(block);
+      text = compiled.text;
+      instruction = compiled.instruction;
+      blockId = block.blockId || `b${requestedBlockIndex + 1}`;
+    } else {
+      text = normalizeTtsInlineText(msg?.content || '');
+    }
+
+    if (!text) {
+      setStatus('没有可供豆包播放的中文内容', 'err');
+      return;
+    }
+
+    const inputHash = hashString([
+      text,
+      instruction,
+      DOUBAO_TTS_MODEL,
+      DOUBAO_VOICE_ID,
+      `rv${DOUBAO_RENDER_VERSION}`
+    ].join('\u0001'));
+
+    const audioKey = msgId
+      ? `${currentId}_${msgId}__${blockId}__zh__doubao__${inputHash}`
+      : null;
+
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+      document.querySelectorAll('.play-btn.playing').forEach(b => {
+        b.classList.remove('playing');
+        b.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
+      });
+      if (btn.classList.contains('was-playing')) {
+        btn.classList.remove('was-playing');
+        return;
+      }
+    }
+
+    btn.classList.add('playing', 'was-playing');
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> 播放中…';
+
+    function playBlob(blob) {
+      const url = URL.createObjectURL(blob);
+      currentAudio = new Audio(url);
+      currentAudio.play();
+      setStatus('');
+      currentAudio.onended = () => {
+        btn.classList.remove('playing', 'was-playing');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 再听';
+        currentAudio = null;
+        URL.revokeObjectURL(url);
+      };
+    }
+
+    try {
+      if (audioKey) {
+        const cached = await getAudio(audioKey);
+        if (cached) {
+          playBlob(cached);
+          return;
+        }
+      }
+
+      setStatus('生成中文语音中…');
+
+      const payload = {
+        token: doubaoProxyToken,
+        text
+      };
+      if (instruction) payload.instruction = instruction;
+
+      const res = await fetch(DOUBAO_PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify(payload)
+      });
+
+      const raw = await res.text();
+      let data = null;
+      try { data = JSON.parse(raw); } catch (_) {}
+
+      if (!res.ok || !data?.ok || !data?.audioBase64) {
+        const detail = data?.error || `HTTP ${res.status}`;
+        setStatus('中文语音出错：' + detail, 'err');
+        btn.classList.remove('playing', 'was-playing');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
+        return;
+      }
+
+      const blob = base64ToAudioBlob(data.audioBase64, data.contentType || 'audio/mpeg');
+      if (audioKey) putAudio(audioKey, blob);
+      playBlob(blob);
+    } catch (e) {
+      setStatus('中文语音网络错误：' + e.message, 'err');
+      btn.classList.remove('playing', 'was-playing');
+      btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放';
+    }
+  }
+
   // ── 语音 ─────────────────────────────────────────────
   async function playVoice(btn) {
     const msgId = btn.dataset.msgId;
@@ -2683,7 +2844,12 @@
     const requestedBlockIndex = Number.isInteger(Number(btn.dataset.blockIndex)) ? Number(btn.dataset.blockIndex) : null;
     const messages = chats[currentId]?.messages || [];
     const msg = (msgId ? messages.find(m => m.id === msgId) : null) ?? messages[idx] ?? null;
-    if (msg?.language === 'zh') { setStatus('中文 TTS 尚未接入', 'err'); return; }
+
+    if (msg?.language === 'zh') {
+      await playDoubaoVoice(btn, msg, requestedBlockIndex);
+      return;
+    }
+
     if (!elKey) { setStatus('请先在左下角设置语音 Key', 'err'); return; }
 
     const blocks = Array.isArray(msg?.deliveryBlocks) && msg.deliveryBlocks.length ? msg.deliveryBlocks : null;
@@ -2808,14 +2974,24 @@
 
   function openElKey() {
     document.getElementById('elKeyInput').value = elKey ? '••••••••••••••••' : '';
+    document.getElementById('doubaoProxyTokenInput').value = doubaoProxyToken ? '••••••••••••••••' : '';
     document.getElementById('elModal').classList.add('open');
   }
 
   function saveElKey() {
-    const val = document.getElementById('elKeyInput').value.trim();
-    if (!val || val.startsWith('•')) { closeModal('elModal'); return; }
-    elKey = val;
-    localStorage.setItem('el_key', elKey);
+    const elVal = document.getElementById('elKeyInput').value.trim();
+    const doubaoVal = document.getElementById('doubaoProxyTokenInput').value.trim();
+
+    if (elVal && !elVal.startsWith('•')) {
+      elKey = elVal;
+      localStorage.setItem('el_key', elKey);
+    }
+
+    if (doubaoVal && !doubaoVal.startsWith('•')) {
+      doubaoProxyToken = doubaoVal;
+      localStorage.setItem(DOUBAO_PROXY_TOKEN_KEY, doubaoProxyToken);
+    }
+
     closeModal('elModal');
     flashStatus('语音 Key 已保存 ✓', 'ok', 2000);
   }
