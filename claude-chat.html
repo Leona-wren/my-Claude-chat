@@ -850,8 +850,8 @@
     width: var(--voice-width, 148px);
     min-width: 104px;
     max-width: min(214px, 56vw);
-    height: 34px;
-    padding: 0 9px 0 10px;
+    height: 39px;
+    padding: 0 10px 0 11px;
     border: 1px solid color-mix(in srgb, var(--border) 82%, var(--text-soft) 18%);
     border-radius: 12px;
     border-bottom-left-radius: 5px;
@@ -888,10 +888,10 @@
   }
 
   .voice-bar-icon {
-    width: 16px;
-    height: 16px;
-    flex: 0 0 16px;
-    opacity: 0.68;
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    opacity: 0.67;
   }
 
   .voice-bar-icon path,
@@ -905,7 +905,7 @@
 
   .voice-wave {
     flex: 1;
-    height: 17px;
+    height: 19px;
     min-width: 28px;
     display: flex;
     align-items: center;
@@ -987,48 +987,51 @@
   .transcript-bubble {
     margin-top: 0;
     border-bottom-left-radius: 18px !important;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    box-shadow: none !important;
   }
 
-  /* Surface hierarchy: voice message slightly brighter / more object-like,
-     transcript slightly quieter while preserving strong text contrast. */
+  /* Surface hierarchy: the voice bar is the original-message object.
+     Transcript stays highly readable, but its surface blends back toward the page. */
   body.skin-warm .msg.ai .voice-bar {
     background: #FFFFFF;
-    border-color: #E6E0D8;
-    box-shadow: 0 2px 7px rgba(55,48,38,0.055);
+    border-color: #E3DDD4;
+    box-shadow: 0 2px 8px rgba(55,48,38,0.065);
   }
 
   body.skin-warm .msg.ai .transcript-bubble {
-    background: #F6F3EE;
-    box-shadow: 0 1px 5px rgba(55,48,38,0.05);
+    background: color-mix(in srgb, #FFFFFF 34%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
   }
 
   body.skin-dark .msg.ai .voice-bar {
-    background: #29292F;
-    border-color: #363640;
-    box-shadow: 0 2px 7px rgba(0,0,0,0.16);
+    background: #2A2A31;
+    border-color: #3A3944;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
   }
 
   body.skin-dark .msg.ai .transcript-bubble {
-    background: #202025;
-    box-shadow: 0 1px 5px rgba(0,0,0,0.13);
+    background: color-mix(in srgb, var(--input-bg) 38%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   }
 
   body.skin-wa .msg.ai .voice-bar {
     background: #FFFFFF;
-    border-color: #E2E7E4;
-    box-shadow: 0 2px 7px rgba(17,27,33,0.05);
+    border-color: #DFE5E1;
+    box-shadow: 0 2px 8px rgba(17,27,33,0.06);
   }
 
   body.skin-wa .msg.ai .transcript-bubble {
-    background: #F1F4F0;
-    box-shadow: 0 1px 5px rgba(17,27,33,0.045);
+    background: color-mix(in srgb, #FFFFFF 32%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   }
 
   @media (max-width: 580px) {
     .voice-bar {
       min-width: 98px;
       max-width: min(186px, 54vw);
-      height: 33px;
+      height: 37px;
       border-radius: 11px;
       border-bottom-left-radius: 5px;
     }
