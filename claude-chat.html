@@ -845,50 +845,52 @@
   .play-btn svg { width: 12px; height: 12px; fill: currentColor; flex-shrink: 0; }
 
   /* Current assistant voice-message presentation.
-     This is presentation only: the hidden trigger still calls the existing playVoice(). */
+     Presentation only: message/TTS/cache behavior remains in the existing layers. */
   .voice-bar {
     width: var(--voice-width, 148px);
     min-width: 104px;
-    max-width: min(220px, 58vw);
-    height: 36px;
-    padding: 0 10px 0 11px;
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    background: color-mix(in srgb, var(--hover) 82%, var(--input-bg));
-    color: var(--text-soft);
+    max-width: min(214px, 56vw);
+    height: 34px;
+    padding: 0 9px 0 10px;
+    border: 1px solid color-mix(in srgb, var(--border) 82%, var(--text-soft) 18%);
+    border-radius: 12px;
+    background: var(--input-bg);
+    color: color-mix(in srgb, var(--text-soft) 88%, var(--text) 12%);
     display: inline-flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     cursor: pointer;
     user-select: none;
     outline: none;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.035);
+    box-shadow: 0 1px 5px rgba(0,0,0,0.055);
     transition: border-color 0.16s, background 0.16s, color 0.16s, transform 0.1s, box-shadow 0.16s;
   }
 
   .voice-bar:hover {
     color: var(--text);
-    background: color-mix(in srgb, var(--hover) 68%, var(--input-bg));
+    border-color: color-mix(in srgb, var(--border) 66%, var(--text-soft) 34%);
+    box-shadow: 0 2px 7px rgba(0,0,0,0.07);
   }
 
-  .voice-bar:active { transform: scale(0.985); }
+  .voice-bar:active { transform: scale(0.988); }
 
   .voice-bar:focus-visible {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
   }
 
   .voice-bar:has(.voice-engine-trigger.playing) {
     color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
-    background: color-mix(in srgb, var(--accent) 8%, var(--input-bg));
+    border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+    background: color-mix(in srgb, var(--accent) 5%, var(--input-bg));
+    box-shadow: 0 2px 7px color-mix(in srgb, var(--accent) 9%, transparent);
   }
 
   .voice-bar-icon {
-    width: 17px;
-    height: 17px;
-    flex: 0 0 17px;
-    opacity: 0.78;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    opacity: 0.68;
   }
 
   .voice-bar-icon path,
@@ -902,12 +904,12 @@
 
   .voice-wave {
     flex: 1;
-    height: 18px;
+    height: 17px;
     min-width: 28px;
     display: flex;
     align-items: center;
     gap: 3px;
-    opacity: 0.58;
+    opacity: 0.52;
   }
 
   .voice-wave i {
@@ -971,15 +973,61 @@
     display: none !important;
   }
 
+  /* Make each voice/transcript pair read as one message unit.
+     Transcript remains the primary reading surface; voice is the original-message cue. */
+  .msg.ai .delivery-block {
+    gap: 5px;
+  }
+
+  .msg.ai .delivery-block + .delivery-block {
+    margin-top: 9px;
+  }
+
   .transcript-bubble {
-    margin-top: 2px;
+    margin-top: 0;
+  }
+
+  /* Surface hierarchy: voice message slightly brighter / more object-like,
+     transcript slightly quieter while preserving strong text contrast. */
+  body.skin-warm .msg.ai .voice-bar {
+    background: #FFFFFF;
+    border-color: #E6E0D8;
+    box-shadow: 0 2px 7px rgba(55,48,38,0.055);
+  }
+
+  body.skin-warm .msg.ai .transcript-bubble {
+    background: #F6F3EE;
+    box-shadow: 0 1px 5px rgba(55,48,38,0.05);
+  }
+
+  body.skin-dark .msg.ai .voice-bar {
+    background: #29292F;
+    border-color: #363640;
+    box-shadow: 0 2px 7px rgba(0,0,0,0.16);
+  }
+
+  body.skin-dark .msg.ai .transcript-bubble {
+    background: #202025;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.13);
+  }
+
+  body.skin-wa .msg.ai .voice-bar {
+    background: #FFFFFF;
+    border-color: #E2E7E4;
+    box-shadow: 0 2px 7px rgba(17,27,33,0.05);
+  }
+
+  body.skin-wa .msg.ai .transcript-bubble {
+    background: #F1F4F0;
+    box-shadow: 0 1px 5px rgba(17,27,33,0.045);
   }
 
   @media (max-width: 580px) {
     .voice-bar {
       min-width: 98px;
-      max-width: min(190px, 56vw);
-      height: 34px;
+      max-width: min(186px, 54vw);
+      height: 33px;
+      border-radius: 11px;
     }
   }
 
