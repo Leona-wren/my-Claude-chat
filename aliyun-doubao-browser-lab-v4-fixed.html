@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aliyun FC → Doubao TTS Lab v4 Fixed</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:820px;margin:36px auto;padding:0 16px;line-height:1.55;color:#202124}
+textarea,input,button{font:inherit}
+textarea,input{width:100%;box-sizing:border-box;padding:10px;margin:6px 0 14px}
+textarea{min-height:96px;resize:vertical}
+#instruction{min-height:120px}
+button{padding:10px 16px;cursor:pointer;margin:4px 8px 4px 0}
+pre{white-space:pre-wrap;word-break:break-word;background:#f5f5f5;padding:12px;border-radius:8px;max-height:420px;overflow:auto}
+audio{width:100%;margin-top:16px}
+.ok{color:#188038}.err{color:#b3261e}
+.note{font-size:13px;opacity:.76}
+.panel{border:1px solid #ddd;border-radius:12px;padding:14px;margin:18px 0}
+.preview{background:#fafafa;border:1px solid #e5e5e5;border-radius:8px;padding:10px;white-space:pre-wrap;word-break:break-word}
+label{font-weight:600}
+code{background:#f3f3f3;padding:1px 4px;border-radius:4px}
+</style>
+</head>
+<body>
+<h2>Aliyun FC → Doubao TTS Lab v4 Fixed</h2>
+<p>
+只验证一件事：<b>豆包指导输入中的 <code>[#...]</code> 表演指令是否通过 API 生效</b>。
+正文始终保持纯文本，不再向正文拼接任何 Tag。
+</p>
+
+<div class="panel">
+  <label>Proxy URL</label>
+  <input id="url" value="https://persona-gateway-oxcpmcibhq.cn-beijing.fcapp.run">
+
+  <label>PROXY_TOKEN</label>
+  <input id="token" type="password" autocomplete="off" placeholder="只保存在当前浏览器 localStorage">
+  <div>
+    <button id="saveToken">保存 token 到本机</button>
+    <button id="clearToken">清除本机 token</button>
+  </div>
+</div>
+
+<div class="panel">
+  <label>表演指导内容（这里只写内容，不写 [# ]）</label>
+  <textarea id="instruction">突然意识到对方现在才说出这件事，有点意外，短暂迟疑，随后觉得有点好笑，语气放松下来</textarea>
+
+  <label>真正朗读的正文</label>
+  <textarea id="text">你现在才告诉我？难怪我刚才一直没想明白。</textarea>
+
+  <div>
+    <button id="runWithInstruction">生成：带 [#] 指导</button>
+    <button id="runPlain">生成：无指导</button>
+  </div>
+</div>
+
+<h3>本次最终输入预览</h3>
+<div id="preview" class="preview">尚未请求。</div>
+
+<p id="status"></p>
+<audio id="audio" controls hidden></audio>
+
+<p class="note">
+Lab 会把指导内容确定性编译为 <code>[#...]</code>，再作为代理的 <code>instruction</code> 字段发送；
+正文 <code>text</code> 永远不包含指导文字。无指导模式则完全不发送 instruction。
+</p>
+
+<h3>响应 / 错误</h3>
+<pre id="debug">尚未请求。</pre>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const TOKEN_KEY = 'personal_ai_tts_proxy_token_v1';
+  let audioUrl = null;
+
+  $('token').value = localStorage.getItem(TOKEN_KEY) || '';
+
+  $('saveToken').onclick = () => {
+    const token = $('token').value.trim();
+    if (!token) {
+      $('status').className = 'err';
+      $('status').textContent = 'token 为空，未保存。';
+      return;
+    }
+    localStorage.setItem(TOKEN_KEY, token);
+    $('status').className = 'ok';
+    $('status').textContent = 'PROXY_TOKEN 已保存到当前浏览器 localStorage。';
+  };
+
+  $('clearToken').onclick = () => {
+    localStorage.removeItem(TOKEN_KEY);
+    $('token').value = '';
+    $('status').className = '';
+    $('status').textContent = '已清除本机 token。';
+  };
+
+  function b64ToBlob(base64, type) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type });
+  }
+
+  function normalizeInstruction(raw) {
+    let s = String(raw || '').trim();
+
+    // 用户即使手动写了 [#...]，也先剥掉外壳，避免双重包装。
+    if (s.startsWith('[#') && s.endsWith(']')) {
+      s = s.slice(2, -1).trim();
+    } else if (s.startsWith('[') && s.endsWith(']')) {
+      s = s.slice(1, -1).trim();
+      if (s.startsWith('#')) s = s.slice(1).trim();
+    }
+
+    return s;
+  }
+
+  function compileDoubaoInstruction(raw) {
+    const clean = normalizeInstruction(raw);
+    return clean ? `[#${clean}]` : '';
+  }
+
+  async function run(useInstruction) {
+    const url = $('url').value.trim();
+    const token = $('token').value.trim();
+    const text = $('text').value.trim();
+    const compiledInstruction = useInstruction
+      ? compileDoubaoInstruction($('instruction').value)
+      : '';
+
+    if (!token) {
+      $('status').className = 'err';
+      $('status').textContent = '请先填入 PROXY_TOKEN。';
+      return;
+    }
+
+    if (!text) {
+      $('status').className = 'err';
+      $('status').textContent = '正文为空。';
+      return;
+    }
+
+    if (useInstruction && !compiledInstruction) {
+      $('status').className = 'err';
+      $('status').textContent = '表演指导为空。';
+      return;
+    }
+
+    const payload = {
+      token,
+      text
+    };
+
+    if (compiledInstruction) {
+      payload.instruction = compiledInstruction;
+    }
+
+    $('preview').textContent = [
+      `模式：${useInstruction ? '带 [#] 指导' : '无指导'}`,
+      '',
+      'instruction:',
+      compiledInstruction || '（不发送）',
+      '',
+      'text:',
+      text,
+      '',
+      '重要：指导不会拼进正文。'
+    ].join('\n');
+
+    $('status').className = '';
+    $('status').textContent = '请求中…';
+    $('debug').textContent = '请求中…';
+    $('runWithInstruction').disabled = true;
+    $('runPlain').disabled = true;
+
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify(payload)
+      });
+
+      const raw = await r.text();
+
+      $('debug').textContent = [
+        `HTTP ${r.status}`,
+        '',
+        raw.slice(0, 5000),
+        '',
+        'CLIENT REQUEST (token omitted):',
+        JSON.stringify({
+          text,
+          instruction: compiledInstruction || undefined
+        }, null, 2)
+      ].join('\n');
+
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+
+      const data = JSON.parse(raw);
+      if (!data.ok || !data.audioBase64) {
+        throw new Error(data.error || '响应里没有 audioBase64');
+      }
+
+      const blob = b64ToBlob(data.audioBase64, data.contentType || 'audio/mpeg');
+
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      audioUrl = URL.createObjectURL(blob);
+
+      $('audio').src = audioUrl;
+      $('audio').hidden = false;
+      $('status').className = 'ok';
+      $('status').textContent = `成功，音频 ${Math.round(blob.size / 1024)} KB。`;
+    } catch (e) {
+      $('status').className = 'err';
+      $('status').textContent = '失败：' + (e.message || e);
+      $('debug').textContent += '\n\nERROR:\n' + (e.stack || e);
+    } finally {
+      $('runWithInstruction').disabled = false;
+      $('runPlain').disabled = false;
+    }
+  }
+
+  $('runWithInstruction').onclick = () => run(true);
+  $('runPlain').onclick = () => run(false);
+
+  addEventListener('beforeunload', () => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+  });
+})();
+</script>
+</body>
+</html>
