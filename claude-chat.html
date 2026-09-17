@@ -1399,9 +1399,6 @@
   const ELEVEN_V3_VOICE_SETTINGS = { stability: 0.35, similarity_boost: 0.75, style: 0, speed: 1 };
   const DOUBAO_PROXY_URL = 'https://persona-gateway-oxcpmcibhq.cn-beijing.fcapp.run';
   const DOUBAO_PROXY_TOKEN_KEY = 'personal_ai_tts_proxy_token_v1';
-  const DOUBAO_TTS_MODEL = 'seed-tts-2.0';
-  const DOUBAO_VOICE_ID = 'ICL_uranus_zh_male_dichenqianquan_tob';
-  const DOUBAO_RENDER_VERSION = 1;
 
   // Offline/first-load fallback only. A successful GET /v1/models replaces this list.
   // Capabilities here intentionally cover only the controls this frontend needs.
@@ -2310,6 +2307,25 @@
     });
   }
 
+  function getCachedAudioWithPrefix(prefix) {
+    return new Promise(resolve => {
+      if (!prefix || !audioDB) return resolve(null);
+      try {
+        const lower = prefix;
+        const upper = prefix + '\uffff';
+        const range = IDBKeyRange.bound(lower, upper);
+        const req = audioDB.transaction('audio').objectStore('audio').openCursor(range);
+        req.onsuccess = event => {
+          const cursor = event.target.result;
+          resolve(cursor?.value?.blob || null);
+        };
+        req.onerror = () => resolve(null);
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
   async function syncVoiceBarCacheState(bar) {
     if (!bar?.isConnected) return;
     const prefix = getVoiceBarCachePrefix(bar);
@@ -3069,7 +3085,7 @@
     const currentVoice = msg.language === 'en'
       ? `ElevenLabs · ${ELEVEN_TTS_MODEL} · ${EL_VOICE}`
       : msg.language === 'zh'
-        ? `Doubao · ${DOUBAO_TTS_MODEL} · ${DOUBAO_VOICE_ID}`
+        ? 'Doubao via Aliyun FC · voice configured on server'
         : '—';
     const blocks = Array.isArray(msg.deliveryBlocks) ? msg.deliveryBlocks : [];
     const speechBlocksPreview = blocks.length ? blocks.map((block, blockIndex) => {
@@ -3187,16 +3203,16 @@
       return;
     }
 
-    const inputHash = hashString([
-      text,
-      instruction,
-      DOUBAO_TTS_MODEL,
-      DOUBAO_VOICE_ID,
-      `rv${DOUBAO_RENDER_VERSION}`
-    ].join('\u0001'));
-
+    // A generated voice message is an artifact of this message/block.
+    // Provider speaker/model live behind the proxy and do not participate in frontend identity.
     const audioKey = msgId
-      ? `${currentId}_${msgId}__${blockId}__zh__doubao__${inputHash}`
+      ? `${currentId}_${msgId}__${blockId}__zh__doubao`
+      : null;
+
+    // Compatibility with v1.5-v1.9 caches whose keys ended in a provider/input hash.
+    // If an old audio artifact already exists, keep replaying that historical audio.
+    const legacyAudioPrefix = msgId
+      ? `${currentId}_${msgId}__${blockId}__zh__doubao__`
       : null;
 
     if (currentAudio) {
@@ -3233,6 +3249,12 @@
         const cached = await getAudio(audioKey);
         if (cached) {
           playBlob(cached);
+          return;
+        }
+
+        const legacyCached = await getCachedAudioWithPrefix(legacyAudioPrefix);
+        if (legacyCached) {
+          playBlob(legacyCached);
           return;
         }
       }
