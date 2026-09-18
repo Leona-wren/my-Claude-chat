@@ -1428,7 +1428,7 @@ EXPRESSION: Infer concise English stance/affect from full context; intensity=0�
 
 TEXT: deliveryBlocks.parts[].text = actual visible reply. Blocks follow natural sentence/semantic playback units; split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
 
-SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary; place them semantically in tagsBefore/tagsAfter. Usually one tag at a position; use a second only when it adds a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.
+SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary; place them semantically in tagsBefore/tagsAfter. Each part's tagsBefore/tagsAfter: 0–2 tags each; usually 0–1, with a second only for a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.
 
 TIME: Treat runtime time/away/timezone as ambient context; use when relevant without routinely mentioning it.`;
   const EXPRESSION_SCHEMA_VERSION = 3;
@@ -2649,8 +2649,8 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
                   required: ['text', 'tagsBefore', 'tagsAfter'],
                   properties: {
                     text: { type: 'string' },
-                    tagsBefore: { type: 'array', maxItems: 2, items: { type: 'string' } },
-                    tagsAfter: { type: 'array', maxItems: 2, items: { type: 'string' } }
+                    tagsBefore: { type: 'array', items: { type: 'string', pattern: '^[^\\[\\],\\r\\n]{1,80}$' } },
+                    tagsAfter: { type: 'array', items: { type: 'string', pattern: '^[^\\[\\],\\r\\n]{1,80}$' } }
                   }
                 }
               }
@@ -2662,9 +2662,9 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
           additionalProperties: false,
           required: ['stance', 'affect', 'intensity'],
           properties: {
-            stance: { type: 'string', minLength: 1, maxLength: 120 },
-            affect: { type: 'string', minLength: 1, maxLength: 120 },
-            intensity: { type: 'number', minimum: 0, maximum: 1 }
+            stance: { type: 'string', pattern: '^[^\\r\\n]{1,120}$' },
+            affect: { type: 'string', pattern: '^[^\\r\\n]{1,120}$' },
+            intensity: { type: 'number' }
           }
         }
       }
@@ -2749,53 +2749,74 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
 
   function normalizeExpression(expression) {
     const source = expression && typeof expression === 'object' ? expression : {};
-    const cleanText = value => {
-      const text = typeof value === 'string'
-        ? value.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim()
-        : '';
-      return text ? text.slice(0, 120) : 'neutral';
+    const cleanText = value => typeof value === 'string'
+      ? value.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim()
+      : '';
+    return {
+      stance: cleanText(source.stance),
+      affect: cleanText(source.affect),
+      intensity: Number(source.intensity)
     };
-    const stance = cleanText(source.stance);
-    const affect = cleanText(source.affect);
-    const rawIntensity = Number(source.intensity);
-    const intensity = Number.isFinite(rawIntensity) ? Math.min(1, Math.max(0, rawIntensity)) : 0;
-    return { stance, affect, intensity };
   }
 
   function normalizeSpeechTag(tag) {
     let value = typeof tag === 'string' ? tag.trim() : '';
     if (!value) return null;
     value = value.replace(/^\[+|\]+$/g, '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-    if (!value || value.includes('[') || value.includes(']')) return null;
-    // Open vocabulary is intentional; this is only a transport-safety bound, not an allowlist.
-    if (value.length > 120) return null;
-    return value;
+    return value || null;
   }
 
   function normalizeTagList(list, language) {
     if (!REPLY_LANGUAGES.has(language) || !Array.isArray(list)) return [];
-    const seen = new Set();
-    const result = [];
-    for (const item of list) {
-      // If the model packs multiple cues into one comma-delimited string, normalize them
-      // back into separate Eleven tags so the provider receives [tag][tag], not [tag, tag].
-      const pieces = String(item ?? '').split(',');
-      for (const piece of pieces) {
-        const tag = normalizeSpeechTag(piece);
-        if (!tag || seen.has(tag)) continue;
-        seen.add(tag);
-        result.push(tag);
-        if (result.length >= 2) return result;
-      }
+    return list.map(normalizeSpeechTag).filter(Boolean);
+  }
+
+  function validateGeneratedResponseSemantics(payload) {
+    const violations = [];
+    const expression = payload?.expression;
+    if (!expression || typeof expression !== 'object') {
+      violations.push('expression missing');
+    } else {
+      const stance = typeof expression.stance === 'string' ? expression.stance.trim() : '';
+      const affect = typeof expression.affect === 'string' ? expression.affect.trim() : '';
+      const intensity = Number(expression.intensity);
+      if (!stance || stance.length > 120 || /[\u3400-\u9fff]/.test(stance)) violations.push('stance must be a concise non-empty English phrase');
+      if (!affect || affect.length > 120 || /[\u3400-\u9fff]/.test(affect)) violations.push('affect must be a concise non-empty English phrase');
+      if (!Number.isFinite(intensity) || intensity < 0 || intensity > 1) violations.push('intensity must be a number from 0 to 1');
     }
-    return result;
+
+    (payload?.deliveryBlocks || []).forEach((block, blockIndex) => {
+      (block?.parts || []).forEach((part, partIndex) => {
+        for (const field of ['tagsBefore', 'tagsAfter']) {
+          const tags = part?.[field];
+          if (!Array.isArray(tags)) continue;
+          if (tags.length > 2) {
+            violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].${field} must contain at most 2 tags`);
+          }
+          const seen = new Set();
+          tags.forEach((rawTag, tagIndex) => {
+            const tag = typeof rawTag === 'string' ? rawTag.trim() : '';
+            if (!tag || tag.length > 80 || /[\[\],\r\n]/.test(tag) || /[\u3400-\u9fff]/.test(tag)) {
+              violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].${field}[${tagIndex}] must be one short English tag`);
+            }
+            const key = tag.toLowerCase();
+            if (key && seen.has(key)) {
+              violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].${field} contains duplicate tags`);
+            }
+            if (key) seen.add(key);
+          });
+        }
+      });
+    });
+
+    return { ok: violations.length === 0, violations };
   }
 
   function normalizeDeliveryBlocks(blocks, language) {
     if (!Array.isArray(blocks)) return [];
-    return blocks.slice(0, 60).flatMap((block, blockIndex) => {
+    return blocks.flatMap((block, blockIndex) => {
       if (!block || !Array.isArray(block.parts)) return [];
-      const parts = block.parts.slice(0, 20).flatMap(part => {
+      const parts = block.parts.flatMap(part => {
         if (!part || typeof part.text !== 'string') return [];
         const text = part.text.trim();
         if (!text) return [];
@@ -2861,6 +2882,14 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
     catch (_) { return { ok: false, error: 'Response Core 不是合法 JSON' }; }
     if (!payload || typeof payload !== 'object') {
       return { ok: false, error: 'Response Core 不是对象' };
+    }
+    const semanticValidation = validateGeneratedResponseSemantics(payload);
+    if (!semanticValidation.ok) {
+      return {
+        ok: false,
+        error: `Response Core 语义约束异常：${semanticValidation.violations.join('; ')}`,
+        violations: semanticValidation.violations
+      };
     }
     const deliveryBlocks = normalizeDeliveryBlocks(payload.deliveryBlocks, language);
     const content = deriveContentFromDeliveryBlocks(deliveryBlocks);
@@ -2940,6 +2969,25 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
     };
   }
 
+  async function postAnthropicRequestBody(body) {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      let err = null;
+      try { err = await res.json(); } catch (_) {}
+      return { ok: false, kind: 'api', error: err?.error?.message || `HTTP ${res.status}` };
+    }
+    return { ok: true, data: await res.json() };
+  }
+
   // API service layer: builds/sends the request and returns structured data.
   // It does not render, mutate chat history, or decide how retry is presented.
   async function requestAssistantReply(chatId, config) {
@@ -2962,32 +3010,19 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
     applyThinkingAndEffortToBody(body, config);
 
     try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify(body)
-      });
+      const apiResult = await postAnthropicRequestBody(body);
+      if (!apiResult.ok) return apiResult;
 
-      if (!res.ok) {
-        let err = null;
-        try { err = await res.json(); } catch (_) {}
+      const parsedResponse = parseAnthropicResponse(apiResult.data);
+      const responseCore = parseStructuredAssistantPayload(parsedResponse.replyText, config.replyLanguage);
+
+      if (!responseCore.ok) {
         return {
           ok: false,
-          kind: 'api',
-          error: err?.error?.message || `HTTP ${res.status}`
+          kind: 'validation',
+          error: responseCore.error,
+          violations: responseCore.violations || []
         };
-      }
-
-      const data = await res.json();
-      const parsedResponse = parseAnthropicResponse(data);
-      const responseCore = parseStructuredAssistantPayload(parsedResponse.replyText, config.replyLanguage);
-      if (!responseCore.ok) {
-        return { ok: false, kind: 'validation', error: responseCore.error };
       }
 
       const languageValidation = validateReplyLanguage(responseCore.content, config.replyLanguage);
