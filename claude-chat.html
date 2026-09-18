@@ -2574,7 +2574,8 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
   function buildTemporalContext(chat) {
     const now = Date.now();
     const currentTimeZone = getCurrentTimeZone();
-    const fields = [`time ${formatLocalMinute(now, currentTimeZone)} ${formatCurrentUtcOffset()}`];
+    const localMinute = formatLocalMinute(now, currentTimeZone).replace(' ', 'T');
+    const fields = [`local=${localMinute}${formatCurrentUtcOffset()}`];
     const messages = Array.isArray(chat?.messages) ? chat.messages : [];
 
     let currentTurnIndex = -1;
