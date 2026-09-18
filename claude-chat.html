@@ -2649,8 +2649,8 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
                   required: ['text', 'tagsBefore', 'tagsAfter'],
                   properties: {
                     text: { type: 'string' },
-                    tagsBefore: { type: 'array', items: { type: 'string', pattern: '^[^\\[\\],\\r\\n]{1,80}$' } },
-                    tagsAfter: { type: 'array', items: { type: 'string', pattern: '^[^\\[\\],\\r\\n]{1,80}$' } }
+                    tagsBefore: { type: 'array', items: { type: 'string' } },
+                    tagsAfter: { type: 'array', items: { type: 'string' } }
                   }
                 }
               }
@@ -2662,8 +2662,8 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
           additionalProperties: false,
           required: ['stance', 'affect', 'intensity'],
           properties: {
-            stance: { type: 'string', pattern: '^[^\\r\\n]{1,120}$' },
-            affect: { type: 'string', pattern: '^[^\\r\\n]{1,120}$' },
+            stance: { type: 'string' },
+            affect: { type: 'string' },
             intensity: { type: 'number' }
           }
         }
@@ -2671,11 +2671,37 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
     };
   }
 
+  function assertAnthropicSchemaCompatibility(schema) {
+    // This frontend intentionally uses only the smallest, proven-safe subset needed by
+    // Response Core. If a future edit adds another schema keyword, fail locally before
+    // sending the request instead of discovering an Anthropic incompatibility via HTTP 400.
+    const allowedKeywords = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum']);
+    const visit = (node, path = '$', isPropertiesMap = false) => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) {
+        node.forEach((item, index) => visit(item, `${path}[${index}]`));
+        return;
+      }
+      for (const [key, value] of Object.entries(node)) {
+        if (!isPropertiesMap && !allowedKeywords.has(key)) {
+          throw new Error(`Response schema keyword not allowed by this frontend: ${key} at ${path}`);
+        }
+        if (!isPropertiesMap && key === 'additionalProperties' && value !== false) {
+          throw new Error(`Response schema requires additionalProperties=false at ${path}`);
+        }
+        visit(value, `${path}.${key}`, !isPropertiesMap && key === 'properties');
+      }
+    };
+    visit(schema);
+  }
+
   function applyResponseFormatToBody(body, config) {
     if (!config.structuredOutputSupported) return;
+    const schema = buildResponseJsonSchema();
+    assertAnthropicSchemaCompatibility(schema);
     body.output_config = {
       ...(body.output_config || {}),
-      format: { type: 'json_schema', schema: buildResponseJsonSchema() }
+      format: { type: 'json_schema', schema }
     };
   }
 
@@ -2780,8 +2806,8 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
       const stance = typeof expression.stance === 'string' ? expression.stance.trim() : '';
       const affect = typeof expression.affect === 'string' ? expression.affect.trim() : '';
       const intensity = Number(expression.intensity);
-      if (!stance || stance.length > 120 || /[\u3400-\u9fff]/.test(stance)) violations.push('stance must be a concise non-empty English phrase');
-      if (!affect || affect.length > 120 || /[\u3400-\u9fff]/.test(affect)) violations.push('affect must be a concise non-empty English phrase');
+      if (!stance || /[\u3400-\u9fff]/.test(stance)) violations.push('stance must be a non-empty English phrase');
+      if (!affect || /[\u3400-\u9fff]/.test(affect)) violations.push('affect must be a non-empty English phrase');
       if (!Number.isFinite(intensity) || intensity < 0 || intensity > 1) violations.push('intensity must be a number from 0 to 1');
     }
 
@@ -2793,17 +2819,11 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
           if (tags.length > 2) {
             violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].${field} must contain at most 2 tags`);
           }
-          const seen = new Set();
           tags.forEach((rawTag, tagIndex) => {
             const tag = typeof rawTag === 'string' ? rawTag.trim() : '';
-            if (!tag || tag.length > 80 || /[\[\],\r\n]/.test(tag) || /[\u3400-\u9fff]/.test(tag)) {
-              violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].${field}[${tagIndex}] must be one short English tag`);
+            if (!tag || /[\[\],\r\n]/.test(tag) || /[\u3400-\u9fff]/.test(tag)) {
+              violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].${field}[${tagIndex}] must be one non-empty English tag without brackets, commas, or newlines`);
             }
-            const key = tag.toLowerCase();
-            if (key && seen.has(key)) {
-              violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].${field} contains duplicate tags`);
-            }
-            if (key) seen.add(key);
           });
         }
       });
