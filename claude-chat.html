@@ -2575,7 +2575,7 @@ TIME: Treat runtime time/away/timezone as ambient context; use when relevant wit
     const now = Date.now();
     const currentTimeZone = getCurrentTimeZone();
     const localMinute = formatLocalMinute(now, currentTimeZone).replace(' ', 'T');
-    const fields = [`local=${localMinute}${formatCurrentUtcOffset()}`];
+    const fields = [`nowLocal=${localMinute}${formatCurrentUtcOffset()}`];
     const messages = Array.isArray(chat?.messages) ? chat.messages : [];
 
     let currentTurnIndex = -1;
@@ -3309,21 +3309,29 @@ ScrollMemory.clear(chatId);
 
   // Provider adapter only: no semantic inference here. It emits one continuous inline stream,
   // one bracket pair per stored tag, and never emits field names such as tagsBefore/tagsAfter.
+  function splitTrailingPunctuation(text) {
+    const value = normalizeTtsInlineText(text);
+    if (!value) return { body: '', suffix: '' };
+    const match = value.match(/^(.*?)([，,。.!！？?；;：:、…]+[”’\"'」』）》】)\]}]*)$/);
+    if (!match || !match[1]) return { body: value, suffix: '' };
+    return { body: match[1].trimEnd(), suffix: match[2] };
+  }
+
   function compileDeliveryBlockForElevenV3(block) {
-    const tokens = [];
+    const partStreams = [];
     (block?.parts || []).forEach(part => {
-      (part.tagsBefore || []).forEach(tag => {
-        const token = bracketSpeechTag(tag);
-        if (token) tokens.push(token);
-      });
-      const text = normalizeTtsInlineText(part.text);
-      if (text) tokens.push(text);
-      (part.tagsAfter || []).forEach(tag => {
-        const token = bracketSpeechTag(tag);
-        if (token) tokens.push(token);
-      });
+      const before = (part.tagsBefore || []).map(bracketSpeechTag).filter(Boolean);
+      const after = (part.tagsAfter || []).map(bracketSpeechTag).filter(Boolean);
+      const { body, suffix } = splitTrailingPunctuation(part.text);
+      const tokens = [];
+      tokens.push(...before);
+      if (body) tokens.push(body);
+      tokens.push(...after);
+      let stream = tokens.join(' ').replace(/[ \t]+/g, ' ').trim();
+      if (suffix) stream += suffix;
+      if (stream) partStreams.push(stream);
     });
-    return tokens.join(' ').replace(/[ \t]+/g, ' ').trim();
+    return partStreams.join(' ').replace(/[ \t]+/g, ' ').trim();
   }
 
   // Provider adapter only: the same stored speech tags are compiled into Doubao's
