@@ -998,7 +998,7 @@
     background: #FFFFFF;
     border-color: #E3DDD4;
     box-shadow: 0 2px 8px rgba(55,48,38,0.065);
-  }
+}
 
   body.skin-warm .msg.ai .transcript-bubble {
     background: color-mix(in srgb, #FFFFFF 34%, var(--bg));
@@ -1386,6 +1386,7 @@
   const NEW_CHAT_DRAFT_KEY = '__new__';
   const SCROLL_MEMORY_KEY = 'claude_scroll_memory_v1';
   const SCROLL_MEMORY_TTL_MS = 60 * 60 * 1000; // 1 hour
+  const TEMPORAL_GAP_MS = 3 * 60 * 60 * 1000; // 3 hours; request-time context only
   const CHAT_BOTTOM_THRESHOLD_PX = 100;
   const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
   const REPLY_LANGUAGE_KEY = 'claude_reply_language_v1';
@@ -1998,8 +1999,7 @@
     const switchEl = document.getElementById('thinkingSwitch');
     const typeLabel = document.getElementById('thinkingTypeLabel');
     const effortSelect = document.getElementById('effortSelect');
-
-    // UI projection only: the policy layer above decides whether Thinking exists,
+// UI projection only: the policy layer above decides whether Thinking exists,
     // whether it is always-on, and whether the current effort allows disabling it.
     // The renderer only visualizes that state.
     const showThinking = controls.thinkingAlwaysOn || controls.canToggleThinking;
@@ -2475,6 +2475,92 @@
     return language === 'zh' ? '中文' : 'English';
   }
 
+  // ── RUNTIME TEMPORAL CONTEXT ──────────────────────────
+  // Derived from browser time + existing message metadata. Never persisted.
+  function getCurrentTimeZone() {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch (_) {
+      return 'UTC';
+    }
+  }
+
+  function formatLocalMinute(timestamp, timeZone) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(new Date(timestamp));
+    const values = {};
+    parts.forEach(part => {
+      if (part.type !== 'literal') values[part.type] = part.value;
+    });
+    return `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}`;
+  }
+
+  function formatCompactDuration(ms) {
+    const totalMinutes = Math.max(0, Math.floor(ms / 60000));
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    if (days) return `${days}d${hours ? `${hours}h` : ''}`;
+    return `${hours}h${minutes ? `${minutes}m` : ''}`;
+  }
+
+  function formatCurrentUtcOffset() {
+    const totalMinutes = -new Date().getTimezoneOffset();
+    const sign = totalMinutes >= 0 ? '+' : '-';
+    const absolute = Math.abs(totalMinutes);
+    const hours = Math.floor(absolute / 60);
+    const minutes = absolute % 60;
+    return minutes
+      ? `${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+      : `${sign}${String(hours).padStart(2, '0')}`;
+  }
+
+  function buildTemporalContext(chat) {
+    const now = Date.now();
+    const currentTimeZone = getCurrentTimeZone();
+    const fields = [`time ${formatLocalMinute(now, currentTimeZone)} ${formatCurrentUtcOffset()}`];
+    const messages = Array.isArray(chat?.messages) ? chat.messages : [];
+
+    let currentTurnIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === 'thinking') continue;
+      if (messages[i]?.role === 'user') currentTurnIndex = i;
+      break;
+    }
+
+    if (currentTurnIndex >= 0) {
+      const currentTurn = messages[currentTurnIndex];
+      let previous = null;
+      for (let i = currentTurnIndex - 1; i >= 0; i--) {
+        if (messages[i]?.role === 'thinking') continue;
+        previous = messages[i];
+        break;
+      }
+
+      if (previous && Number.isFinite(currentTurn.createdAt) && Number.isFinite(previous.createdAt)) {
+        const gapMs = currentTurn.createdAt - previous.createdAt;
+        if (gapMs >= TEMPORAL_GAP_MS) fields.push(`away=${formatCompactDuration(gapMs)}`);
+      }
+
+      const currentTurnZone = currentTurn.createdTimeZone || currentTimeZone;
+      const previousZone = previous?.createdTimeZone || null;
+      if (!previousZone) {
+        fields.push(`tz=${currentTurnZone}`);
+      } else if (previousZone !== currentTurnZone) {
+        fields.push(`tz=${previousZone}→${currentTurnZone}`);
+      }
+    }
+
+    return `[${fields.join('; ')}]`;
+  }
+
   function buildSystemPrompt(config) {
     const languageRule = config.replyLanguage === 'zh'
       ? '回复正文必须直接用自然、母语化的中文构思和表达。用户输入可以是任何语言；不要因为用户使用英语就切换回复语言。'
@@ -2496,7 +2582,8 @@
       '每个 block 的 joinAfter 只用于重建干净正文：相邻日常句用 space，真正换段用 paragraph。最后一个 block 的 joinAfter 值不会影响正文。' +
       speechPlanRule +
       '\n\nexpression 是 provider-neutral 的粗粒度表达元数据，只保留 stance、affect、intensity；它不直接控制 TTS，也不要包含 voice cue、音高、语速、停顿或 provider 专属说明。stance/affect 描述这条回复本身的表达姿态，不是对用户心理的诊断。' +
-      '\n\n回复通常保持自然对话长度；若用户明确要求详细内容，则按任务需要展开。';
+      '\n\n回复通常保持自然对话长度；若用户明确要求详细内容，则按任务需要展开。' +
+      '\n\n[time] 是静默语境元数据，仅在相关时参考，不要例行复述。';
 
     if (!config.structuredOutputSupported) {
       system += '\n\n当前模型未声明 Structured Outputs capability。请严格只输出一个合法 JSON 对象，不要 Markdown code fence、不要额外文字；字段必须与应用要求的 deliveryBlocks/expression schema 一致。';
@@ -2821,10 +2908,11 @@
       .filter(m => m.role !== 'thinking')
       .map(({ role, content }) => ({ role, content }));
 
+    const temporalContext = buildTemporalContext(chat);
     const body = {
       model: config.model,
       max_tokens: getRequestMaxTokens(config),
-      system: buildSystemPrompt(config),
+      system: buildSystemPrompt(config) + '\n\n' + temporalContext,
       messages: apiMessages
     };
     applyResponseFormatToBody(body, config);
@@ -2998,7 +3086,7 @@
         markNewReplyWhileReading(chatId, readingScrollTop, requestBaselineMessageId);
       } else {
         hideNewReplyNotice();
-        ScrollMemory.clear(chatId);
+ScrollMemory.clear(chatId);
       }
       if (result.unknownBlockTypes?.length) {
         flashStatus(`Anthropic 响应包含未支持的新类型：${result.unknownBlockTypes.join(', ')}`, 'err', 4200);
@@ -3998,7 +4086,7 @@
 
   function collectChatRecords() {
     return chatOrder
-      .filter(chatId => chats[chatId])
+.filter(chatId => chats[chatId])
       .map(chatId => ({ chatId, chat: chats[chatId], location: 'active' }));
   }
 
