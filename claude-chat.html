@@ -1080,6 +1080,12 @@
   .bubble-zh { font-size: 13px; color: var(--text-soft); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); line-height: 1.65; }
 
 
+  .system-prompt-modal { max-width: 760px; max-height: 88dvh; overflow-y: auto; }
+  .system-prompt-modal textarea { min-height: 260px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; }
+  .prompt-preview-wrap { display: flex; flex-direction: column; gap: 5px; min-height: 0; }
+  .prompt-preview-head { font-size: 11px; color: var(--text-soft); }
+  .prompt-preview { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; font-size: 11px; line-height: 1.45; color: var(--text-soft); }
+
   /* P0-3 Local Data Viewer */
   .viewer-modal { max-width: 920px; max-height: 86dvh; overflow: hidden; }
   .viewer-toolbar {
@@ -1255,7 +1261,8 @@
     <div class="settings-section">
       <div class="settings-section-title">AI</div>
       <div class="settings-actions">
-        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openMemory()">记忆设置</button>
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openSystemPrompt()">Core System Prompt</button>
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openInstruction()">Instruction</button>
         <button class="settings-action" type="button" onclick="closeModal('settingsModal');openKey()">Anthropic API Key</button>
       </div>
     </div>
@@ -1263,7 +1270,7 @@
     <div class="settings-section">
       <div class="settings-section-title">语音</div>
       <div class="settings-actions">
-        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openElKey()">语音 Key</button>
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openElKey()">ElevenLabs 语音</button>
       </div>
     </div>
 
@@ -1284,7 +1291,7 @@
 <div class="modal-overlay" id="expressionDebugModal">
   <div class="modal expression-debug-modal">
     <h2>Response Debug</h2>
-    <p>Response Core 观察：Expression 仅作 provider-neutral 元数据；SpeechPlan 按回复语言编译到对应 TTS provider。</p>
+    <p>Response Core 观察：Expression 与 SpeechPlan 原始结构；中英文 SpeechPlan 都编译为 Eleven v3 inline tags。</p>
     <div id="expressionDebugContent"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('expressionDebugModal')">关闭</button>
@@ -1305,29 +1312,50 @@
   </div>
 </div>
 
-<!-- MEMORY MODAL -->
-<div class="modal-overlay" id="memoryModal">
-  <div class="modal">
-    <h2>记忆设置</h2>
-    <p>这段内容会在每次对话开始时告诉 Claude，让它了解你的背景和偏好。</p>
-    <textarea id="memoryInput" rows="6" placeholder="例如：我叫Leona，住在英国，喜欢简洁的表达方式…"></textarea>
+<!-- CORE SYSTEM PROMPT MODAL -->
+<div class="modal-overlay" id="systemPromptModal">
+  <div class="modal system-prompt-modal">
+    <h2>Core System Prompt</h2>
+    <p>每次请求都会发送。这里只放稳定核心规则；replyLanguage、Instruction 和 runtime 时间由程序另行追加。</p>
+    <textarea id="systemPromptInput" rows="16" spellcheck="false"></textarea>
+    <div class="prompt-preview-wrap">
+      <div class="prompt-preview-head">当前实际 system（只读）</div>
+      <pre id="systemPromptPreview" class="prompt-preview"></pre>
+    </div>
     <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal('memoryModal')">取消</button>
-      <button class="btn-save" onclick="saveMemory()">保存</button>
+      <button class="btn-cancel" type="button" onclick="resetSystemPromptToDefault()">恢复默认</button>
+      <button class="btn-cancel" type="button" onclick="refreshSystemPromptPreview()">刷新预览</button>
+      <button class="btn-cancel" type="button" onclick="closeModal('systemPromptModal')">取消</button>
+      <button class="btn-save" type="button" onclick="saveSystemPrompt()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- GLOBAL INSTRUCTION MODAL -->
+<div class="modal-overlay" id="instructionModal">
+  <div class="modal">
+    <h2>Instruction</h2>
+    <p>所有窗口生效；保存后从下一次请求起使用。</p>
+    <textarea id="instructionInput" rows="6" placeholder="输入需要对所有窗口生效的可调整要求…"></textarea>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('instructionModal')">取消</button>
+      <button class="btn-save" onclick="saveInstruction()">保存</button>
     </div>
   </div>
 </div>
 
 
-<!-- VOICE KEY MODAL -->
+<!-- ELEVENLABS VOICE SETTINGS -->
 <div class="modal-overlay" id="elModal">
   <div class="modal">
-    <h2>语音 Key</h2>
-    <p>English：ElevenLabs API Key。中文：阿里 FC Proxy Token。都只保存在本地浏览器。</p>
+    <h2>ElevenLabs 语音</h2>
+    <p>中英文都使用 Eleven v3；播放时按消息自身的 language 选择对应 voice。设置只保存在本地浏览器。</p>
     <label for="elKeyInput">ElevenLabs API Key</label>
     <input type="password" id="elKeyInput" placeholder="sk_..." />
-    <label for="doubaoProxyTokenInput">中文 TTS Proxy Token</label>
-    <input type="password" id="doubaoProxyTokenInput" placeholder="Proxy Token" />
+    <label>English Voice ID</label>
+    <input type="text" id="elEnVoiceIdInput" readonly />
+    <label for="elZhVoiceIdInput">中文 Voice ID</label>
+    <input type="text" id="elZhVoiceIdInput" placeholder="0DKC76GAganwbm9TweFs" />
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('elModal')">取消</button>
       <button class="btn-save" onclick="saveElKey()">保存</button>
@@ -1390,11 +1418,22 @@
   const CHAT_BOTTOM_THRESHOLD_PX = 100;
   const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
   const REPLY_LANGUAGE_KEY = 'claude_reply_language_v1';
-  const EXPRESSION_SCHEMA_VERSION = 2;
+  const CORE_SYSTEM_PROMPT_KEY = 'claude_core_system_prompt_v1';
+  const INSTRUCTION_KEY = 'claude_instruction_v1';
+  const ELEVEN_ZH_VOICE_KEY = 'eleven_voice_zh_v1';
+  const ELEVEN_ZH_VOICE_DEFAULT = '0DKC76GAganwbm9TweFs';
+  const DEFAULT_CORE_SYSTEM_PROMPT = `LANG: Reply natively in replyLanguage; user input language does not change it.
+
+EXPRESSION: Infer concise English stance/affect from full context; intensity=0–1.
+
+TEXT: deliveryBlocks.parts[].text = actual visible reply. Blocks follow natural sentence/semantic playback units; split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
+
+SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary; place them semantically in tagsBefore/tagsAfter. Usually one tag at a position; use a second only when it adds a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.
+
+TIME: Treat runtime time/away/timezone as ambient context; use when relevant without routinely mentioning it.`;
+  const EXPRESSION_SCHEMA_VERSION = 3;
   const SPEECH_PLAN_SCHEMA_VERSION = 1;
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
-  const EXPRESSION_STANCES = ['neutral', 'warm', 'playful', 'teasing', 'serious', 'reassuring', 'reflective', 'tender'];
-  const EXPRESSION_AFFECTS = ['neutral', 'calm', 'amused', 'pleased', 'excited', 'concerned', 'sad', 'surprised', 'frustrated', 'affectionate'];
   const ELEVEN_TTS_MODEL = 'eleven_v3';
   const ELEVEN_RENDER_VERSION = 1;
   const ELEVEN_V3_VOICE_SETTINGS = { stability: 0.35, similarity_boost: 0.75, style: 0, speed: 1 };
@@ -1417,7 +1456,7 @@
   ];
 
   let apiKey = localStorage.getItem('claude_key') || '';
-  let memory = localStorage.getItem('claude_memory') || '';
+  let instruction = localStorage.getItem(INSTRUCTION_KEY) || '';
   let chats = JSON.parse(localStorage.getItem('claude_chats') || '{}');
   let chatOrder = JSON.parse(localStorage.getItem('claude_order') || '[]');
   let currentId = null;
@@ -1432,7 +1471,9 @@
   let modelRegistry = [];
   let elKey = localStorage.getItem('el_key') || '';
   let doubaoProxyToken = localStorage.getItem(DOUBAO_PROXY_TOKEN_KEY) || '';
-  const EL_VOICE = '0qHbGTWOPgPUvThY4Te6';
+  const ELEVEN_EN_VOICE_ID = '0qHbGTWOPgPUvThY4Te6';
+  let elevenZhVoiceId = localStorage.getItem(ELEVEN_ZH_VOICE_KEY) || ELEVEN_ZH_VOICE_DEFAULT;
+  let coreSystemPrompt = localStorage.getItem(CORE_SYSTEM_PROMPT_KEY) || DEFAULT_CORE_SYSTEM_PROMPT;
   let currentAudio = null;
   let currentSkin = localStorage.getItem('claude_skin') || 'warm';
   let currentReplyLanguage = REPLY_LANGUAGES.has(localStorage.getItem(REPLY_LANGUAGE_KEY))
@@ -2386,7 +2427,7 @@
         if (blocks) {
           const blockHtml = blocks.map((block, blockIndex) => {
             const blockText = getDeliveryBlockCleanText(block);
-            const hasVoice = !!blockText && ((msg.language === 'en' && !!elKey) || (msg.language === 'zh' && !!doubaoProxyToken));
+            const hasVoice = !!blockText && canPlayElevenLanguage(msg.language);
             return `<div class="delivery-block">
               ${hasVoice ? voiceBarMarkup(msg, msgIndex, blockIndex, blockText) : ''}
               <div class="bubble transcript-bubble">${escHtml(blockText)}</div>
@@ -2396,7 +2437,7 @@
             ${hasDebug ? `<button class="debug-btn" type="button" onclick="openExpressionDebug('${msg.id || ''}')">Debug</button>` : ''}
             <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
         } else {
-          const hasVoice = !!msg.content && ((msg.language === 'en' && !!elKey) || (msg.language === 'zh' && !!doubaoProxyToken));
+          const hasVoice = !!msg.content && canPlayElevenLanguage(msg.language);
           div.innerHTML = `
             ${hasVoice ? voiceBarMarkup(msg, msgIndex, null, msg.content || '') : ''}
             <div class="bubble transcript-bubble">${escHtml(msg.content || '')}</div>
@@ -2473,6 +2514,14 @@
 
   function languageLabel(language) {
     return language === 'zh' ? '中文' : 'English';
+  }
+
+  function getElevenVoiceId(language) {
+    return language === 'zh' ? elevenZhVoiceId : ELEVEN_EN_VOICE_ID;
+  }
+
+  function canPlayElevenLanguage(language) {
+    return !!elKey && !!getElevenVoiceId(language);
   }
 
   // ── RUNTIME TEMPORAL CONTEXT ──────────────────────────
@@ -2562,33 +2611,13 @@
   }
 
   function buildSystemPrompt(config) {
-    const languageRule = config.replyLanguage === 'zh'
-      ? '回复正文必须直接用自然、母语化的中文构思和表达。用户输入可以是任何语言；不要因为用户使用英语就切换回复语言。'
-      : '回复正文必须直接用自然、地道的英语构思和表达，不要先用中文构思再翻译。用户输入可以是任何语言；不要因为用户使用中文就切换回复语言。';
-
-    const speechPlanRule = config.replyLanguage === 'en'
-      ? '\n\nSpeechPlan 规则：deliveryBlocks 与正文是在同一次完整语境理解中共同构成的，不是在正文落定后只看字面补标签。你必须参考完整对话历史、当前语义、隐含意义、subtext、互动情境以及你真正打算如何说这句话，再决定每个局部的表演指令。' +
-        'tagsBefore/tagsAfter 是给 Eleven v3 的可执行声音表演指令，只描述听得出来的 delivery、tone、pacing 或 vocal event；它们不是对意图的解释。' +
-        '每个数组元素只放一个独立 tag 的内容，不要包含方括号。tag 使用开放自然语言，不使用固定词表或预设枚举；应根据当前完整语境自由选择最合适的声音表演指令，但每个 tag 都必须短、具体、可听见、可执行。' +
-        '不要写原因、背景说明、baseline、人际关系标签或抽象分析；不要在 tag 中引用、复述或嵌入任何正文原句；不要写 “after X / before X” 之类的定位说明，位置由 tagsBefore/tagsAfter 的结构本身表达。' +
-        '每个 block 会被 Eleven v3 独立合成，不能依赖前一个 block 的 tag 自动延续到后一个 block。若某个 block 按中性字面朗读会丢失你在完整语境中真正想表达的语气、节奏或声音动作，就应在该 block 内留下足够的局部 tag；但不要为了数量而机械地给每个 part 强塞 tag，也不要堆叠没有可听见作用的近义词。expression 与 deliveryBlocks 描述的是同一条回复，不应彼此矛盾，但 speechPlan 不需要从 expression 推导。'
-      : '\n\nSpeechPlan 规则：中文 deliveryBlocks 与正文在同一次完整语境理解中共同构成。tagsBefore/tagsAfter 是给豆包 TTS 的自然语言表演提示，应结合完整对话语境、当前语义以及你真正打算如何说这句话来生成。每个数组元素只写一项简洁、具体的表演要求，不包含方括号或 #；使用自然中文和开放表达。';
-
-    let system = '你是一个有真实感的对话伙伴，男性，有自己的性格和想法。' +
-      '\n\n回复语言规则：' + languageRule +
-      '\n\n你的最终输出包含 deliveryBlocks 与 expression 两部分，不再额外重复输出一份 reply。所有 deliveryBlocks.parts[].text 按顺序拼接起来，就是用户真正看到、并写入历史的完整正文。' +
-      '\n\ndeliveryBlocks 同时是 UI/TTS 的播放单元。短的日常对话，通常让一个自然句子或紧密相连的短表达成为一个 block；如果回复是几个较长段落，则优先按自然段或完整语义段落分 block，不要机械地把长篇内容逐句切碎。' +
-      '一个 block 内如果需要在中间改变语气、停顿、轻笑、放慢等，可以拆成多个 parts；parts 必须按实际朗读顺序排列，text 只包含真实可见、可朗读的正文。' +
-      '每个 block 的 joinAfter 只用于重建干净正文：相邻日常句用 space，真正换段用 paragraph。最后一个 block 的 joinAfter 值不会影响正文。' +
-      speechPlanRule +
-      '\n\nexpression 是 provider-neutral 的粗粒度表达元数据，只保留 stance、affect、intensity；它不直接控制 TTS，也不要包含 voice cue、音高、语速、停顿或 provider 专属说明。stance/affect 描述这条回复本身的表达姿态，不是对用户心理的诊断。' +
-      '\n\n回复通常保持自然对话长度；若用户明确要求详细内容，则按任务需要展开。' +
-      '\n\n[time] 是静默语境元数据，仅在相关时参考，不要例行复述。';
+    let system = (coreSystemPrompt || DEFAULT_CORE_SYSTEM_PROMPT).trim() +
+      `\n\n[replyLanguage=${config.replyLanguage}]`;
 
     if (!config.structuredOutputSupported) {
-      system += '\n\n当前模型未声明 Structured Outputs capability。请严格只输出一个合法 JSON 对象，不要 Markdown code fence、不要额外文字；字段必须与应用要求的 deliveryBlocks/expression schema 一致。';
+      system += '\n\nReturn only one valid JSON object matching the deliveryBlocks/expression contract; no Markdown fence or extra text.';
     }
-    if (memory.trim()) system += '\n\n关于用户的背景信息：\n' + memory.trim();
+    if (instruction.trim()) system += '\n\n[INSTRUCTION]\n' + instruction.trim();
     return system;
   }
 
@@ -2620,8 +2649,8 @@
                   required: ['text', 'tagsBefore', 'tagsAfter'],
                   properties: {
                     text: { type: 'string' },
-                    tagsBefore: { type: 'array', items: { type: 'string' } },
-                    tagsAfter: { type: 'array', items: { type: 'string' } }
+                    tagsBefore: { type: 'array', maxItems: 2, items: { type: 'string' } },
+                    tagsAfter: { type: 'array', maxItems: 2, items: { type: 'string' } }
                   }
                 }
               }
@@ -2633,9 +2662,9 @@
           additionalProperties: false,
           required: ['stance', 'affect', 'intensity'],
           properties: {
-            stance: { type: 'string', enum: EXPRESSION_STANCES },
-            affect: { type: 'string', enum: EXPRESSION_AFFECTS },
-            intensity: { type: 'number' }
+            stance: { type: 'string', minLength: 1, maxLength: 120 },
+            affect: { type: 'string', minLength: 1, maxLength: 120 },
+            intensity: { type: 'number', minimum: 0, maximum: 1 }
           }
         }
       }
@@ -2720,8 +2749,14 @@
 
   function normalizeExpression(expression) {
     const source = expression && typeof expression === 'object' ? expression : {};
-    const stance = EXPRESSION_STANCES.includes(source.stance) ? source.stance : 'neutral';
-    const affect = EXPRESSION_AFFECTS.includes(source.affect) ? source.affect : 'neutral';
+    const cleanText = value => {
+      const text = typeof value === 'string'
+        ? value.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim()
+        : '';
+      return text ? text.slice(0, 120) : 'neutral';
+    };
+    const stance = cleanText(source.stance);
+    const affect = cleanText(source.affect);
     const rawIntensity = Number(source.intensity);
     const intensity = Number.isFinite(rawIntensity) ? Math.min(1, Math.max(0, rawIntensity)) : 0;
     return { stance, affect, intensity };
@@ -2740,12 +2775,20 @@
   function normalizeTagList(list, language) {
     if (!REPLY_LANGUAGES.has(language) || !Array.isArray(list)) return [];
     const seen = new Set();
-    return list.slice(0, 6).flatMap(item => {
-      const tag = normalizeSpeechTag(item);
-      if (!tag || seen.has(tag)) return [];
-      seen.add(tag);
-      return [tag];
-    });
+    const result = [];
+    for (const item of list) {
+      // If the model packs multiple cues into one comma-delimited string, normalize them
+      // back into separate Eleven tags so the provider receives [tag][tag], not [tag, tag].
+      const pieces = String(item ?? '').split(',');
+      for (const piece of pieces) {
+        const tag = normalizeSpeechTag(piece);
+        if (!tag || seen.has(tag)) continue;
+        seen.add(tag);
+        result.push(tag);
+        if (result.length >= 2) return result;
+      }
+    }
+    return result;
   }
 
   function normalizeDeliveryBlocks(blocks, language) {
@@ -3169,20 +3212,14 @@ ScrollMemory.clear(chatId);
 
     const validation = msg.language ? validateReplyLanguage(msg.content, msg.language) : null;
     const expression = msg.expression || null;
-    const plannedProvider = msg.language === 'zh' ? 'Doubao via Aliyun FC' : msg.language === 'en' ? 'ElevenLabs' : 'Legacy';
-    const currentVoice = msg.language === 'en'
-      ? `ElevenLabs · ${ELEVEN_TTS_MODEL} · ${EL_VOICE}`
-      : msg.language === 'zh'
-        ? 'Doubao via Aliyun FC · voice configured on server'
-        : '—';
+    const plannedProvider = REPLY_LANGUAGES.has(msg.language) ? 'ElevenLabs v3' : 'Legacy';
+    const voiceId = REPLY_LANGUAGES.has(msg.language) ? getElevenVoiceId(msg.language) : '';
+    const currentVoice = voiceId ? `ElevenLabs · ${ELEVEN_TTS_MODEL} · ${voiceId}` : '—';
     const blocks = Array.isArray(msg.deliveryBlocks) ? msg.deliveryBlocks : [];
-    const speechBlocksPreview = blocks.length ? blocks.map((block, blockIndex) => {
-      if (msg.language === 'zh') {
-        const compiled = compileDeliveryBlockForDoubao(block);
-        return `b${blockIndex + 1} · joinAfter=${block.joinAfter}\ninstruction: ${compiled.instruction || '（无）'}\ntext: ${compiled.text}`;
-      }
-      return `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${compileDeliveryBlockForElevenV3(block)}`;
-    }).join('\n\n') : '—';
+    const speechBlocksPreview = blocks.length ? blocks.map((block, blockIndex) =>
+      `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${compileDeliveryBlockForElevenV3(block)}`
+    ).join('\n\n') : '—';
+
 
     const rows = [
       ['messageId', msg.id || '—'],
@@ -3384,41 +3421,43 @@ ScrollMemory.clear(chatId);
   }
 
   // ── 语音 ─────────────────────────────────────────────
+  // Both en/zh use Eleven v3. msg.language selects the voice ID only when playback is requested.
+  // Existing cached audio wins, including historical Chinese Doubao artifacts.
   async function playVoice(btn) {
     const msgId = btn.dataset.msgId;
     const idx = parseInt(btn.dataset.index);
     const requestedBlockIndex = Number.isInteger(Number(btn.dataset.blockIndex)) ? Number(btn.dataset.blockIndex) : null;
     const messages = chats[currentId]?.messages || [];
     const msg = (msgId ? messages.find(m => m.id === msgId) : null) ?? messages[idx] ?? null;
+    const language = REPLY_LANGUAGES.has(msg?.language) ? msg.language : 'en';
+    const voiceId = getElevenVoiceId(language);
 
-    if (msg?.language === 'zh') {
-      await playDoubaoVoice(btn, msg, requestedBlockIndex);
-      return;
-    }
-
-    if (!elKey) { setStatus('请先在左下角设置语音 Key', 'err'); return; }
+    if (!elKey) { setStatus('请先设置 ElevenLabs API Key', 'err'); return; }
+    if (!voiceId) { setStatus(language === 'zh' ? '请先设置中文 ElevenLabs Voice ID' : '缺少 ElevenLabs Voice ID', 'err'); return; }
 
     const blocks = Array.isArray(msg?.deliveryBlocks) && msg.deliveryBlocks.length ? msg.deliveryBlocks : null;
-    let text = '';
+    let ttsText = '';
     let audioKey = null;
+    let cachePrefix = null;
+    let blockId = 'legacy';
 
     if (blocks && requestedBlockIndex !== null && blocks[requestedBlockIndex]) {
       const block = blocks[requestedBlockIndex];
-      text = compileDeliveryBlockForElevenV3(block);
-      const blockId = block.blockId || `b${requestedBlockIndex + 1}`;
-      audioKey = msgId ? `${currentId}_${msgId}__${blockId}__en__${ELEVEN_TTS_MODEL}__rv${ELEVEN_RENDER_VERSION}` : null;
+      ttsText = compileDeliveryBlockForElevenV3(block);
+      blockId = block.blockId || `b${requestedBlockIndex + 1}`;
+    } else if (msg?.language === 'zh' || msg?.language === 'en') {
+      ttsText = normalizeTtsInlineText(msg.content || '');
     } else {
-      // Legacy single-bubble messages have no SpeechPlan. They still remain playable,
-      // but are sent as raw text to v3 with no fabricated tags.
-      text = msg?.language === 'en'
-        ? normalizeTtsInlineText(msg.content || '')
-        : normalizeTtsInlineText(msg?.en || parseAiReply(msg?.content || '').en);
-      audioKey = msgId ? `${currentId}_${msgId}__legacy__en__${ELEVEN_TTS_MODEL}__rv${ELEVEN_RENDER_VERSION}` : null;
+      ttsText = normalizeTtsInlineText(msg?.en || parseAiReply(msg?.content || '').en);
     }
 
-    if (!text) { setStatus('没有可供 ElevenLabs 播放的英文内容', 'err'); return; }
+    if (msgId) {
+      audioKey = `${currentId}_${msgId}__${blockId}__${language}__${ELEVEN_TTS_MODEL}__rv${ELEVEN_RENDER_VERSION}`;
+      cachePrefix = `${currentId}_${msgId}__${blockId}__${language}__`;
+    }
 
-    // 如果正在播放，停止
+    if (!ttsText) { setStatus('没有可供 ElevenLabs 播放的内容', 'err'); return; }
+
     if (currentAudio) {
       currentAudio.pause();
       currentAudio = null;
@@ -3447,14 +3486,16 @@ ScrollMemory.clear(chatId);
 
     try {
       if (audioKey) {
-        const cached = await getAudio(audioKey);
-        if (cached) { playBlob(cached); return; }
+        const exactCached = await getAudio(audioKey);
+        if (exactCached) { playBlob(exactCached); return; }
+        const historicalCached = await getCachedAudioWithPrefix(cachePrefix);
+        if (historicalCached) { playBlob(historicalCached); return; }
       }
 
-      setStatus('生成语音中…');
-      const elUrl = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE}`;
+      setStatus(language === 'zh' ? '生成中文语音中…' : '生成语音中…');
+      const elUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
       const requestBody = {
-        text,
+        text: ttsText,
         model_id: ELEVEN_TTS_MODEL,
         voice_settings: { ...ELEVEN_V3_VOICE_SETTINGS }
       };
@@ -3479,7 +3520,6 @@ ScrollMemory.clear(chatId);
       const blob = await res.blob();
       if (audioKey) putAudio(audioKey, blob);
       playBlob(blob);
-
     } catch (e) {
       setStatus('语音网络错误：' + e.message, 'err');
       btn.classList.remove('playing', 'was-playing');
@@ -3509,41 +3549,78 @@ ScrollMemory.clear(chatId);
     refreshModelRegistry();
   }
 
-  function openMemory() {
-    document.getElementById('memoryInput').value = memory;
-    document.getElementById('memoryModal').classList.add('open');
+  function currentEffectiveSystemPrompt() {
+    const config = getCurrentGenerationConfig();
+    const safeConfig = config || { replyLanguage: currentReplyLanguage, structuredOutputSupported: true };
+    const chat = currentId ? chats[currentId] : null;
+    return buildSystemPrompt(safeConfig) + '\n\n' + buildTemporalContext(chat);
   }
 
-  function saveMemory() {
-    memory = document.getElementById('memoryInput').value;
-    localStorage.setItem('claude_memory', memory);
-    closeModal('memoryModal');
-    flashStatus('记忆已保存 ✓', 'ok', 2000);
+  function refreshSystemPromptPreview() {
+    const preview = document.getElementById('systemPromptPreview');
+    if (preview) preview.textContent = currentEffectiveSystemPrompt();
   }
 
+  function openSystemPrompt() {
+    document.getElementById('systemPromptInput').value = coreSystemPrompt;
+    refreshSystemPromptPreview();
+    document.getElementById('systemPromptModal').classList.add('open');
+  }
+
+  function saveSystemPrompt() {
+    const value = document.getElementById('systemPromptInput').value.trim();
+    coreSystemPrompt = value || DEFAULT_CORE_SYSTEM_PROMPT;
+    localStorage.setItem(CORE_SYSTEM_PROMPT_KEY, coreSystemPrompt);
+    refreshSystemPromptPreview();
+    closeModal('systemPromptModal');
+    flashStatus('Core System Prompt 已保存 ✓', 'ok', 1800);
+  }
+
+  function resetSystemPromptToDefault() {
+    coreSystemPrompt = DEFAULT_CORE_SYSTEM_PROMPT;
+    localStorage.removeItem(CORE_SYSTEM_PROMPT_KEY);
+    document.getElementById('systemPromptInput').value = coreSystemPrompt;
+    refreshSystemPromptPreview();
+    flashStatus('已恢复默认 Core Prompt', 'ok', 1600);
+  }
+
+  function openInstruction() {
+    document.getElementById('instructionInput').value = instruction;
+    document.getElementById('instructionModal').classList.add('open');
+  }
+
+  function saveInstruction() {
+    instruction = document.getElementById('instructionInput').value;
+    localStorage.setItem(INSTRUCTION_KEY, instruction);
+    closeModal('instructionModal');
+    refreshSystemPromptPreview();
+    flashStatus('Instruction 已保存 ✓', 'ok', 1800);
+  }
 
   function openElKey() {
     document.getElementById('elKeyInput').value = elKey ? '••••••••••••••••' : '';
-    document.getElementById('doubaoProxyTokenInput').value = doubaoProxyToken ? '••••••••••••••••' : '';
+    document.getElementById('elEnVoiceIdInput').value = ELEVEN_EN_VOICE_ID;
+    document.getElementById('elZhVoiceIdInput').value = elevenZhVoiceId;
     document.getElementById('elModal').classList.add('open');
   }
 
   function saveElKey() {
     const elVal = document.getElementById('elKeyInput').value.trim();
-    const doubaoVal = document.getElementById('doubaoProxyTokenInput').value.trim();
+    const zhVoiceVal = document.getElementById('elZhVoiceIdInput').value.trim();
 
     if (elVal && !elVal.startsWith('•')) {
       elKey = elVal;
       localStorage.setItem('el_key', elKey);
     }
 
-    if (doubaoVal && !doubaoVal.startsWith('•')) {
-      doubaoProxyToken = doubaoVal;
-      localStorage.setItem(DOUBAO_PROXY_TOKEN_KEY, doubaoProxyToken);
-    }
+    elevenZhVoiceId = zhVoiceVal;
+    if (elevenZhVoiceId) localStorage.setItem(ELEVEN_ZH_VOICE_KEY, elevenZhVoiceId);
+    else localStorage.removeItem(ELEVEN_ZH_VOICE_KEY);
 
     closeModal('elModal');
-    flashStatus('语音 Key 已保存 ✓', 'ok', 2000);
+    if (currentId) loadChat(currentId);
+    else renderSidebar();
+    flashStatus('ElevenLabs 语音设置已保存 ✓', 'ok', 2000);
   }
   function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
