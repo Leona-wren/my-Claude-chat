@@ -1190,6 +1190,8 @@
   .missing-sticker-actions { display: flex; gap: 6px; margin-top: 3px; }
   .sticker-inline { display: block; max-width: min(220px, 54vw); max-height: 220px; object-fit: contain; border-radius: 12px; }
   .sticker-bubble { padding: 2px 0; background: transparent; box-shadow: none; }
+  .sticker-bubble img[hidden] { display: none; }
+  .sticker-vector-state { font-size: 10px; color: var(--text-soft); }
 
 </style>
 </head>
@@ -1403,8 +1405,17 @@
 <div class="modal-overlay" id="stickerModal">
   <div class="modal sticker-modal">
     <h2>私人表情包库</h2>
-    <p>仅供当前 Personal AI 使用。图片存入本浏览器 IndexedDB；聊天消息只引用稳定 stickerId。当前版本建立私有库与 Claude 的 sticker intent / missing-request 流程；语义向量检索在下一步接入。</p>
+    <p>仅供当前 Personal AI 使用。图片存入本浏览器 IndexedDB；聊天消息只引用稳定 stickerId。Voyage 负责把图片和 Claude 的 sticker intent 映射到同一语义向量空间，本地只做相似度排序。</p>
     <div class="sticker-modal-body">
+      <div class="sticker-section">
+        <div class="sticker-section-title">Voyage multimodal embedding</div>
+        <div class="sticker-toolbar">
+          <input type="password" id="voyageKeyInput" placeholder="MongoDB Atlas Model API Key" style="min-width:260px;flex:1">
+          <button class="btn-cancel" type="button" onclick="saveVoyageKey()">保存 Key</button>
+          <button class="btn-cancel" type="button" onclick="rebuildStickerEmbeddings()">建立 / 更新全部向量</button>
+          <span class="sticker-summary" id="voyageStatus"></span>
+        </div>
+      </div>
       <div class="sticker-toolbar">
         <button class="btn-save" type="button" onclick="document.getElementById('stickerImageInput').click()">添加静态图片</button>
         <button class="btn-cancel" type="button" onclick="exportStickerLibrary()">导出表情包库</button>
@@ -1491,6 +1502,10 @@
   const ELEVEN_ZH_VOICE_DEFAULT = '0DKC76GAganwbm9TweFs';
   const STICKER_SCHEMA_VERSION = 1;
   const STICKER_MISSING_KEY = 'claude_sticker_missing_v1';
+  const VOYAGE_API_KEY_KEY = 'personal_ai_voyage_key_v1';
+  const VOYAGE_MULTIMODAL_MODEL = 'voyage-multimodal-3.5';
+  const VOYAGE_MULTIMODAL_ENDPOINT = 'https://ai.mongodb.com/v1/multimodalembeddings';
+  const STICKER_WEIGHT_LOG_SCALE = 0.03;
   const DEFAULT_CORE_SYSTEM_PROMPT = `LANG: If replyLanguage=zh, compose directly in natural, idiomatic native Chinese; if replyLanguage=en, compose directly in natural, idiomatic English. User input language does not change replyLanguage; do not translate from another language.
 
 TEXT: All deliveryBlocks.parts[].text in order form the complete visible reply. For short everyday conversation, usually use one natural sentence or tightly linked short expression per block. For longer replies, group blocks by natural paragraph or complete semantic section rather than mechanically splitting every sentence. Within a block, split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
@@ -1536,6 +1551,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   let modelRegistry = [];
   let elKey = localStorage.getItem('el_key') || '';
   let doubaoProxyToken = localStorage.getItem(DOUBAO_PROXY_TOKEN_KEY) || '';
+  let voyageApiKey = localStorage.getItem(VOYAGE_API_KEY_KEY) || '';
   const ELEVEN_EN_VOICE_ID = '0qHbGTWOPgPUvThY4Te6';
   let elevenZhVoiceId = localStorage.getItem(ELEVEN_ZH_VOICE_KEY) || ELEVEN_ZH_VOICE_DEFAULT;
 
@@ -1548,6 +1564,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   let audioDB = null;
   let stickerDB = null;
   let stickerPreviewUrls = [];
+  let stickerChatUrls = [];
   let draftSaveTimer = null;
   let draftEditorInitialized = false;
 
@@ -1605,6 +1622,170 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       });
     }
   };
+
+
+  function saveVoyageKey() {
+    const input = document.getElementById('voyageKeyInput');
+    const value = input?.value?.trim() || '';
+    if (value && !value.startsWith('•')) {
+      voyageApiKey = value;
+      localStorage.setItem(VOYAGE_API_KEY_KEY, voyageApiKey);
+    }
+    if (input) input.value = voyageApiKey ? '••••••••••••••••' : '';
+    updateVoyageStatus();
+    flashStatus(voyageApiKey ? 'Voyage Key 已保存 ✓' : '未设置 Voyage Key', voyageApiKey ? 'ok' : 'err', 1800);
+  }
+
+  function updateVoyageStatus(extra = '') {
+    const el = document.getElementById('voyageStatus');
+    if (!el) return;
+    el.textContent = `${voyageApiKey ? 'Key 已设置' : 'Key 未设置'} · ${VOYAGE_MULTIMODAL_MODEL}${extra ? ' · ' + extra : ''}`;
+  }
+
+  async function postVoyageMultimodal(inputs, inputType, signal = null) {
+    if (!voyageApiKey) throw new Error('未设置 Voyage API Key');
+    const res = await fetch(VOYAGE_MULTIMODAL_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${voyageApiKey}`
+      },
+      body: JSON.stringify({
+        inputs,
+        model: VOYAGE_MULTIMODAL_MODEL,
+        input_type: inputType,
+        truncation: true
+      }),
+      signal
+    });
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const payload = await res.json();
+        detail = payload?.detail || payload?.error?.message || payload?.message || '';
+      } catch (_) {}
+      throw new Error(`Voyage HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+    }
+    const payload = await res.json();
+    const embeddings = payload?.data?.map(item => item?.embedding).filter(Array.isArray) || payload?.embeddings || [];
+    if (!Array.isArray(embeddings) || embeddings.length !== inputs.length) {
+      throw new Error('Voyage 返回的 embedding 数量异常');
+    }
+    return embeddings;
+  }
+
+  function stickerDocumentInput(record, imageDataUrl) {
+    const content = [];
+    const metadata = [];
+    if (record.overlayText) metadata.push(`Overlay text: ${record.overlayText}`);
+    if (record.note) metadata.push(`Usage note: ${record.note}`);
+    if (metadata.length) content.push({ type: 'text', text: metadata.join('\n') });
+    content.push({ type: 'image_base64', image_base64: imageDataUrl });
+    return { content };
+  }
+
+  function stickerQueryInput(event) {
+    const lines = [
+      `Communicative intent: ${event.intent}`,
+      `Desired visual tone: ${event.visualTone}`,
+      `Expression intensity: ${Number(event.intensity).toFixed(2)}`
+    ];
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  }
+
+  async function embedStickerRecords(records, signal = null) {
+    const usable = (records || []).filter(record => record?.id && record?.blob);
+    if (!usable.length) return { ok: true, count: 0 };
+    const inputs = [];
+    for (const record of usable) {
+      inputs.push(stickerDocumentInput(record, await blobToDataUrl(record.blob)));
+    }
+    const embeddings = await postVoyageMultimodal(inputs, 'document', signal);
+    let count = 0;
+    for (let i = 0; i < usable.length; i++) {
+      const record = usable[i];
+      const embedding = embeddings[i];
+      if (!Array.isArray(embedding)) continue;
+      await StickerStorage.put({
+        ...record,
+        embedding,
+        embeddingModel: VOYAGE_MULTIMODAL_MODEL,
+        embeddedAt: Date.now(),
+        updatedAt: Date.now()
+      });
+      count++;
+    }
+    return { ok: true, count };
+  }
+
+  async function rebuildStickerEmbeddings() {
+    if (!voyageApiKey) { setStatus('请先保存 Voyage API Key', 'err'); return; }
+    const ready = await waitForStickerDB();
+    if (!ready) { setStatus('表情包数据库尚未就绪', 'err'); return; }
+    const records = (await StickerStorage.list()).filter(record => Number(record.weight) > 0);
+    if (!records.length) { flashStatus('图库里还没有可参与检索的表情包', 'err', 1800); return; }
+    updateVoyageStatus('正在向量化…');
+    try {
+      const result = await embedStickerRecords(records);
+      updateVoyageStatus(`已更新 ${result.count} 张`);
+      flashStatus(`已建立 ${result.count} 张表情包向量 ✓`, 'ok', 2200);
+      renderStickerLibraryModal();
+    } catch (e) {
+      updateVoyageStatus('调用失败');
+      setStatus('Voyage 向量化失败：' + e.message, 'err');
+    }
+  }
+
+  function dotProduct(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return -Infinity;
+    let sum = 0;
+    for (let i = 0; i < a.length; i++) sum += Number(a[i]) * Number(b[i]);
+    return sum;
+  }
+
+  function stickerAdjustedScore(similarity, weight) {
+    const safeWeight = Math.max(0.0001, Number(weight) || 0.0001);
+    return similarity + STICKER_WEIGHT_LOG_SCALE * Math.log(safeWeight);
+  }
+
+  async function resolveStickerEvents(events, signal = null) {
+    if (!Array.isArray(events) || !events.length) return { events: [], retrievalError: null };
+    if (!voyageApiKey) return { events: events.map(event => ({ ...event })), retrievalError: 'Voyage API Key 未设置' };
+    await waitForStickerDB();
+    const library = (await StickerStorage.list()).filter(record =>
+      Number(record.weight) > 0 &&
+      Array.isArray(record.embedding) &&
+      record.embeddingModel === VOYAGE_MULTIMODAL_MODEL
+    );
+    if (!library.length) return { events: events.map(event => ({ ...event })), retrievalError: '图库尚无可用向量' };
+
+    try {
+      const queryEmbeddings = await postVoyageMultimodal(events.map(stickerQueryInput), 'query', signal);
+      const resolved = events.map((event, index) => {
+        const query = queryEmbeddings[index];
+        let best = null;
+        for (const record of library) {
+          const similarity = dotProduct(query, record.embedding);
+          const adjustedScore = stickerAdjustedScore(similarity, record.weight);
+          if (!best || adjustedScore > best.adjustedScore) {
+            best = { record, similarity, adjustedScore };
+          }
+        }
+        if (!best) return { ...event };
+        return {
+          ...event,
+          stickerId: best.record.id,
+          matchScore: Number(best.similarity.toFixed(6)),
+          adjustedMatchScore: Number(best.adjustedScore.toFixed(6)),
+          embeddingModel: VOYAGE_MULTIMODAL_MODEL
+        };
+      });
+      return { events: resolved, retrievalError: null };
+    } catch (e) {
+      if (e?.name === 'AbortError') throw e;
+      return { events: events.map(event => ({ ...event })), retrievalError: e.message || 'Voyage retrieval failed' };
+    }
+  }
 
   function getAudio(key) {
     return new Promise(resolve => {
@@ -2343,6 +2524,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     draftEditorInitialized = true;
     renderSidebar();
     const area = document.getElementById('chatArea');
+    clearStickerChatUrls();
     area.innerHTML = '';
     const chat = chats[id];
     if (!chat || chat.messages.length === 0) {
@@ -2537,6 +2719,39 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     setTimeout(refresh, 120);
   }
 
+  function clearStickerChatUrls() {
+    stickerChatUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch (_) {} });
+    stickerChatUrls = [];
+  }
+
+  function stickerSlotMarkup(msg, slot) {
+    const events = (Array.isArray(msg?.stickerEvents) ? msg.stickerEvents : []).filter(event =>
+      Number(event?.slot) === slot && typeof event?.stickerId === 'string' && event.stickerId
+    );
+    const chunks = [];
+    for (const event of events) {
+      const repeat = Number.isInteger(Number(event.repeat)) && Number(event.repeat) > 0 ? Number(event.repeat) : 1;
+      for (let i = 0; i < repeat; i++) {
+        chunks.push(`<div class="sticker-bubble" data-sticker-id="${escHtml(event.stickerId)}"><img class="sticker-inline" alt="sticker" hidden></div>`);
+      }
+    }
+    return chunks.join('');
+  }
+
+  async function hydrateStickerBubbles(root) {
+    const bubbles = Array.from(root?.querySelectorAll?.('.sticker-bubble[data-sticker-id]') || []);
+    for (const bubble of bubbles) {
+      const id = bubble.dataset.stickerId;
+      const img = bubble.querySelector('img');
+      const record = await StickerStorage.get(id);
+      if (!record?.blob || !img || !bubble.isConnected) { bubble.remove(); continue; }
+      const url = URL.createObjectURL(record.blob);
+      stickerChatUrls.push(url);
+      img.src = url;
+      img.hidden = false;
+    }
+  }
+
   function renderMsg(role, msgOrText, animate = true, msgIndex = -1) {
     const area = document.getElementById('chatArea');
     const hint = document.getElementById('emptyHint');
@@ -2554,14 +2769,16 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
         const hasDebug = !!msg.language || !!msg.deliveryBlocks || Array.isArray(msg.stickerEvents);
         const blocks = Array.isArray(msg.deliveryBlocks) && msg.deliveryBlocks.length ? msg.deliveryBlocks : null;
         if (blocks) {
-          const blockHtml = blocks.map((block, blockIndex) => {
+          let blockHtml = stickerSlotMarkup(msg, 0);
+          blocks.forEach((block, blockIndex) => {
             const blockText = getDeliveryBlockCleanText(block);
             const hasVoice = !!blockText && canPlayElevenLanguage(msg.language);
-            return `<div class="delivery-block">
+            blockHtml += `<div class="delivery-block">
               ${hasVoice ? voiceBarMarkup(msg, msgIndex, blockIndex, blockText) : ''}
               <div class="bubble transcript-bubble">${escHtml(blockText)}</div>
             </div>`;
-          }).join('');
+            blockHtml += stickerSlotMarkup(msg, blockIndex + 1);
+          });
           div.innerHTML = `${blockHtml}
             ${hasDebug ? `<button class="debug-btn" type="button" onclick="openResponseDebug('${msg.id || ''}')">Debug</button>` : ''}
             <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
@@ -2596,6 +2813,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
 
     area.appendChild(div);
     hydrateVoiceBarCacheState(div);
+    hydrateStickerBubbles(div);
     area.scrollTop = area.scrollHeight;
   }
 
@@ -3230,12 +3448,15 @@ Treat this runtime time data as the authoritative source of the current date, lo
         };
       }
 
+      const stickerResolution = await resolveStickerEvents(responseCore.stickerEvents, signal);
+
       return {
         ok: true,
         ...parsedResponse,
         content: responseCore.content,
         deliveryBlocks: responseCore.deliveryBlocks,
-        stickerEvents: responseCore.stickerEvents,
+        stickerEvents: stickerResolution.events,
+        stickerRetrievalError: stickerResolution.retrievalError,
         languageValidation,
         responseFormat: config.structuredOutputSupported ? 'json_schema' : 'prompt_json'
       };
@@ -3277,6 +3498,7 @@ Treat this runtime time data as the authoritative source of the current date, lo
       speechPlanSchemaVersion: SPEECH_PLAN_SCHEMA_VERSION,
       stickerEvents: result.stickerEvents || [],
       stickerSchemaVersion: STICKER_SCHEMA_VERSION,
+      stickerRetrievalError: result.stickerRetrievalError || null,
       id: makeMessageId(),
       chatId,
       clientSeq: chat.messages.length,
@@ -3468,6 +3690,7 @@ ScrollMemory.clear(chatId);
       ['LanguageValidator', validation ? validation.status : '—'],
       ['SpeechPlan schema', msg.speechPlanSchemaVersion ? `v${msg.speechPlanSchemaVersion}` : (blocks.length ? 'legacy / unversioned' : 'none')],
       ['Sticker events', Array.isArray(msg.stickerEvents) && msg.stickerEvents.length ? JSON.stringify(msg.stickerEvents) : '[]'],
+      ['Sticker retrieval', msg.stickerRetrievalError || 'ok / not requested'],
       ['Speech blocks / provider input', speechBlocksPreview],
       ['planned voice route', plannedProvider],
       ['current TTS', currentVoice]
@@ -3787,7 +4010,7 @@ ScrollMemory.clear(chatId);
   }
 
   function recordUnresolvedStickerEvents(message) {
-    const events = Array.isArray(message?.stickerEvents) ? message.stickerEvents : [];
+    const events = (Array.isArray(message?.stickerEvents) ? message.stickerEvents : []).filter(event => !event?.stickerId);
     if (!events.length) return;
     const existing = loadMissingStickerRequests();
     const seen = new Set(existing.map(item => `${item.messageId || ''}:${item.eventIndex ?? ''}`));
@@ -3838,7 +4061,10 @@ ScrollMemory.clear(chatId);
     const grid = document.getElementById('stickerLibraryGrid');
     const summary = document.getElementById('stickerLibrarySummary');
     const missingRoot = document.getElementById('missingStickerList');
+    const voyageInput = document.getElementById('voyageKeyInput');
     if (!grid || !missingRoot) return;
+    if (voyageInput) voyageInput.value = voyageApiKey ? '••••••••••••••••' : '';
+    updateVoyageStatus();
 
     clearStickerPreviewUrls();
     const records = (await StickerStorage.list()).sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
@@ -3855,6 +4081,7 @@ ScrollMemory.clear(chatId);
           <img class="sticker-preview" src="${url}" alt="sticker">
           <div class="sticker-meta">
             <div class="sticker-id" title="${escHtml(record.id)}">${escHtml(record.id)}</div>
+            <div class="sticker-vector-state">${Array.isArray(record.embedding) && record.embeddingModel === VOYAGE_MULTIMODAL_MODEL ? 'vector ✓' : 'vector —'}</div>
             <div class="sticker-weight-row">权重 <input data-sticker-field="weight" type="number" min="0" step="0.1" value="${Number.isFinite(Number(record.weight)) ? Number(record.weight) : 1}"></div>
             <input data-sticker-field="overlayText" type="text" value="${escHtml(record.overlayText || '')}" placeholder="图片上的文字（可选）">
             <textarea data-sticker-field="note" placeholder="补充语义/氛围说明（可选）">${escHtml(record.note || '')}</textarea>
@@ -3871,8 +4098,14 @@ ScrollMemory.clear(chatId);
           if (!record || !field) return;
           let value = event.target.value;
           if (field === 'weight') value = Math.max(0, Number(value) || 0);
-          const next = { ...record, [field]: value, updatedAt: Date.now(), embedding: null, embeddingModel: null };
+          const semanticFieldChanged = field === 'overlayText' || field === 'note';
+          const next = semanticFieldChanged
+            ? { ...record, [field]: value, updatedAt: Date.now(), embedding: null, embeddingModel: null }
+            : { ...record, [field]: value, updatedAt: Date.now() };
           await StickerStorage.put(next);
+          if (semanticFieldChanged && voyageApiKey && next.blob && Number(next.weight) > 0) {
+            try { await embedStickerRecords([next]); } catch (_) {}
+          }
           if (summary) {
             const latest = await StickerStorage.list();
             summary.textContent = `${latest.length} 张 · 可参与检索 ${latest.filter(item => Number(item.weight) > 0).length} 张`;
@@ -3907,10 +4140,11 @@ ScrollMemory.clear(chatId);
     if (!ready) { setStatus('表情包数据库尚未就绪', 'err'); return; }
 
     let added = 0;
+    const addedRecords = [];
     for (const file of files) {
       if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) continue;
       const now = Date.now();
-      const ok = await StickerStorage.put({
+      const record = {
         id: 'stk_' + generateUuid(),
         blob: file,
         weight: 1,
@@ -3920,10 +4154,20 @@ ScrollMemory.clear(chatId);
         embeddingModel: null,
         createdAt: now,
         updatedAt: now
-      });
-      if (ok) added++;
+      };
+      const ok = await StickerStorage.put(record);
+      if (ok) { added++; addedRecords.push(record); }
     }
-    flashStatus(`已加入 ${added} 张表情包 ✓`, 'ok', 2000);
+    if (voyageApiKey && addedRecords.length) {
+      try {
+        const result = await embedStickerRecords(addedRecords);
+        flashStatus(`已加入 ${added} 张，并生成 ${result.count} 个向量 ✓`, 'ok', 2200);
+      } catch (e) {
+        flashStatus(`已加入 ${added} 张；Voyage 向量化失败`, 'err', 2600);
+      }
+    } else {
+      flashStatus(`已加入 ${added} 张表情包 ✓`, 'ok', 2000);
+    }
     renderStickerLibraryModal();
   }
 
