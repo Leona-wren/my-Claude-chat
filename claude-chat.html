@@ -1037,7 +1037,7 @@
     }
   }
 
-  /* Temporary P1-1 shadow/debug affordance. Expression remains hidden from normal chat text. */
+  /* Temporary response debug affordance; hidden from normal chat text. */
   .debug-btn {
     display: inline-flex;
     align-items: center;
@@ -1054,26 +1054,26 @@
   }
   .debug-btn:hover { opacity: 1; color: var(--accent); border-color: var(--accent); }
 
-  .expression-debug-modal {
+  .response-debug-modal {
     max-height: 86dvh;
     overflow: hidden;
   }
-  #expressionDebugContent {
+  #responseDebugContent {
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
     padding-right: 4px;
   }
-  .expression-debug-grid {
+  .response-debug-grid {
     display: grid;
     grid-template-columns: 150px 1fr;
     gap: 6px 10px;
     font-size: 12px;
     line-height: 1.5;
   }
-  .expression-debug-grid .k { color: var(--text-soft); }
-  .expression-debug-grid .v { color: var(--text); word-break: break-word; }
+  .response-debug-grid .k { color: var(--text-soft); }
+  .response-debug-grid .v { color: var(--text); word-break: break-word; }
 
   /* AI气泡里英文+中文分区（仅 legacy 双语消息兼容） */
   .bubble-en { font-size: 14.5px; line-height: 1.7; }
@@ -1166,6 +1166,31 @@
     .viewer-toolbar { grid-template-columns: 1fr 1fr; }
     .viewer-toolbar .viewer-keyword { grid-column: 1 / -1; }
   }
+
+
+  /* ── P2 Sticker Library ───────────────────────────── */
+  .sticker-modal { max-width: 860px; max-height: 88dvh; overflow: hidden; }
+  .sticker-modal-body { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 3px; }
+  .sticker-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .sticker-summary { font-size: 12px; color: var(--text-soft); }
+  .sticker-section { display: flex; flex-direction: column; gap: 8px; }
+  .sticker-section-title { font-size: 12px; color: var(--accent); font-weight: 500; }
+  .sticker-library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .sticker-card { border: 1px solid var(--border); border-radius: 12px; padding: 9px; background: var(--bg); display: grid; grid-template-columns: 78px 1fr; gap: 10px; align-items: start; }
+  .sticker-preview { width: 78px; height: 78px; border-radius: 10px; object-fit: contain; background: var(--input-bg); border: 1px solid var(--border); }
+  .sticker-meta { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .sticker-id { font-size: 10px; color: var(--text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sticker-meta input, .sticker-meta textarea { width: 100%; background: var(--input-bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 6px 7px; font-size: 11px; line-height: 1.35; font-family: -apple-system, 'Helvetica Neue', sans-serif; }
+  .sticker-meta textarea { min-height: 48px; resize: vertical; }
+  .sticker-weight-row { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--text-soft); }
+  .sticker-weight-row input { width: 68px; }
+  .missing-sticker-card { border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 9px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .missing-sticker-intent { font-size: 12.5px; color: var(--text); line-height: 1.5; }
+  .missing-sticker-meta { font-size: 10.5px; color: var(--text-soft); line-height: 1.45; }
+  .missing-sticker-actions { display: flex; gap: 6px; margin-top: 3px; }
+  .sticker-inline { display: block; max-width: min(220px, 54vw); max-height: 220px; object-fit: contain; border-radius: 12px; }
+  .sticker-bubble { padding: 2px 0; background: transparent; box-shadow: none; }
+
 </style>
 </head>
 <body class="skin-warm">
@@ -1230,6 +1255,9 @@
       <button class="send-btn" id="sendBtn" onclick="send()" disabled>
         <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
       </button>
+      <button class="send-btn" id="stopBtn" type="button" onclick="stopGeneration()" aria-label="停止生成" title="停止生成" style="display:none">
+        <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
+      </button>
     </div>
   </footer>
 </div>
@@ -1275,6 +1303,13 @@
     </div>
 
     <div class="settings-section">
+      <div class="settings-section-title">表情包</div>
+      <div class="settings-actions">
+        <button class="settings-action" type="button" onclick="closeModal('settingsModal');openStickerLibrary()">私人表情包库</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <div class="settings-section-title">开发</div>
       <div class="settings-actions">
         <button class="settings-action" type="button" onclick="closeModal('settingsModal');openViewer()">本地数据</button>
@@ -1287,14 +1322,14 @@
   </div>
 </div>
 
-<!-- P1-1 EXPRESSION SHADOW DEBUG (temporary observability; read-only) -->
-<div class="modal-overlay" id="expressionDebugModal">
-  <div class="modal expression-debug-modal">
+<!-- RESPONSE DEBUG (read-only) -->
+<div class="modal-overlay" id="responseDebugModal">
+  <div class="modal response-debug-modal">
     <h2>Response Debug</h2>
-    <p>Response Core 观察：Expression 与 SpeechPlan 原始结构；中英文 SpeechPlan 都编译为 Eleven v3 inline tags。</p>
-    <div id="expressionDebugContent"></div>
+    <p>Response Core 观察：SpeechPlan 与 Sticker events。</p>
+    <div id="responseDebugContent"></div>
     <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal('expressionDebugModal')">关闭</button>
+      <button class="btn-cancel" onclick="closeModal('responseDebugModal')">关闭</button>
     </div>
   </div>
 </div>
@@ -1363,6 +1398,38 @@
   </div>
 </div>
 
+
+<!-- P2 STICKER LIBRARY -->
+<div class="modal-overlay" id="stickerModal">
+  <div class="modal sticker-modal">
+    <h2>私人表情包库</h2>
+    <p>仅供当前 Personal AI 使用。图片存入本浏览器 IndexedDB；聊天消息只引用稳定 stickerId。当前版本建立私有库与 Claude 的 sticker intent / missing-request 流程；语义向量检索在下一步接入。</p>
+    <div class="sticker-modal-body">
+      <div class="sticker-toolbar">
+        <button class="btn-save" type="button" onclick="document.getElementById('stickerImageInput').click()">添加静态图片</button>
+        <button class="btn-cancel" type="button" onclick="exportStickerLibrary()">导出表情包库</button>
+        <button class="btn-cancel" type="button" onclick="document.getElementById('stickerImportInput').click()">导入表情包库</button>
+        <span class="sticker-summary" id="stickerLibrarySummary"></span>
+      </div>
+      <input id="stickerImageInput" type="file" accept="image/png,image/jpeg,image/webp" multiple style="display:none" onchange="handleStickerImageImport(event)">
+      <input id="stickerImportInput" type="file" accept="application/json,.json" style="display:none" onchange="importStickerLibrary(event)">
+
+      <div class="sticker-section">
+        <div class="sticker-section-title">Claude 想用但当前没有匹配到的表达</div>
+        <div id="missingStickerList"></div>
+      </div>
+
+      <div class="sticker-section">
+        <div class="sticker-section-title">Library</div>
+        <div class="sticker-library-grid" id="stickerLibraryGrid"></div>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" type="button" onclick="closeModal('stickerModal')">关闭</button>
+    </div>
+  </div>
+</div>
+
 <!-- TRASH MODAL -->
 <div class="modal-overlay" id="trashModal">
   <div class="modal">
@@ -1422,16 +1489,13 @@
   const INSTRUCTION_KEY = 'claude_instruction_v1';
   const ELEVEN_ZH_VOICE_KEY = 'eleven_voice_zh_v1';
   const ELEVEN_ZH_VOICE_DEFAULT = '0DKC76GAganwbm9TweFs';
+  const STICKER_SCHEMA_VERSION = 1;
+  const STICKER_MISSING_KEY = 'claude_sticker_missing_v1';
   const DEFAULT_CORE_SYSTEM_PROMPT = `LANG: If replyLanguage=zh, compose directly in natural, idiomatic native Chinese; if replyLanguage=en, compose directly in natural, idiomatic English. User input language does not change replyLanguage; do not translate from another language.
-
-EXPRESSION: Infer concise English stance/affect from full context; intensity=0–1.
 
 TEXT: All deliveryBlocks.parts[].text in order form the complete visible reply. For short everyday conversation, usually use one natural sentence or tightly linked short expression per block. For longer replies, group blocks by natural paragraph or complete semantic section rather than mechanically splitting every sentence. Within a block, split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
 
-SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.
-
-TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; use them when relevant without routinely mentioning them.`;
-  const EXPRESSION_SCHEMA_VERSION = 3;
+SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.`;
   const SPEECH_PLAN_SCHEMA_VERSION = 2;
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
   const ELEVEN_TTS_MODEL = 'eleven_v3';
@@ -1462,6 +1526,7 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
   let currentId = null;
   let isLoading = false;
   let activeRequestChatId = null;
+  let activeRequestAbortController = null;
   // Transient UI status revision must exist before Init can call loadChat()/status renderers.
   let statusRevision = 0;
   let thinkingOn = false;
@@ -1473,6 +1538,7 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
   let doubaoProxyToken = localStorage.getItem(DOUBAO_PROXY_TOKEN_KEY) || '';
   const ELEVEN_EN_VOICE_ID = '0qHbGTWOPgPUvThY4Te6';
   let elevenZhVoiceId = localStorage.getItem(ELEVEN_ZH_VOICE_KEY) || ELEVEN_ZH_VOICE_DEFAULT;
+
   let coreSystemPrompt = localStorage.getItem(CORE_SYSTEM_PROMPT_KEY) || DEFAULT_CORE_SYSTEM_PROMPT;
   let currentAudio = null;
   let currentSkin = localStorage.getItem('claude_skin') || 'warm';
@@ -1480,6 +1546,8 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
     ? localStorage.getItem(REPLY_LANGUAGE_KEY)
     : 'en';
   let audioDB = null;
+  let stickerDB = null;
+  let stickerPreviewUrls = [];
   let draftSaveTimer = null;
   let draftEditorInitialized = false;
 
@@ -1491,6 +1559,52 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
       retryPendingAudioCleanup();
     };
   })();
+
+
+  // ── P2 STICKER STORAGE ────────────────────────────────
+  // This is the authoritative local private sticker library for the current browser.
+  // It is not a cache. Messages should reference stable stickerId values, never Blob URLs.
+  (function openStickerDB() {
+    const req = indexedDB.open('claude_stickers', 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('stickers')) db.createObjectStore('stickers', { keyPath: 'id' });
+    };
+    req.onsuccess = e => { stickerDB = e.target.result; };
+  })();
+
+  const StickerStorage = {
+    list() {
+      return new Promise(resolve => {
+        if (!stickerDB) return resolve([]);
+        try {
+          const req = stickerDB.transaction('stickers').objectStore('stickers').getAll();
+          req.onsuccess = e => resolve(Array.isArray(e.target.result) ? e.target.result : []);
+          req.onerror = () => resolve([]);
+        } catch (_) { resolve([]); }
+      });
+    },
+    get(id) {
+      return new Promise(resolve => {
+        if (!stickerDB || !id) return resolve(null);
+        try {
+          const req = stickerDB.transaction('stickers').objectStore('stickers').get(id);
+          req.onsuccess = e => resolve(e.target.result || null);
+          req.onerror = () => resolve(null);
+        } catch (_) { resolve(null); }
+      });
+    },
+    put(record) {
+      return new Promise(resolve => {
+        if (!stickerDB || !record?.id) return resolve(false);
+        try {
+          const req = stickerDB.transaction('stickers', 'readwrite').objectStore('stickers').put(record);
+          req.onsuccess = () => resolve(true);
+          req.onerror = () => resolve(false);
+        } catch (_) { resolve(false); }
+      });
+    }
+  };
 
   function getAudio(key) {
     return new Promise(resolve => {
@@ -2094,7 +2208,22 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
 
   function updateSendAvailability() {
     const hasUsableModel = !!selectedModelId && !!getModelInfo(selectedModelId);
-    document.getElementById('sendBtn').disabled = !apiKey || isLoading || !hasUsableModel;
+    const sendBtn = document.getElementById('sendBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    if (sendBtn) {
+      sendBtn.disabled = !apiKey || isLoading || !hasUsableModel;
+      sendBtn.style.display = isLoading ? 'none' : 'flex';
+    }
+    if (stopBtn) {
+      stopBtn.style.display = isLoading ? 'flex' : 'none';
+      stopBtn.disabled = !isLoading || !activeRequestAbortController;
+    }
+  }
+
+  function stopGeneration() {
+    if (!isLoading || !activeRequestAbortController) return;
+    setStatus('正在停止生成…');
+    activeRequestAbortController.abort();
   }
 
   // Generation-config changes must not erase a retry affordance for an unresolved
@@ -2422,7 +2551,7 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
       const isSingleLanguage = !!msg?.language && REPLY_LANGUAGES.has(msg.language);
 
       if (isSingleLanguage) {
-        const hasDebug = !!msg.expression || !!msg.language || !!msg.deliveryBlocks;
+        const hasDebug = !!msg.language || !!msg.deliveryBlocks || Array.isArray(msg.stickerEvents);
         const blocks = Array.isArray(msg.deliveryBlocks) && msg.deliveryBlocks.length ? msg.deliveryBlocks : null;
         if (blocks) {
           const blockHtml = blocks.map((block, blockIndex) => {
@@ -2434,14 +2563,14 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
             </div>`;
           }).join('');
           div.innerHTML = `${blockHtml}
-            ${hasDebug ? `<button class="debug-btn" type="button" onclick="openExpressionDebug('${msg.id || ''}')">Debug</button>` : ''}
+            ${hasDebug ? `<button class="debug-btn" type="button" onclick="openResponseDebug('${msg.id || ''}')">Debug</button>` : ''}
             <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
         } else {
           const hasVoice = !!msg.content && canPlayElevenLanguage(msg.language);
           div.innerHTML = `
             ${hasVoice ? voiceBarMarkup(msg, msgIndex, null, msg.content || '') : ''}
             <div class="bubble transcript-bubble">${escHtml(msg.content || '')}</div>
-            ${hasDebug ? `<button class="debug-btn" type="button" onclick="openExpressionDebug('${msg.id || ''}')">Debug</button>` : ''}
+            ${hasDebug ? `<button class="debug-btn" type="button" onclick="openResponseDebug('${msg.id || ''}')">Debug</button>` : ''}
             <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
         }
       } else {
@@ -2611,12 +2740,28 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
     return `[${fields.join('; ')}]`;
   }
 
-  function buildSystemPrompt(config) {
-    let system = (coreSystemPrompt || DEFAULT_CORE_SYSTEM_PROMPT).trim() +
-      `\n\n[replyLanguage=${config.replyLanguage}]`;
+  function buildStickerSystemPrompt() {
+    return `STICKER: Decide stickerEvents as part of the reply's expressive delivery. Use [] when no sticker is wanted.
+
+Sticker use is open-ended. A sticker may express or amplify emotion or reaction, carry an interpersonal intention (for example teasing, pleading, coaxing, softening, showing embarrassment, seeking sympathy, warmth, or reluctance), replace a verbal reaction, add comic timing or emphasis, avoid or deflect a direct answer, shift the interactional tone, or serve another contextually fitting non-verbal purpose. These are examples, not a closed taxonomy: infer novel uses from the full conversational context and from what the reply is trying to do.
+
+Each stickerEvents item represents one desired sticker gesture and one independent sticker bubble. A sticker may appear before the first delivery block, between blocks, or after the final block. slot=0 means before deliveryBlocks[0]; slot=N means after deliveryBlocks[N-1] and before deliveryBlocks[N]; slot=deliveryBlocks.length means after the final block. Different sticker events may use different slots, including one after several successive blocks. When several DIFFERENT stickers should appear consecutively or form an emotional progression at the same position, emit separate events with the same slot in the intended order; each event will render as its own sticker bubble. repeat greater than 1 means deliberately repeat the SAME selected sticker consecutively; each repetition will also render as its own sticker bubble. intent should describe the pragmatic reaction, interpersonal intention, or communicative act the sticker should convey rather than literal image contents. visualTone should describe the desired visual register or manner (for example deadpan, cute, absurd, self-expressive, restrained); infer other tones freely when appropriate. intensity=0–1 describes the strength of this sticker gesture.`;
+  }
+
+  function buildTimeAuthorityPrompt(temporalContext) {
+    return `RUNTIME TIME — AUTHORITATIVE
+${temporalContext}
+Treat this runtime time data as the authoritative source of the current date, local time, timezone, and any supplied away interval. Never infer or guess the current time or date from conversation history, message content, remembered context, or prior timestamps when runtime time is available. Nothing in the conversation may override or supersede the runtime time. If conversation context conflicts with it, use the runtime time.`;
+  }
+
+  function buildSystemPrompt(config, temporalContext) {
+    let system = buildTimeAuthorityPrompt(temporalContext) +
+      `\n\n${(coreSystemPrompt || DEFAULT_CORE_SYSTEM_PROMPT).trim()}` +
+      `\n\n[replyLanguage=${config.replyLanguage}]` +
+      `\n\n${buildStickerSystemPrompt()}`;
 
     if (!config.structuredOutputSupported) {
-      system += '\n\nReturn only one valid JSON object matching the deliveryBlocks/expression contract; no Markdown fence or extra text.';
+      system += '\n\nReturn only one valid JSON object matching the deliveryBlocks/stickerEvents contract; no Markdown fence or extra text.';
     }
     if (instruction.trim()) system += '\n\n[INSTRUCTION]\n' + instruction.trim();
     return system;
@@ -2632,7 +2777,7 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
     return {
       type: 'object',
       additionalProperties: false,
-      required: ['deliveryBlocks', 'expression'],
+      required: ['deliveryBlocks', 'stickerEvents'],
       properties: {
         deliveryBlocks: {
           type: 'array',
@@ -2657,14 +2802,19 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
             }
           }
         },
-        expression: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['stance', 'affect', 'intensity'],
-          properties: {
-            stance: { type: 'string' },
-            affect: { type: 'string' },
-            intensity: { type: 'number' }
+        stickerEvents: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['slot', 'intent', 'visualTone', 'intensity', 'repeat'],
+            properties: {
+              slot: { type: 'integer' },
+              intent: { type: 'string' },
+              visualTone: { type: 'string' },
+              intensity: { type: 'number' },
+              repeat: { type: 'integer' }
+            }
           }
         }
       }
@@ -2773,18 +2923,6 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
     // offStrategy === 'omit': model defaults to thinking off, so no field is sent.
   }
 
-  function normalizeExpression(expression) {
-    const source = expression && typeof expression === 'object' ? expression : {};
-    const cleanText = value => typeof value === 'string'
-      ? value.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim()
-      : '';
-    return {
-      stance: cleanText(source.stance),
-      affect: cleanText(source.affect),
-      intensity: Number(source.intensity)
-    };
-  }
-
   function normalizeSpeechTag(tag) {
     let value = typeof tag === 'string' ? tag.trim() : '';
     if (!value) return null;
@@ -2799,16 +2937,21 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
 
   function validateGeneratedResponseSemantics(payload) {
     const violations = [];
-    const expression = payload?.expression;
-    if (!expression || typeof expression !== 'object') {
-      violations.push('expression missing');
+    if (!Array.isArray(payload?.stickerEvents)) {
+      violations.push('stickerEvents must be an array');
     } else {
-      const stance = typeof expression.stance === 'string' ? expression.stance.trim() : '';
-      const affect = typeof expression.affect === 'string' ? expression.affect.trim() : '';
-      const intensity = Number(expression.intensity);
-      if (!stance || /[\u3400-\u9fff]/.test(stance)) violations.push('stance must be a non-empty English phrase');
-      if (!affect || /[\u3400-\u9fff]/.test(affect)) violations.push('affect must be a non-empty English phrase');
-      if (!Number.isFinite(intensity) || intensity < 0 || intensity > 1) violations.push('intensity must be a number from 0 to 1');
+      payload.stickerEvents.forEach((event, eventIndex) => {
+        const slot = Number(event?.slot);
+        const intent = typeof event?.intent === 'string' ? event.intent.trim() : '';
+        const visualTone = typeof event?.visualTone === 'string' ? event.visualTone.trim() : '';
+        const intensity = Number(event?.intensity);
+        const repeat = Number(event?.repeat);
+        if (!Number.isInteger(slot) || slot < 0) violations.push(`stickerEvents[${eventIndex}].slot must be a non-negative integer`);
+        if (!intent) violations.push(`stickerEvents[${eventIndex}].intent must be non-empty`);
+        if (!visualTone) violations.push(`stickerEvents[${eventIndex}].visualTone must be non-empty`);
+        if (!Number.isFinite(intensity) || intensity < 0 || intensity > 1) violations.push(`stickerEvents[${eventIndex}].intensity must be a number from 0 to 1`);
+        if (!Number.isInteger(repeat) || repeat < 1) violations.push(`stickerEvents[${eventIndex}].repeat must be a positive integer`);
+      });
     }
 
     (payload?.deliveryBlocks || []).forEach((block, blockIndex) => {
@@ -2903,6 +3046,24 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
     return result.trim();
   }
 
+
+  function normalizeStickerEvents(events, blockCount) {
+    if (!Array.isArray(events) || !Number.isInteger(blockCount) || blockCount < 0) return [];
+    const normalized = [];
+
+    for (const raw of events) {
+      const slot = Number(raw?.slot);
+      const intent = typeof raw?.intent === 'string' ? raw.intent.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
+      const visualTone = typeof raw?.visualTone === 'string' ? raw.visualTone.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
+      const intensity = Number(raw?.intensity);
+      const requestedRepeat = Number(raw?.repeat);
+      if (!Number.isInteger(slot) || slot < 0 || slot > blockCount || !intent || !visualTone || !Number.isFinite(intensity)) continue;
+      const repeat = Number.isInteger(requestedRepeat) && requestedRepeat >= 1 ? requestedRepeat : 1;
+      normalized.push({ slot, intent, visualTone, intensity: Math.max(0, Math.min(1, intensity)), repeat });
+    }
+    return normalized;
+  }
+
   function parseStructuredAssistantPayload(rawText, language) {
     let text = String(rawText || '').trim();
     if (!text) return { ok: false, error: 'Claude 返回了空回复' };
@@ -2924,6 +3085,7 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
       };
     }
     const deliveryBlocks = normalizeDeliveryBlocks(payload.deliveryBlocks, language);
+    const stickerEvents = normalizeStickerEvents(payload.stickerEvents, deliveryBlocks.length);
     const content = deriveContentFromDeliveryBlocks(deliveryBlocks);
     if (!deliveryBlocks.length || !content) {
       return { ok: false, error: 'Response Core 缺少有效 deliveryBlocks' };
@@ -2932,7 +3094,7 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
       ok: true,
       content,
       deliveryBlocks,
-      expression: normalizeExpression(payload.expression)
+      stickerEvents
     };
   }
 
@@ -3001,7 +3163,7 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
     };
   }
 
-  async function postAnthropicRequestBody(body) {
+  async function postAnthropicRequestBody(body, signal = null) {
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: {
@@ -3010,7 +3172,8 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     });
     if (!res.ok) {
       let err = null;
@@ -3022,7 +3185,7 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
 
   // API service layer: builds/sends the request and returns structured data.
   // It does not render, mutate chat history, or decide how retry is presented.
-  async function requestAssistantReply(chatId, config) {
+  async function requestAssistantReply(chatId, config, signal = null) {
     const chat = chats[chatId];
     if (!chat) return { ok: false, kind: 'state', error: '对话已不存在' };
     if (!config?.model) return { ok: false, kind: 'state', error: '没有可用模型' };
@@ -3035,14 +3198,14 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
     const body = {
       model: config.model,
       max_tokens: getRequestMaxTokens(config),
-      system: buildSystemPrompt(config) + '\n\n' + temporalContext,
+      system: buildSystemPrompt(config, temporalContext),
       messages: apiMessages
     };
     applyResponseFormatToBody(body, config);
     applyThinkingAndEffortToBody(body, config);
 
     try {
-      const apiResult = await postAnthropicRequestBody(body);
+      const apiResult = await postAnthropicRequestBody(body, signal);
       if (!apiResult.ok) return apiResult;
 
       const parsedResponse = parseAnthropicResponse(apiResult.data);
@@ -3072,11 +3235,12 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
         ...parsedResponse,
         content: responseCore.content,
         deliveryBlocks: responseCore.deliveryBlocks,
-        expression: responseCore.expression,
+        stickerEvents: responseCore.stickerEvents,
         languageValidation,
         responseFormat: config.structuredOutputSupported ? 'json_schema' : 'prompt_json'
       };
     } catch (e) {
+      if (e?.name === 'AbortError') return { ok: false, kind: 'aborted', error: '已停止生成' };
       return { ok: false, kind: 'network', error: e.message };
     }
   }
@@ -3109,10 +3273,10 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
       role: 'assistant',
       content: result.content,
       language: config.replyLanguage,
-      expression: result.expression,
-      expressionSchemaVersion: EXPRESSION_SCHEMA_VERSION,
       deliveryBlocks: result.deliveryBlocks,
       speechPlanSchemaVersion: SPEECH_PLAN_SCHEMA_VERSION,
+      stickerEvents: result.stickerEvents || [],
+      stickerSchemaVersion: STICKER_SCHEMA_VERSION,
       id: makeMessageId(),
       chatId,
       clientSeq: chat.messages.length,
@@ -3122,6 +3286,11 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
     chat.messages.push(assistantMessage);
     chat.updatedAt = Date.now();
     save();
+
+
+    // P2-1: until semantic retrieval is connected, every valid sticker intent becomes a
+    // maintenance request instead of fabricating a visual match. Text delivery is unaffected.
+    recordUnresolvedStickerEvents(assistantMessage);
 
     return {
       ok: true,
@@ -3144,6 +3313,8 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
 
     isLoading = true;
     activeRequestChatId = chatId;
+    const requestAbortController = new AbortController();
+    activeRequestAbortController = requestAbortController;
     updateSendAvailability();
 
     if (currentId === chatId) {
@@ -3152,7 +3323,7 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
     }
 
     const requestBaselineMessageId = getLastMessageId(chats[chatId]);
-    const result = await requestAssistantReply(chatId, config);
+    const result = await requestAssistantReply(chatId, config, requestAbortController.signal);
 
     let preserveReadingPosition = false;
     let readingScrollTop = 0;
@@ -3168,12 +3339,17 @@ TIME: Treat runtime nowLocal, away, and tz as authoritative temporal context; us
 
     isLoading = false;
     activeRequestChatId = null;
+    if (activeRequestAbortController === requestAbortController) activeRequestAbortController = null;
     updateSendAvailability();
 
     if (!result.ok) {
       if (currentId === chatId) {
-        const prefix = result.kind === 'network' ? '网络错误：' : '出错了：';
-        showRequestFailure(prefix + result.error, chatId);
+        if (result.kind === 'aborted') {
+          showRequestFailure('已停止生成', chatId);
+        } else {
+          const prefix = result.kind === 'network' ? '网络错误：' : '出错了：';
+          showRequestFailure(prefix + result.error, chatId);
+        }
       } else if (currentId) {
         syncRequestStatusForChat(currentId);
       }
@@ -3271,14 +3447,13 @@ ScrollMemory.clear(chatId);
     await generateAssistantReply(chatId);
   }
 
-  // ── P1-1 EXPRESSION SHADOW DEBUG ──────────────────────
-  function openExpressionDebug(messageId) {
+  // ── RESPONSE DEBUG ─────────────────────────────────────
+  function openResponseDebug(messageId) {
     const messages = chats[currentId]?.messages || [];
     const msg = messages.find(message => message.id === messageId);
     if (!msg || msg.role !== 'assistant') return;
 
     const validation = msg.language ? validateReplyLanguage(msg.content, msg.language) : null;
-    const expression = msg.expression || null;
     const plannedProvider = REPLY_LANGUAGES.has(msg.language) ? 'ElevenLabs v3' : 'Legacy';
     const voiceId = REPLY_LANGUAGES.has(msg.language) ? getElevenVoiceId(msg.language) : '';
     const currentVoice = voiceId ? `ElevenLabs · ${ELEVEN_TTS_MODEL} · ${voiceId}` : '—';
@@ -3287,26 +3462,22 @@ ScrollMemory.clear(chatId);
       `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${compileDeliveryBlockForElevenV3(block)}`
     ).join('\n\n') : '—';
 
-
     const rows = [
       ['messageId', msg.id || '—'],
       ['language', msg.language ? `${msg.language} (${languageLabel(msg.language)})` : 'legacy / 未记录'],
       ['LanguageValidator', validation ? validation.status : '—'],
-      ['stance', expression?.stance || '—'],
-      ['affect', expression?.affect || '—'],
-      ['intensity', expression ? String(expression.intensity) : '—'],
-      ['Expression mode', expression ? 'provider-neutral metadata；不控制 TTS' : 'none / legacy'],
       ['SpeechPlan schema', msg.speechPlanSchemaVersion ? `v${msg.speechPlanSchemaVersion}` : (blocks.length ? 'legacy / unversioned' : 'none')],
+      ['Sticker events', Array.isArray(msg.stickerEvents) && msg.stickerEvents.length ? JSON.stringify(msg.stickerEvents) : '[]'],
       ['Speech blocks / provider input', speechBlocksPreview],
       ['planned voice route', plannedProvider],
       ['current TTS', currentVoice]
     ];
 
-    document.getElementById('expressionDebugContent').innerHTML =
-      `<div class="expression-debug-grid">${rows.map(([key, value]) =>
+    document.getElementById('responseDebugContent').innerHTML =
+      `<div class="response-debug-grid">${rows.map(([key, value]) =>
         `<div class="k">${escHtml(key)}</div><div class="v">${escHtml(String(value)).replace(/\n/g, '<br>')}</div>`
       ).join('')}</div>`;
-    document.getElementById('expressionDebugModal').classList.add('open');
+    document.getElementById('responseDebugModal').classList.add('open');
   }
 
   function normalizeTtsInlineText(text) {
@@ -3602,6 +3773,240 @@ ScrollMemory.clear(chatId);
     }
   }
 
+
+  // ── P2 STICKER LIBRARY / MISSING REQUESTS ─────────────
+  function loadMissingStickerRequests() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(STICKER_MISSING_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) { return []; }
+  }
+
+  function saveMissingStickerRequests(list) {
+    localStorage.setItem(STICKER_MISSING_KEY, JSON.stringify(Array.isArray(list) ? list : []));
+  }
+
+  function recordUnresolvedStickerEvents(message) {
+    const events = Array.isArray(message?.stickerEvents) ? message.stickerEvents : [];
+    if (!events.length) return;
+    const existing = loadMissingStickerRequests();
+    const seen = new Set(existing.map(item => `${item.messageId || ''}:${item.eventIndex ?? ''}`));
+    events.forEach((event, eventIndex) => {
+      const dedupeKey = `${message.id || ''}:${eventIndex}`;
+      if (seen.has(dedupeKey)) return;
+      existing.unshift({
+        id: 'smr_' + generateUuid(),
+        messageId: message.id || null,
+        chatId: message.chatId || null,
+        eventIndex,
+        slot: event.slot,
+        intent: event.intent,
+        visualTone: event.visualTone,
+        intensity: event.intensity,
+        repeat: event.repeat,
+        createdAt: message.createdAt || Date.now()
+      });
+    });
+    saveMissingStickerRequests(existing.slice(0, 200));
+  }
+
+  function clearStickerPreviewUrls() {
+    stickerPreviewUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch (_) {} });
+    stickerPreviewUrls = [];
+  }
+
+  function waitForStickerDB(timeoutMs = 1800) {
+    if (stickerDB) return Promise.resolve(true);
+    return new Promise(resolve => {
+      const started = Date.now();
+      const timer = setInterval(() => {
+        if (stickerDB || Date.now() - started >= timeoutMs) {
+          clearInterval(timer);
+          resolve(!!stickerDB);
+        }
+      }, 60);
+    });
+  }
+
+  async function openStickerLibrary() {
+    document.getElementById('stickerModal').classList.add('open');
+    await waitForStickerDB();
+    renderStickerLibraryModal();
+  }
+
+  async function renderStickerLibraryModal() {
+    const grid = document.getElementById('stickerLibraryGrid');
+    const summary = document.getElementById('stickerLibrarySummary');
+    const missingRoot = document.getElementById('missingStickerList');
+    if (!grid || !missingRoot) return;
+
+    clearStickerPreviewUrls();
+    const records = (await StickerStorage.list()).sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+    const activeCount = records.filter(item => Number(item.weight) > 0).length;
+    if (summary) summary.textContent = `${records.length} 张 · 可参与检索 ${activeCount} 张`;
+
+    if (!records.length) {
+      grid.innerHTML = '<div class="viewer-empty">还没有表情包。先添加几张 PNG / JPG / WebP 静态图。</div>';
+    } else {
+      grid.innerHTML = records.map(record => {
+        const url = URL.createObjectURL(record.blob);
+        stickerPreviewUrls.push(url);
+        return `<div class="sticker-card" data-sticker-id="${escHtml(record.id)}">
+          <img class="sticker-preview" src="${url}" alt="sticker">
+          <div class="sticker-meta">
+            <div class="sticker-id" title="${escHtml(record.id)}">${escHtml(record.id)}</div>
+            <div class="sticker-weight-row">权重 <input data-sticker-field="weight" type="number" min="0" step="0.1" value="${Number.isFinite(Number(record.weight)) ? Number(record.weight) : 1}"></div>
+            <input data-sticker-field="overlayText" type="text" value="${escHtml(record.overlayText || '')}" placeholder="图片上的文字（可选）">
+            <textarea data-sticker-field="note" placeholder="补充语义/氛围说明（可选）">${escHtml(record.note || '')}</textarea>
+          </div>
+        </div>`;
+      }).join('');
+
+      grid.querySelectorAll('[data-sticker-field]').forEach(input => {
+        input.addEventListener('change', async event => {
+          const card = event.target.closest('[data-sticker-id]');
+          const id = card?.dataset?.stickerId;
+          const field = event.target.dataset.stickerField;
+          const record = await StickerStorage.get(id);
+          if (!record || !field) return;
+          let value = event.target.value;
+          if (field === 'weight') value = Math.max(0, Number(value) || 0);
+          const next = { ...record, [field]: value, updatedAt: Date.now(), embedding: null, embeddingModel: null };
+          await StickerStorage.put(next);
+          if (summary) {
+            const latest = await StickerStorage.list();
+            summary.textContent = `${latest.length} 张 · 可参与检索 ${latest.filter(item => Number(item.weight) > 0).length} 张`;
+          }
+        });
+      });
+    }
+
+    const missing = loadMissingStickerRequests();
+    missingRoot.innerHTML = missing.length ? missing.slice(0, 60).map(item => `
+      <div class="missing-sticker-card" data-missing-sticker-id="${escHtml(item.id)}">
+        <div class="missing-sticker-intent">${escHtml(item.intent || '')}</div>
+        <div class="missing-sticker-meta">tone: ${escHtml(item.visualTone || '—')} · intensity ${Number(item.intensity || 0).toFixed(2)} · slot ${item.slot} · repeat ${item.repeat || 1}</div>
+        <div class="missing-sticker-actions"><button class="btn-cancel" type="button" data-ignore-missing>忽略</button></div>
+      </div>`).join('') : '<div class="viewer-empty">暂无缺失请求。</div>';
+
+    missingRoot.querySelectorAll('[data-ignore-missing]').forEach(button => {
+      button.addEventListener('click', event => {
+        const card = event.target.closest('[data-missing-sticker-id]');
+        const id = card?.dataset?.missingStickerId;
+        saveMissingStickerRequests(loadMissingStickerRequests().filter(item => item.id !== id));
+        renderStickerLibraryModal();
+      });
+    });
+  }
+
+  async function handleStickerImageImport(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    const ready = await waitForStickerDB();
+    if (!ready) { setStatus('表情包数据库尚未就绪', 'err'); return; }
+
+    let added = 0;
+    for (const file of files) {
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) continue;
+      const now = Date.now();
+      const ok = await StickerStorage.put({
+        id: 'stk_' + generateUuid(),
+        blob: file,
+        weight: 1,
+        overlayText: '',
+        note: '',
+        embedding: null,
+        embeddingModel: null,
+        createdAt: now,
+        updatedAt: now
+      });
+      if (ok) added++;
+    }
+    flashStatus(`已加入 ${added} 张表情包 ✓`, 'ok', 2000);
+    renderStickerLibraryModal();
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function dataUrlToBlob(dataUrl) {
+    const [header, payload] = String(dataUrl || '').split(',', 2);
+    const match = header?.match(/^data:([^;]+);base64$/i);
+    if (!match || !payload) return null;
+    const binary = atob(payload);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: match[1] });
+  }
+
+  async function exportStickerLibrary() {
+    const records = await StickerStorage.list();
+    const serialized = [];
+    for (const record of records) {
+      serialized.push({
+        ...record,
+        blob: undefined,
+        imageDataUrl: await blobToDataUrl(record.blob)
+      });
+    }
+    const payload = {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      stickers: serialized
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'personal-ai-stickers-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importStickerLibrary(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      let payload = null;
+      try { payload = JSON.parse(reader.result); } catch (_) {}
+      if (!payload || !Array.isArray(payload.stickers)) {
+        setStatus('表情包库导入失败：文件格式不正确', 'err');
+        return;
+      }
+      await waitForStickerDB();
+      let imported = 0;
+      for (const item of payload.stickers) {
+        if (!item?.id || !item?.imageDataUrl) continue;
+        const blob = dataUrlToBlob(item.imageDataUrl);
+        if (!blob) continue;
+        const ok = await StickerStorage.put({
+          id: item.id,
+          blob,
+          weight: Number.isFinite(Number(item.weight)) ? Number(item.weight) : 1,
+          overlayText: typeof item.overlayText === 'string' ? item.overlayText : '',
+          note: typeof item.note === 'string' ? item.note : '',
+          embedding: Array.isArray(item.embedding) ? item.embedding : null,
+          embeddingModel: item.embeddingModel || null,
+          createdAt: Number.isFinite(item.createdAt) ? item.createdAt : Date.now(),
+          updatedAt: Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now()
+        });
+        if (ok) imported++;
+      }
+      flashStatus(`表情包库导入 ${imported} 张 ✓`, 'ok', 2200);
+      renderStickerLibraryModal();
+    };
+    reader.readAsText(file);
+  }
+
   // ── MODALS ───────────────────────────────────────────
   function openSettings() {
     document.getElementById('settingsModal').classList.add('open');
@@ -3628,7 +4033,7 @@ ScrollMemory.clear(chatId);
     const config = getCurrentGenerationConfig();
     const safeConfig = config || { replyLanguage: currentReplyLanguage, structuredOutputSupported: true };
     const chat = currentId ? chats[currentId] : null;
-    return buildSystemPrompt(safeConfig) + '\n\n' + buildTemporalContext(chat);
+    return buildSystemPrompt(safeConfig, buildTemporalContext(chat));
   }
 
   function refreshSystemPromptPreview() {
@@ -3697,7 +4102,10 @@ ScrollMemory.clear(chatId);
     else renderSidebar();
     flashStatus('ElevenLabs 语音设置已保存 ✓', 'ok', 2000);
   }
-  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    if (id === 'stickerModal') clearStickerPreviewUrls();
+  }
 
   // ── TRASH UI ─────────────────────────────────────────
   // UI only: displays state and forwards clicks to domain lifecycle functions.
@@ -3998,23 +4406,22 @@ ScrollMemory.clear(chatId);
   function reconcileEquivalentMessageMetadataFields(localMessage, incomingMessage) {
     let merged = reconcileMessageTemporalMetadata(localMessage, incomingMessage);
 
-    // P1-1 metadata completion only. language/expression NEVER participate in identity or
-    // textual equivalence. If local already has a value, local wins; metadata disagreement
-    // must not fabricate a second message entity.
+    // Metadata completion only. These fields never participate in identity or textual
+    // equivalence. If local already has a value, local wins.
     if (!merged.language && REPLY_LANGUAGES.has(incomingMessage.language)) {
       merged = { ...merged, language: incomingMessage.language };
-    }
-    if (!merged.expression && incomingMessage.expression && typeof incomingMessage.expression === 'object') {
-      merged = { ...merged, expression: normalizeExpression(incomingMessage.expression) };
-    }
-    if (!merged.expressionSchemaVersion && Number.isFinite(incomingMessage.expressionSchemaVersion)) {
-      merged = { ...merged, expressionSchemaVersion: incomingMessage.expressionSchemaVersion };
     }
     if ((!Array.isArray(merged.deliveryBlocks) || !merged.deliveryBlocks.length) && Array.isArray(incomingMessage.deliveryBlocks) && incomingMessage.deliveryBlocks.length) {
       merged = { ...merged, deliveryBlocks: incomingMessage.deliveryBlocks };
     }
     if (!merged.speechPlanSchemaVersion && Number.isFinite(incomingMessage.speechPlanSchemaVersion)) {
       merged = { ...merged, speechPlanSchemaVersion: incomingMessage.speechPlanSchemaVersion };
+    }
+    if ((!Array.isArray(merged.stickerEvents) || !merged.stickerEvents.length) && Array.isArray(incomingMessage.stickerEvents) && incomingMessage.stickerEvents.length) {
+      merged = { ...merged, stickerEvents: incomingMessage.stickerEvents };
+    }
+    if (!merged.stickerSchemaVersion && Number.isFinite(incomingMessage.stickerSchemaVersion)) {
+      merged = { ...merged, stickerSchemaVersion: incomingMessage.stickerSchemaVersion };
     }
     return merged;
   }
@@ -4303,7 +4710,6 @@ ScrollMemory.clear(chatId);
       message?.role,
       message?.content,
       message?.language,
-      message?.expression ? JSON.stringify(message.expression) : '',
       message?.deliveryBlocks ? JSON.stringify(message.deliveryBlocks) : '',
       message?.en,
       message?.zh,
@@ -4329,19 +4735,14 @@ ScrollMemory.clear(chatId);
       message?.model ? `model=${message.model}` : '',
       message?.thinkingDisplay ? `display=${message.thinkingDisplay}` : '',
       message?.language ? `language=${message.language}` : '',
-      message?.expressionSchemaVersion ? `expressionSchema=v${message.expressionSchemaVersion}` : '',
       message?.speechPlanSchemaVersion ? `speechPlanSchema=v${message.speechPlanSchemaVersion}` : ''
     ].filter(Boolean).join(' · ');
-    const expressionDetails = message?.expression
-      ? `<pre class="viewer-pre">expression = ${escHtml(JSON.stringify(message.expression, null, 2))}</pre>`
-      : '';
     const speechPlanDetails = Array.isArray(message?.deliveryBlocks)
       ? `<pre class="viewer-pre">deliveryBlocks = ${escHtml(JSON.stringify(message.deliveryBlocks, null, 2))}</pre>`
       : '';
     return `<div class="viewer-message">
       <div class="viewer-message-head">${escHtml(message?.role || 'unknown')} · ${escHtml(time)} · id=${escHtml(message?.id || '—')} · clientSeq=${escHtml(message?.clientSeq ?? '—')}${extras ? ` · ${escHtml(extras)}` : ''}</div>
       <div class="viewer-message-body">${escHtml(body)}</div>
-      ${expressionDetails}
       ${speechPlanDetails}
     </div>`;
   }
@@ -4481,7 +4882,7 @@ ScrollMemory.clear(chatId);
   // ── EXPORT / IMPORT ──────────────────────────────────
   function exportChats() {
     // Export uses a normalized COPY only — global `chats` and localStorage are untouched.
-    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 4 };
+    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 5 };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -4696,7 +5097,12 @@ ScrollMemory.clear(chatId);
   }
 
   function escHtml(s) {
-    return String(s).replace(/&/g,'\x26amp;').replace(/</g,'\x26lt;').replace(/>/g,'\x26gt;');
+    return String(s)
+      .replace(/&/g,'\x26amp;')
+      .replace(/</g,'\x26lt;')
+      .replace(/>/g,'\x26gt;')
+      .replace(/"/g,'\x26quot;')
+      .replace(/'/g,'\x26#39;');
   }
 
   // ── APP INITIALIZATION ─────────────────────────────────
