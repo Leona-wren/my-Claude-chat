@@ -1192,6 +1192,17 @@
   .sticker-bubble { padding: 2px 0; background: transparent; box-shadow: none; }
   .sticker-bubble img[hidden] { display: none; }
   .sticker-vector-state { font-size: 10px; color: var(--text-soft); }
+  .sticker-test-panel { border: 1px solid var(--border); border-radius: 12px; padding: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; }
+  .sticker-test-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, .55fr) 90px auto; gap: 8px; align-items: end; }
+  .sticker-test-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .sticker-test-field label { font-size: 10px; color: var(--text-soft); }
+  .sticker-test-field input, .sticker-test-field textarea { width: 100%; background: var(--input-bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 7px 8px; font-size: 11px; line-height: 1.35; font-family: -apple-system, 'Helvetica Neue', sans-serif; }
+  .sticker-test-field textarea { min-height: 54px; resize: vertical; }
+  .sticker-test-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .sticker-test-result { border: 1px solid var(--border); border-radius: 10px; padding: 7px; display: flex; flex-direction: column; gap: 5px; background: var(--input-bg); }
+  .sticker-test-result img { width: 100%; height: 110px; object-fit: contain; border-radius: 8px; background: var(--bg); }
+  .sticker-test-score { font-size: 10.5px; color: var(--text-soft); line-height: 1.45; }
+  @media (max-width: 700px) { .sticker-test-row { grid-template-columns: 1fr; } }
 
 </style>
 </head>
@@ -1414,6 +1425,28 @@
           <button class="btn-cancel" type="button" onclick="saveVoyageKey()">保存 Key</button>
           <button class="btn-cancel" type="button" onclick="rebuildStickerEmbeddings()">建立 / 更新待处理向量</button>
           <span class="sticker-summary" id="voyageStatus"></span>
+        </div>
+      </div>
+      <div class="sticker-section">
+        <div class="sticker-section-title">检索校准</div>
+        <div class="sticker-test-panel">
+          <div class="sticker-test-row">
+            <div class="sticker-test-field">
+              <label for="stickerTestIntent">semantic intent</label>
+              <textarea id="stickerTestIntent" placeholder="例如：被说中了以后有点心虚，但还想装作什么都没发生"></textarea>
+            </div>
+            <div class="sticker-test-field">
+              <label for="stickerTestTone">visual tone</label>
+              <input id="stickerTestTone" type="text" placeholder="例如：deadpan, mildly cute">
+            </div>
+            <div class="sticker-test-field">
+              <label for="stickerTestIntensity">intensity</label>
+              <input id="stickerTestIntensity" type="number" min="0" max="1" step="0.05" value="0.5">
+            </div>
+            <button class="btn-cancel" type="button" onclick="testStickerRetrieval()">测试匹配</button>
+          </div>
+          <div class="sticker-summary" id="stickerRetrievalTestStatus">输入一个你希望 Claude 发出的表情意图；结果按与正式聊天完全相同的 query 结构和相似度算法排序。</div>
+          <div class="sticker-test-results" id="stickerRetrievalResults"></div>
         </div>
       </div>
       <div class="sticker-toolbar">
@@ -1661,8 +1694,9 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     });
   }
 
-  async function postVoyageMultimodal(inputs, inputType, signal = null) {
+  async function postVoyageMultimodal(inputs, inputType, signal = null, options = {}) {
     if (!voyageApiKey) throw new Error('未设置 Voyage API Key');
+    const retryOn429 = options.retryOn429 !== false;
     let attempt = 0;
     while (true) {
       const res = await fetch(VOYAGE_MULTIMODAL_ENDPOINT, {
@@ -1685,7 +1719,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
           const payload = await res.json();
           detail = payload?.detail || payload?.error?.message || payload?.message || '';
         } catch (_) {}
-        if (res.status === 429 && attempt < 2) {
+        if (res.status === 429 && retryOn429 && attempt < 2) {
           const retryAfter = Number(res.headers.get('retry-after'));
           const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
             ? Math.max(VOYAGE_RATE_LIMIT_RETRY_MS, retryAfter * 1000)
@@ -1802,6 +1836,72 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     return similarity + STICKER_WEIGHT_LOG_SCALE * Math.log(safeWeight);
   }
 
+  async function testStickerRetrieval() {
+    const intentEl = document.getElementById('stickerTestIntent');
+    const toneEl = document.getElementById('stickerTestTone');
+    const intensityEl = document.getElementById('stickerTestIntensity');
+    const statusEl = document.getElementById('stickerRetrievalTestStatus');
+    const resultsEl = document.getElementById('stickerRetrievalResults');
+    if (!intentEl || !toneEl || !intensityEl || !statusEl || !resultsEl) return;
+    const intent = String(intentEl.value || '').trim();
+    const visualTone = String(toneEl.value || '').trim() || 'contextually fitting';
+    const intensity = Math.min(1, Math.max(0, Number(intensityEl.value) || 0));
+    if (!intent) {
+      statusEl.textContent = '先输入 semantic intent。';
+      resultsEl.innerHTML = '';
+      return;
+    }
+    if (!voyageApiKey) {
+      statusEl.textContent = '请先保存 Voyage API Key。';
+      resultsEl.innerHTML = '';
+      return;
+    }
+    await waitForStickerDB();
+    const library = (await StickerStorage.list()).filter(record =>
+      Number(record.weight) > 0 &&
+      Array.isArray(record.embedding) &&
+      record.embeddingModel === VOYAGE_MULTIMODAL_MODEL
+    );
+    if (!library.length) {
+      statusEl.textContent = '图库中没有可用于测试的 vector ✓。';
+      resultsEl.innerHTML = '';
+      return;
+    }
+    statusEl.textContent = '正在生成 query vector 并与图库比较…';
+    resultsEl.innerHTML = '';
+    try {
+      const [query] = await postVoyageMultimodal([
+        stickerQueryInput({ intent, visualTone, intensity })
+      ], 'query', null, { retryOn429: false });
+      const ranked = library.map(record => {
+        const similarity = dotProduct(query, record.embedding);
+        return {
+          record,
+          similarity,
+          adjustedScore: stickerAdjustedScore(similarity, record.weight)
+        };
+      }).sort((a, b) => b.adjustedScore - a.adjustedScore);
+
+      const top = ranked.slice(0, Math.min(10, ranked.length));
+      const html = [];
+      for (let i = 0; i < top.length; i++) {
+        const item = top[i];
+        const url = URL.createObjectURL(item.record.blob);
+        stickerPreviewUrls.push(url);
+        html.push(`<div class="sticker-test-result">
+          <img src="${url}" alt="rank ${i + 1}">
+          <div class="sticker-test-score"><strong>#${i + 1}</strong> · similarity ${item.similarity.toFixed(4)}<br>adjusted ${item.adjustedScore.toFixed(4)} · weight ${Number(item.record.weight).toFixed(2)}</div>
+        </div>`);
+      }
+      resultsEl.innerHTML = html.join('');
+      const gap = ranked.length > 1 ? ranked[0].similarity - ranked[1].similarity : null;
+      statusEl.textContent = `已比较 ${ranked.length} 张。Top-1 raw similarity ${ranked[0].similarity.toFixed(4)}${gap !== null ? `；与 Top-2 差 ${gap.toFixed(4)}` : ''}。这里先看排序是否符合你的判断，不把分数当“正确率”。`;
+    } catch (e) {
+      statusEl.textContent = '测试失败：' + (e?.message || String(e));
+      resultsEl.innerHTML = '';
+    }
+  }
+
   async function resolveStickerEvents(events, signal = null) {
     if (!Array.isArray(events) || !events.length) return { events: [], retrievalError: null };
     if (!voyageApiKey) return { events: events.map(event => ({ ...event })), retrievalError: 'Voyage API Key 未设置' };
@@ -1814,7 +1914,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     if (!library.length) return { events: events.map(event => ({ ...event })), retrievalError: '图库尚无可用向量' };
 
     try {
-      const queryEmbeddings = await postVoyageMultimodal(events.map(stickerQueryInput), 'query', signal);
+      const queryEmbeddings = await postVoyageMultimodal(events.map(stickerQueryInput), 'query', signal, { retryOn429: false });
       const resolved = events.map((event, index) => {
         const query = queryEmbeddings[index];
         let best = null;
