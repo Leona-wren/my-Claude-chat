@@ -1405,14 +1405,14 @@
 <div class="modal-overlay" id="stickerModal">
   <div class="modal sticker-modal">
     <h2>私人表情包库</h2>
-    <p>仅供当前 Personal AI 使用。图片存入本浏览器 IndexedDB；聊天消息只引用稳定 stickerId。Voyage 负责把图片和 Claude 的 sticker intent 映射到同一语义向量空间，本地只做相似度排序。</p>
+    <p>仅供当前 Personal AI 使用。原图存入本浏览器 IndexedDB；发送给 Voyage 前只在内存中临时缩放，临时图不持久化。聊天消息只引用稳定 stickerId。Voyage 负责把图片和 Claude 的 sticker intent 映射到同一语义向量空间，本地只做相似度排序。</p>
     <div class="sticker-modal-body">
       <div class="sticker-section">
         <div class="sticker-section-title">Voyage multimodal embedding</div>
         <div class="sticker-toolbar">
           <input type="password" id="voyageKeyInput" placeholder="MongoDB Atlas Model API Key" style="min-width:260px;flex:1">
           <button class="btn-cancel" type="button" onclick="saveVoyageKey()">保存 Key</button>
-          <button class="btn-cancel" type="button" onclick="rebuildStickerEmbeddings()">建立 / 更新全部向量</button>
+          <button class="btn-cancel" type="button" onclick="rebuildStickerEmbeddings()">建立 / 更新待处理向量</button>
           <span class="sticker-summary" id="voyageStatus"></span>
         </div>
       </div>
@@ -1505,9 +1505,10 @@
   const VOYAGE_API_KEY_KEY = 'personal_ai_voyage_key_v1';
   const VOYAGE_MULTIMODAL_MODEL = 'voyage-multimodal-3.5';
   const VOYAGE_MULTIMODAL_ENDPOINT = 'https://ai.mongodb.com/v1/multimodalembeddings';
-  const VOYAGE_EMBED_MAX_EDGE = 640;
-  const VOYAGE_DOCUMENT_BATCH_SIZE = 10;
-  const VOYAGE_RATE_LIMIT_RETRY_MS = 22000;
+  const VOYAGE_EMBED_MAX_EDGE = 512;
+  const VOYAGE_DOCUMENT_BATCH_SIZE = 4;
+  const VOYAGE_INTER_BATCH_WAIT_MS = 22000;
+  const VOYAGE_RATE_LIMIT_RETRY_MS = 65000;
   const STICKER_WEIGHT_LOG_SCALE = 0.03;
   const DEFAULT_CORE_SYSTEM_PROMPT = `LANG: If replyLanguage=zh, compose directly in natural, idiomatic native Chinese; if replyLanguage=en, compose directly in natural, idiomatic English. User input language does not change replyLanguage; do not translate from another language.
 
@@ -1753,7 +1754,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       }
       if (offset + VOYAGE_DOCUMENT_BATCH_SIZE < usable.length) {
         updateVoyageStatus('免费额度限速：等待下一批…');
-        await sleepMs(VOYAGE_RATE_LIMIT_RETRY_MS, signal);
+        await sleepMs(VOYAGE_INTER_BATCH_WAIT_MS, signal);
       }
     }
     return { ok: true, count };
@@ -1763,9 +1764,21 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     if (!voyageApiKey) { setStatus('请先保存 Voyage API Key', 'err'); return; }
     const ready = await waitForStickerDB();
     if (!ready) { setStatus('表情包数据库尚未就绪', 'err'); return; }
-    const records = (await StickerStorage.list()).filter(record => Number(record.weight) > 0);
-    if (!records.length) { flashStatus('图库里还没有可参与检索的表情包', 'err', 1800); return; }
-    updateVoyageStatus('正在向量化…');
+    const allRecords = await StickerStorage.list();
+    const records = allRecords.filter(record =>
+      Number(record.weight) > 0 &&
+      (!Array.isArray(record.embedding) || record.embeddingModel !== VOYAGE_MULTIMODAL_MODEL)
+    );
+    if (!allRecords.some(record => Number(record.weight) > 0)) {
+      flashStatus('图库里还没有可参与检索的表情包', 'err', 1800);
+      return;
+    }
+    if (!records.length) {
+      updateVoyageStatus('全部向量已是最新');
+      flashStatus('没有待处理的表情包向量 ✓', 'ok', 1800);
+      return;
+    }
+    updateVoyageStatus(`正在向量化 ${records.length} 张待处理图片…`);
     try {
       const result = await embedStickerRecords(records);
       updateVoyageStatus(`已更新 ${result.count} 张`);
@@ -4144,9 +4157,7 @@ ScrollMemory.clear(chatId);
             ? { ...record, [field]: value, updatedAt: Date.now(), embedding: null, embeddingModel: null }
             : { ...record, [field]: value, updatedAt: Date.now() };
           await StickerStorage.put(next);
-          if (semanticFieldChanged && voyageApiKey && next.blob && Number(next.weight) > 0) {
-            try { await embedStickerRecords([next]); } catch (_) {}
-          }
+          if (semanticFieldChanged) updateVoyageStatus('有待更新向量');
           if (summary) {
             const latest = await StickerStorage.list();
             summary.textContent = `${latest.length} 张 · 可参与检索 ${latest.filter(item => Number(item.weight) > 0).length} 张`;
@@ -4199,16 +4210,14 @@ ScrollMemory.clear(chatId);
       const ok = await StickerStorage.put(record);
       if (ok) { added++; addedRecords.push(record); }
     }
-    if (voyageApiKey && addedRecords.length) {
-      try {
-        const result = await embedStickerRecords(addedRecords);
-        flashStatus(`已加入 ${added} 张，并生成 ${result.count} 个向量 ✓`, 'ok', 2200);
-      } catch (e) {
-        flashStatus(`已加入 ${added} 张；Voyage 向量化失败`, 'err', 2600);
-      }
-    } else {
-      flashStatus(`已加入 ${added} 张表情包 ✓`, 'ok', 2000);
-    }
+    flashStatus(
+      voyageApiKey && addedRecords.length
+        ? `已加入 ${added} 张；点击“建立 / 更新待处理向量”后再调用 Voyage`
+        : `已加入 ${added} 张表情包 ✓`,
+      'ok',
+      2600
+    );
+    if (addedRecords.length) updateVoyageStatus('有待建立向量');
     renderStickerLibraryModal();
   }
 
