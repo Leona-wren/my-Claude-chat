@@ -1445,7 +1445,7 @@
             </div>
             <button class="btn-cancel" type="button" onclick="testStickerRetrieval()">测试匹配</button>
           </div>
-          <div class="sticker-summary" id="stickerRetrievalTestStatus">输入一个你希望 Claude 发出的表情意图；结果按与正式聊天完全相同的 query 结构和相似度算法排序。</div>
+          <div class="sticker-summary" id="stickerRetrievalTestStatus">输入一个你希望 Claude 发出的表情意图；intent / tone 会先生成 query vector，再与已完成 document vector 的表情包比较。新上传图片显示“待建立”；修改图片文字或补充说明后显示“待更新”。两者都只处理待处理图片，不会重算其他 vector ✓。</div>
           <div class="sticker-test-results" id="stickerRetrievalResults"></div>
         </div>
       </div>
@@ -1812,7 +1812,11 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       flashStatus('没有待处理的表情包向量 ✓', 'ok', 1800);
       return;
     }
-    updateVoyageStatus(`正在向量化 ${records.length} 张待处理图片…`);
+    const pendingCounts = stickerLibraryCounts(allRecords);
+    const pendingParts = [];
+    if (pendingCounts.pendingCreate) pendingParts.push(`${pendingCounts.pendingCreate} 张待建立`);
+    if (pendingCounts.pendingUpdate) pendingParts.push(`${pendingCounts.pendingUpdate} 张待更新`);
+    updateVoyageStatus(`正在向量化 ${pendingParts.join(' + ')}…`);
     try {
       const result = await embedStickerRecords(records);
       updateVoyageStatus(`已更新 ${result.count} 张`);
@@ -1857,11 +1861,9 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       return;
     }
     await waitForStickerDB();
-    const library = (await StickerStorage.list()).filter(record =>
-      Number(record.weight) > 0 &&
-      Array.isArray(record.embedding) &&
-      record.embeddingModel === VOYAGE_MULTIMODAL_MODEL
-    );
+    const allRecords = await StickerStorage.list();
+    const library = allRecords.filter(stickerVectorReady);
+    const counts = stickerLibraryCounts(allRecords);
     if (!library.length) {
       statusEl.textContent = '图库中没有可用于测试的 vector ✓。';
       resultsEl.innerHTML = '';
@@ -1895,7 +1897,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       }
       resultsEl.innerHTML = html.join('');
       const gap = ranked.length > 1 ? ranked[0].similarity - ranked[1].similarity : null;
-      statusEl.textContent = `已比较 ${ranked.length} 张。Top-1 raw similarity ${ranked[0].similarity.toFixed(4)}${gap !== null ? `；与 Top-2 差 ${gap.toFixed(4)}` : ''}。这里先看排序是否符合你的判断，不把分数当“正确率”。`;
+      statusEl.textContent = `已比较 ${ranked.length}/${counts.active} 张${counts.pending ? `；${counts.pending} 张待更新向量，未参与本次比较` : ''}。Top-1 raw similarity ${ranked[0].similarity.toFixed(4)}${gap !== null ? `；与 Top-2 差 ${gap.toFixed(4)}` : ''}。这里先看排序是否符合你的判断，不把分数当“正确率”。`;
     } catch (e) {
       statusEl.textContent = '测试失败：' + (e?.message || String(e));
       resultsEl.innerHTML = '';
@@ -4214,6 +4216,44 @@ ScrollMemory.clear(chatId);
     renderStickerLibraryModal();
   }
 
+  function stickerVectorReady(record) {
+    return Number(record?.weight) > 0 &&
+      Array.isArray(record?.embedding) &&
+      record.embeddingModel === VOYAGE_MULTIMODAL_MODEL;
+  }
+
+  function stickerVectorState(record) {
+    if (stickerVectorReady(record)) return 'ready';
+    return Number.isFinite(Number(record?.embeddedAt)) ? 'pending-update' : 'pending-create';
+  }
+
+  function stickerVectorStateLabel(record) {
+    const state = stickerVectorState(record);
+    if (state === 'ready') return 'vector ✓';
+    if (state === 'pending-update') return 'vector — · 待更新';
+    return 'vector — · 待建立';
+  }
+
+  function stickerLibraryCounts(records) {
+    const all = Array.isArray(records) ? records : [];
+    const active = all.filter(record => Number(record?.weight) > 0);
+    const ready = active.filter(record => stickerVectorState(record) === 'ready');
+    const pendingCreate = active.filter(record => stickerVectorState(record) === 'pending-create');
+    const pendingUpdate = active.filter(record => stickerVectorState(record) === 'pending-update');
+    return {
+      total: all.length,
+      active: active.length,
+      ready: ready.length,
+      pendingCreate: pendingCreate.length,
+      pendingUpdate: pendingUpdate.length,
+      pending: pendingCreate.length + pendingUpdate.length
+    };
+  }
+
+  function stickerLibrarySummaryText(counts) {
+    return `${counts.total} 张 · vector ${counts.ready} · 待建立 ${counts.pendingCreate} · 待更新 ${counts.pendingUpdate}`;
+  }
+
   async function renderStickerLibraryModal() {
     const grid = document.getElementById('stickerLibraryGrid');
     const summary = document.getElementById('stickerLibrarySummary');
@@ -4225,8 +4265,8 @@ ScrollMemory.clear(chatId);
 
     clearStickerPreviewUrls();
     const records = (await StickerStorage.list()).sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
-    const activeCount = records.filter(item => Number(item.weight) > 0).length;
-    if (summary) summary.textContent = `${records.length} 张 · 可参与检索 ${activeCount} 张`;
+    const counts = stickerLibraryCounts(records);
+    if (summary) summary.textContent = stickerLibrarySummaryText(counts);
 
     if (!records.length) {
       grid.innerHTML = '<div class="viewer-empty">还没有表情包。先添加几张 PNG / JPG / WebP 静态图。</div>';
@@ -4238,7 +4278,7 @@ ScrollMemory.clear(chatId);
           <img class="sticker-preview" src="${url}" alt="sticker">
           <div class="sticker-meta">
             <div class="sticker-id" title="${escHtml(record.id)}">${escHtml(record.id)}</div>
-            <div class="sticker-vector-state">${Array.isArray(record.embedding) && record.embeddingModel === VOYAGE_MULTIMODAL_MODEL ? 'vector ✓' : 'vector —'}</div>
+            <div class="sticker-vector-state">${stickerVectorStateLabel(record)}</div>
             <div class="sticker-weight-row">权重 <input data-sticker-field="weight" type="number" min="0" step="0.1" value="${Number.isFinite(Number(record.weight)) ? Number(record.weight) : 1}"></div>
             <input data-sticker-field="overlayText" type="text" value="${escHtml(record.overlayText || '')}" placeholder="图片上的文字（可选）">
             <textarea data-sticker-field="note" placeholder="补充语义/氛围说明（可选）">${escHtml(record.note || '')}</textarea>
@@ -4260,10 +4300,15 @@ ScrollMemory.clear(chatId);
             ? { ...record, [field]: value, updatedAt: Date.now(), embedding: null, embeddingModel: null }
             : { ...record, [field]: value, updatedAt: Date.now() };
           await StickerStorage.put(next);
-          if (semanticFieldChanged) updateVoyageStatus('有待更新向量');
+          if (semanticFieldChanged) {
+            updateVoyageStatus('有待更新向量');
+            const state = card?.querySelector('.sticker-vector-state');
+            if (state) state.textContent = 'vector — · 待更新';
+          }
           if (summary) {
             const latest = await StickerStorage.list();
-            summary.textContent = `${latest.length} 张 · 可参与检索 ${latest.filter(item => Number(item.weight) > 0).length} 张`;
+            const counts = stickerLibraryCounts(latest);
+            summary.textContent = stickerLibrarySummaryText(counts);
           }
         });
       });
@@ -4420,6 +4465,7 @@ ScrollMemory.clear(chatId);
           note: typeof item.note === 'string' ? item.note : '',
           embedding: Array.isArray(item.embedding) ? item.embedding : null,
           embeddingModel: item.embeddingModel || null,
+          embeddedAt: Number.isFinite(Number(item.embeddedAt)) ? Number(item.embeddedAt) : null,
           createdAt: Number.isFinite(item.createdAt) ? item.createdAt : Date.now(),
           updatedAt: Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now()
         });
