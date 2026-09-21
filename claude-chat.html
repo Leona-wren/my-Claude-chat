@@ -3664,9 +3664,12 @@ Treat this runtime time data as the authoritative source of the current date, lo
     save();
 
 
-    // P2-1: until semantic retrieval is connected, every valid sticker intent becomes a
-    // maintenance request instead of fabricating a visual match. Text delivery is unaffected.
-    recordUnresolvedStickerEvents(assistantMessage);
+    // Only a genuine semantic no-match belongs in the missing-request queue.
+    // Provider/key/rate-limit/vector-availability failures are retrieval-unavailable states,
+    // not evidence that the private library lacks a suitable sticker.
+    if (!assistantMessage.stickerRetrievalError) {
+      recordUnresolvedStickerEvents(assistantMessage);
+    }
 
     return {
       ok: true,
