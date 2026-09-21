@@ -1505,6 +1505,9 @@
   const VOYAGE_API_KEY_KEY = 'personal_ai_voyage_key_v1';
   const VOYAGE_MULTIMODAL_MODEL = 'voyage-multimodal-3.5';
   const VOYAGE_MULTIMODAL_ENDPOINT = 'https://ai.mongodb.com/v1/multimodalembeddings';
+  const VOYAGE_EMBED_MAX_EDGE = 640;
+  const VOYAGE_DOCUMENT_BATCH_SIZE = 10;
+  const VOYAGE_RATE_LIMIT_RETRY_MS = 22000;
   const STICKER_WEIGHT_LOG_SCALE = 0.03;
   const DEFAULT_CORE_SYSTEM_PROMPT = `LANG: If replyLanguage=zh, compose directly in natural, idiomatic native Chinese; if replyLanguage=en, compose directly in natural, idiomatic English. User input language does not change replyLanguage; do not translate from another language.
 
@@ -1642,36 +1645,64 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     el.textContent = `${voyageApiKey ? 'Key 已设置' : 'Key 未设置'} · ${VOYAGE_MULTIMODAL_MODEL}${extra ? ' · ' + extra : ''}`;
   }
 
+  function sleepMs(ms, signal = null) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+      const timer = setTimeout(() => {
+        if (signal) signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+      if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
   async function postVoyageMultimodal(inputs, inputType, signal = null) {
     if (!voyageApiKey) throw new Error('未设置 Voyage API Key');
-    const res = await fetch(VOYAGE_MULTIMODAL_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${voyageApiKey}`
-      },
-      body: JSON.stringify({
-        inputs,
-        model: VOYAGE_MULTIMODAL_MODEL,
-        input_type: inputType,
-        truncation: true
-      }),
-      signal
-    });
-    if (!res.ok) {
-      let detail = '';
-      try {
-        const payload = await res.json();
-        detail = payload?.detail || payload?.error?.message || payload?.message || '';
-      } catch (_) {}
-      throw new Error(`Voyage HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+    let attempt = 0;
+    while (true) {
+      const res = await fetch(VOYAGE_MULTIMODAL_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${voyageApiKey}`
+        },
+        body: JSON.stringify({
+          inputs,
+          model: VOYAGE_MULTIMODAL_MODEL,
+          input_type: inputType,
+          truncation: true
+        }),
+        signal
+      });
+      if (!res.ok) {
+        let detail = '';
+        try {
+          const payload = await res.json();
+          detail = payload?.detail || payload?.error?.message || payload?.message || '';
+        } catch (_) {}
+        if (res.status === 429 && attempt < 2) {
+          const retryAfter = Number(res.headers.get('retry-after'));
+          const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.max(VOYAGE_RATE_LIMIT_RETRY_MS, retryAfter * 1000)
+            : VOYAGE_RATE_LIMIT_RETRY_MS;
+          attempt++;
+          updateVoyageStatus(`触发免费额度速率限制，${Math.ceil(waitMs / 1000)} 秒后重试…`);
+          await sleepMs(waitMs, signal);
+          continue;
+        }
+        throw new Error(`Voyage HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+      }
+      const payload = await res.json();
+      const embeddings = payload?.data?.map(item => item?.embedding).filter(Array.isArray) || payload?.embeddings || [];
+      if (!Array.isArray(embeddings) || embeddings.length !== inputs.length) {
+        throw new Error('Voyage 返回的 embedding 数量异常');
+      }
+      return embeddings;
     }
-    const payload = await res.json();
-    const embeddings = payload?.data?.map(item => item?.embedding).filter(Array.isArray) || payload?.embeddings || [];
-    if (!Array.isArray(embeddings) || embeddings.length !== inputs.length) {
-      throw new Error('Voyage 返回的 embedding 数量异常');
-    }
-    return embeddings;
   }
 
   function stickerDocumentInput(record, imageDataUrl) {
@@ -1696,24 +1727,34 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   async function embedStickerRecords(records, signal = null) {
     const usable = (records || []).filter(record => record?.id && record?.blob);
     if (!usable.length) return { ok: true, count: 0 };
-    const inputs = [];
-    for (const record of usable) {
-      inputs.push(stickerDocumentInput(record, await blobToDataUrl(record.blob)));
-    }
-    const embeddings = await postVoyageMultimodal(inputs, 'document', signal);
     let count = 0;
-    for (let i = 0; i < usable.length; i++) {
-      const record = usable[i];
-      const embedding = embeddings[i];
-      if (!Array.isArray(embedding)) continue;
-      await StickerStorage.put({
-        ...record,
-        embedding,
-        embeddingModel: VOYAGE_MULTIMODAL_MODEL,
-        embeddedAt: Date.now(),
-        updatedAt: Date.now()
-      });
-      count++;
+    for (let offset = 0; offset < usable.length; offset += VOYAGE_DOCUMENT_BATCH_SIZE) {
+      const chunk = usable.slice(offset, offset + VOYAGE_DOCUMENT_BATCH_SIZE);
+      const inputs = [];
+      for (const record of chunk) {
+        inputs.push(stickerDocumentInput(record, await blobToEmbeddingDataUrl(record.blob)));
+      }
+      if (usable.length > VOYAGE_DOCUMENT_BATCH_SIZE) {
+        updateVoyageStatus(`正在向量化 ${offset + 1}–${offset + chunk.length} / ${usable.length}`);
+      }
+      const embeddings = await postVoyageMultimodal(inputs, 'document', signal);
+      for (let i = 0; i < chunk.length; i++) {
+        const record = chunk[i];
+        const embedding = embeddings[i];
+        if (!Array.isArray(embedding)) continue;
+        await StickerStorage.put({
+          ...record,
+          embedding,
+          embeddingModel: VOYAGE_MULTIMODAL_MODEL,
+          embeddedAt: Date.now(),
+          updatedAt: Date.now()
+        });
+        count++;
+      }
+      if (offset + VOYAGE_DOCUMENT_BATCH_SIZE < usable.length) {
+        updateVoyageStatus('免费额度限速：等待下一批…');
+        await sleepMs(VOYAGE_RATE_LIMIT_RETRY_MS, signal);
+      }
     }
     return { ok: true, count };
   }
@@ -4178,6 +4219,33 @@ ScrollMemory.clear(chatId);
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+  }
+
+  async function blobToEmbeddingDataUrl(blob) {
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('无法读取表情包图片'));
+        image.src = objectUrl;
+      });
+      const width = img.naturalWidth || img.width;
+      const height = img.naturalHeight || img.height;
+      const longest = Math.max(width, height);
+      if (!width || !height || longest <= VOYAGE_EMBED_MAX_EDGE) return blobToDataUrl(blob);
+      const scale = VOYAGE_EMBED_MAX_EDGE / longest;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return blobToDataUrl(blob);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const resizedBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.92));
+      return resizedBlob ? blobToDataUrl(resizedBlob) : canvas.toDataURL('image/png');
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
   }
 
   function dataUrlToBlob(dataUrl) {
