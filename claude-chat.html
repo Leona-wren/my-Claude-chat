@@ -1175,7 +1175,7 @@
   .sticker-summary { font-size: 12px; color: var(--text-soft); }
   .sticker-section { display: flex; flex-direction: column; gap: 8px; }
   .sticker-section-title { font-size: 12px; color: var(--accent); font-weight: 500; }
-  .sticker-library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .sticker-library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
   .sticker-card { border: 1px solid var(--border); border-radius: 12px; padding: 9px; background: var(--bg); display: grid; grid-template-columns: 78px 1fr; gap: 10px; align-items: start; }
   .sticker-preview { width: 78px; height: 78px; border-radius: 10px; object-fit: contain; background: var(--input-bg); border: 1px solid var(--border); }
   .sticker-meta { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -1188,21 +1188,32 @@
   .missing-sticker-intent { font-size: 12.5px; color: var(--text); line-height: 1.5; }
   .missing-sticker-meta { font-size: 10.5px; color: var(--text-soft); line-height: 1.45; }
   .missing-sticker-actions { display: flex; gap: 6px; margin-top: 3px; }
-  .sticker-inline { display: block; max-width: min(220px, 54vw); max-height: 220px; object-fit: contain; border-radius: 12px; }
+  .sticker-inline { display: block; max-width: min(112px, 28vw); max-height: 112px; object-fit: contain; border-radius: 10px; }
   .sticker-bubble { padding: 2px 0; background: transparent; box-shadow: none; }
   .sticker-bubble img[hidden] { display: none; }
   .sticker-vector-state { font-size: 10px; color: var(--text-soft); }
   .sticker-test-panel { border: 1px solid var(--border); border-radius: 12px; padding: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; }
-  .sticker-test-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, .55fr) 90px auto; gap: 8px; align-items: end; }
+  .sticker-test-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
   .sticker-test-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .sticker-test-field label { font-size: 10px; color: var(--text-soft); }
-  .sticker-test-field input, .sticker-test-field textarea { width: 100%; background: var(--input-bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 7px 8px; font-size: 11px; line-height: 1.35; font-family: -apple-system, 'Helvetica Neue', sans-serif; }
-  .sticker-test-field textarea { min-height: 54px; resize: vertical; }
+  .sticker-test-field input, .sticker-test-field textarea, .sticker-test-field select { width: 100%; background: var(--input-bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 7px 8px; font-size: 11px; line-height: 1.35; font-family: -apple-system, 'Helvetica Neue', sans-serif; }
+  .sticker-test-field textarea { min-height: 72px; resize: vertical; }
   .sticker-test-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
   .sticker-test-result { border: 1px solid var(--border); border-radius: 10px; padding: 7px; display: flex; flex-direction: column; gap: 5px; background: var(--input-bg); }
   .sticker-test-result img { width: 100%; height: 110px; object-fit: contain; border-radius: 8px; background: var(--bg); }
   .sticker-test-score { font-size: 10.5px; color: var(--text-soft); line-height: 1.45; }
-  @media (max-width: 700px) { .sticker-test-row { grid-template-columns: 1fr; } }
+  .sticker-test-match { font-size: 10.5px; color: var(--text); line-height: 1.45; }
+  .usage-block { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
+  .usage-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10.5px; color: var(--text-soft); }
+  .usage-row { border: 1px solid var(--border); border-radius: 8px; padding: 6px; background: var(--input-bg); display: flex; flex-direction: column; gap: 5px; }
+  .usage-row textarea { min-height: 44px; }
+  .usage-row-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .usage-vector-state { font-size: 9.5px; color: var(--text-soft); }
+  .usage-delete { border: 0; background: transparent; color: var(--text-soft); cursor: pointer; font-size: 10px; padding: 2px 4px; }
+  .usage-add { display: grid; grid-template-columns: 1fr auto; gap: 5px; align-items: end; }
+  .usage-add textarea { min-height: 44px; }
+  .seed-label { font-size: 10px; color: var(--text-soft); }
+  @media (max-width: 700px) { .sticker-test-row { grid-template-columns: 1fr; } .usage-add { grid-template-columns: 1fr; } .sticker-inline { max-width: min(96px, 25vw); max-height: 96px; } }
 
 </style>
 </head>
@@ -1416,39 +1427,39 @@
 <div class="modal-overlay" id="stickerModal">
   <div class="modal sticker-modal">
     <h2>私人表情包库</h2>
-    <p>仅供当前 Personal AI 使用。原图存入本浏览器 IndexedDB；发送给 Voyage 前只在内存中临时缩放，临时图不持久化。聊天消息只引用稳定 stickerId。Voyage 负责把图片和 Claude 的 sticker intent 映射到同一语义向量空间，本地只做相似度排序。</p>
+    <p>图片只负责聊天显示；检索只使用你维护的中文 Usage examples。每条 Usage example 独立建立文本向量，并始终保留所属 stickerId / exampleId；不会再把图片发送给 Voyage。</p>
     <div class="sticker-modal-body">
       <div class="sticker-section">
-        <div class="sticker-section-title">Voyage multimodal embedding</div>
+        <div class="sticker-section-title">Voyage text embedding</div>
         <div class="sticker-toolbar">
           <input type="password" id="voyageKeyInput" placeholder="MongoDB Atlas Model API Key" style="min-width:260px;flex:1">
           <button class="btn-cancel" type="button" onclick="saveVoyageKey()">保存 Key</button>
-          <button class="btn-cancel" type="button" onclick="rebuildStickerEmbeddings()">建立 / 更新待处理向量</button>
+          <button class="btn-cancel" type="button" onclick="rebuildUsageEmbeddings()">建立 / 更新待处理用法向量</button>
           <span class="sticker-summary" id="voyageStatus"></span>
         </div>
       </div>
+
       <div class="sticker-section">
         <div class="sticker-section-title">检索校准</div>
         <div class="sticker-test-panel">
           <div class="sticker-test-row">
             <div class="sticker-test-field">
-              <label for="stickerTestIntent">semantic intent</label>
-              <textarea id="stickerTestIntent" placeholder="例如：被说中了以后有点心虚，但还想装作什么都没发生"></textarea>
+              <label for="stickerTestQueries">Sticker intent（每行一条；一次批量测试）</label>
+              <textarea id="stickerTestQueries" placeholder="例如：
+被夸以后暗自得意，想故意卖乖一下
+被抓包以后有点心虚，想装乖蒙混过去"></textarea>
             </div>
-            <div class="sticker-test-field">
-              <label for="stickerTestTone">visual tone</label>
-              <input id="stickerTestTone" type="text" placeholder="例如：deadpan, mildly cute">
-            </div>
-            <div class="sticker-test-field">
-              <label for="stickerTestIntensity">intensity</label>
-              <input id="stickerTestIntensity" type="number" min="0" max="1" step="0.05" value="0.5">
-            </div>
-            <button class="btn-cancel" type="button" onclick="testStickerRetrieval()">测试匹配</button>
+            <button class="btn-cancel" type="button" onclick="testStickerRetrievalBatch()">批量测试</button>
           </div>
-          <div class="sticker-summary" id="stickerRetrievalTestStatus">输入一个你希望 Claude 发出的表情意图；intent / tone 会先生成 query vector，再与已完成 document vector 的表情包比较。新上传图片显示“待建立”；修改图片文字或补充说明后显示“待更新”。两者都只处理待处理图片，不会重算其他 vector ✓。</div>
+          <div class="sticker-test-field">
+            <label for="stickerTestResultSelect">查看某一条测试结果</label>
+            <select id="stickerTestResultSelect" onchange="renderStickerCalibrationResult(this.value)" disabled><option>暂无结果</option></select>
+          </div>
+          <div class="sticker-summary" id="stickerRetrievalTestStatus">测试结果只保存在当前页面内存，不写入聊天、localStorage 或 IndexedDB。排名会同时显示命中的具体 Usage example，便于检查向量分组是否正确。</div>
           <div class="sticker-test-results" id="stickerRetrievalResults"></div>
         </div>
       </div>
+
       <div class="sticker-toolbar">
         <button class="btn-save" type="button" onclick="document.getElementById('stickerImageInput').click()">添加静态图片</button>
         <button class="btn-cancel" type="button" onclick="exportStickerLibrary()">导出表情包库</button>
@@ -1533,13 +1544,13 @@
   const INSTRUCTION_KEY = 'claude_instruction_v1';
   const ELEVEN_ZH_VOICE_KEY = 'eleven_voice_zh_v1';
   const ELEVEN_ZH_VOICE_DEFAULT = '0DKC76GAganwbm9TweFs';
-  const STICKER_SCHEMA_VERSION = 1;
+  const STICKER_SCHEMA_VERSION = 2;
   const STICKER_MISSING_KEY = 'claude_sticker_missing_v1';
   const VOYAGE_API_KEY_KEY = 'personal_ai_voyage_key_v1';
-  const VOYAGE_MULTIMODAL_MODEL = 'voyage-multimodal-3.5';
-  const VOYAGE_MULTIMODAL_ENDPOINT = 'https://ai.mongodb.com/v1/multimodalembeddings';
-  const VOYAGE_EMBED_MAX_EDGE = 512;
-  const VOYAGE_DOCUMENT_BATCH_SIZE = 4;
+  const VOYAGE_TEXT_MODEL = 'voyage-4-large';
+  const VOYAGE_TEXT_ENDPOINT = 'https://ai.mongodb.com/v1/embeddings';
+  const VOYAGE_TEXT_DIMENSIONS = 1024;
+  const VOYAGE_TEXT_BATCH_SIZE = 500;
   const VOYAGE_INTER_BATCH_WAIT_MS = 22000;
   const VOYAGE_RATE_LIMIT_RETRY_MS = 65000;
   const STICKER_WEIGHT_LOG_SCALE = 0.03;
@@ -1602,6 +1613,8 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   let stickerDB = null;
   let stickerPreviewUrls = [];
   let stickerChatUrls = [];
+  let stickerCalibrationUrls = [];
+  let stickerCalibrationState = [];
   let draftSaveTimer = null;
   let draftEditorInitialized = false;
 
@@ -1619,10 +1632,32 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   // This is the authoritative local private sticker library for the current browser.
   // It is not a cache. Messages should reference stable stickerId values, never Blob URLs.
   (function openStickerDB() {
-    const req = indexedDB.open('claude_stickers', 1);
+    const req = indexedDB.open('claude_stickers', 2);
     req.onupgradeneeded = e => {
       const db = e.target.result;
-      if (!db.objectStoreNames.contains('stickers')) db.createObjectStore('stickers', { keyPath: 'id' });
+      const store = db.objectStoreNames.contains('stickers')
+        ? e.target.transaction.objectStore('stickers')
+        : db.createObjectStore('stickers', { keyPath: 'id' });
+      if (e.oldVersion < 2) {
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = event => {
+          const cursor = event.target.result;
+          if (!cursor) return;
+          const record = cursor.value || {};
+          const migrated = {
+            ...record,
+            seedMeaning: typeof record.seedMeaning === 'string' ? record.seedMeaning : (typeof record.note === 'string' ? record.note : ''),
+            usageExamples: Array.isArray(record.usageExamples) ? record.usageExamples : []
+          };
+          delete migrated.overlayText;
+          delete migrated.note;
+          delete migrated.embedding;
+          delete migrated.embeddingModel;
+          delete migrated.embeddedAt;
+          cursor.update(migrated);
+          cursor.continue();
+        };
+      }
     };
     req.onsuccess = e => { stickerDB = e.target.result; };
   })();
@@ -1676,7 +1711,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   function updateVoyageStatus(extra = '') {
     const el = document.getElementById('voyageStatus');
     if (!el) return;
-    el.textContent = `${voyageApiKey ? 'Key 已设置' : 'Key 未设置'} · ${VOYAGE_MULTIMODAL_MODEL}${extra ? ' · ' + extra : ''}`;
+    el.textContent = `${voyageApiKey ? 'Key 已设置' : 'Key 未设置'} · ${VOYAGE_TEXT_MODEL}${extra ? ' · ' + extra : ''}`;
   }
 
   function sleepMs(ms, signal = null) {
@@ -1694,22 +1729,26 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     });
   }
 
-  async function postVoyageMultimodal(inputs, inputType, signal = null, options = {}) {
+  async function postVoyageText(texts, inputType, signal = null, options = {}) {
     if (!voyageApiKey) throw new Error('未设置 Voyage API Key');
+    const input = (Array.isArray(texts) ? texts : [texts]).map(text => String(text || '').trim()).filter(Boolean);
+    if (!input.length) return [];
     const retryOn429 = options.retryOn429 !== false;
     let attempt = 0;
     while (true) {
-      const res = await fetch(VOYAGE_MULTIMODAL_ENDPOINT, {
+      const res = await fetch(VOYAGE_TEXT_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${voyageApiKey}`
         },
         body: JSON.stringify({
-          inputs,
-          model: VOYAGE_MULTIMODAL_MODEL,
+          input,
+          model: VOYAGE_TEXT_MODEL,
           input_type: inputType,
-          truncation: true
+          truncation: true,
+          output_dimension: VOYAGE_TEXT_DIMENSIONS,
+          output_dtype: 'float'
         }),
         signal
       });
@@ -1725,102 +1764,153 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
             ? Math.max(VOYAGE_RATE_LIMIT_RETRY_MS, retryAfter * 1000)
             : VOYAGE_RATE_LIMIT_RETRY_MS;
           attempt++;
-          updateVoyageStatus(`触发免费额度速率限制，${Math.ceil(waitMs / 1000)} 秒后重试…`);
+          updateVoyageStatus(`触发速率限制，${Math.ceil(waitMs / 1000)} 秒后重试…`);
           await sleepMs(waitMs, signal);
           continue;
         }
         throw new Error(`Voyage HTTP ${res.status}${detail ? ': ' + detail : ''}`);
       }
       const payload = await res.json();
-      const embeddings = payload?.data?.map(item => item?.embedding).filter(Array.isArray) || payload?.embeddings || [];
-      if (!Array.isArray(embeddings) || embeddings.length !== inputs.length) {
-        throw new Error('Voyage 返回的 embedding 数量异常');
+      const rows = Array.isArray(payload?.data) ? payload.data : null;
+      if (rows) {
+        const ordered = new Array(input.length);
+        rows.forEach((item, position) => {
+          const index = Number.isInteger(item?.index) ? item.index : position;
+          if (index >= 0 && index < ordered.length && Array.isArray(item?.embedding)) ordered[index] = item.embedding;
+        });
+        if (ordered.every(Array.isArray)) return ordered;
       }
-      return embeddings;
+      if (Array.isArray(payload?.embeddings) && payload.embeddings.length === input.length) return payload.embeddings;
+      throw new Error('Voyage 返回的 embedding 数量或顺序异常');
     }
   }
 
-  function stickerDocumentInput(record, imageDataUrl) {
-    const content = [];
-    const metadata = [];
-    if (record.overlayText) metadata.push(`Overlay text: ${record.overlayText}`);
-    if (record.note) metadata.push(`Usage note: ${record.note}`);
-    if (metadata.length) content.push({ type: 'text', text: metadata.join('\n') });
-    content.push({ type: 'image_base64', image_base64: imageDataUrl });
-    return { content };
+  function makeUsageExample(text = '') {
+    return {
+      id: 'use_' + generateUuid(),
+      text: String(text || '').trim(),
+      embedding: null,
+      embeddingModel: null,
+      embeddingTextHash: null,
+      embeddedAt: null
+    };
   }
 
-  function stickerQueryInput(event) {
-    const lines = [
-      `Communicative intent: ${event.intent}`,
-      `Desired visual tone: ${event.visualTone}`,
-      `Expression intensity: ${Number(event.intensity).toFixed(2)}`
-    ];
-    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  function normalizeUsageExamples(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.map(item => {
+      if (typeof item === 'string') return makeUsageExample(item);
+      const text = typeof item?.text === 'string' ? item.text.trim() : '';
+      if (!text) return null;
+      return {
+        id: typeof item?.id === 'string' && item.id ? item.id : 'use_' + generateUuid(),
+        text,
+        embedding: Array.isArray(item?.embedding) ? item.embedding : null,
+        embeddingModel: item?.embeddingModel || null,
+        embeddingTextHash: typeof item?.embeddingTextHash === 'string' ? item.embeddingTextHash : null,
+        embeddedAt: Number.isFinite(Number(item?.embeddedAt)) ? Number(item.embeddedAt) : null
+      };
+    }).filter(Boolean);
   }
 
-  async function embedStickerRecords(records, signal = null) {
-    const usable = (records || []).filter(record => record?.id && record?.blob);
-    if (!usable.length) return { ok: true, count: 0 };
-    let count = 0;
-    for (let offset = 0; offset < usable.length; offset += VOYAGE_DOCUMENT_BATCH_SIZE) {
-      const chunk = usable.slice(offset, offset + VOYAGE_DOCUMENT_BATCH_SIZE);
-      const inputs = [];
-      for (const record of chunk) {
-        inputs.push(stickerDocumentInput(record, await blobToEmbeddingDataUrl(record.blob)));
-      }
-      if (usable.length > VOYAGE_DOCUMENT_BATCH_SIZE) {
-        updateVoyageStatus(`正在向量化 ${offset + 1}–${offset + chunk.length} / ${usable.length}`);
-      }
-      const embeddings = await postVoyageMultimodal(inputs, 'document', signal);
-      for (let i = 0; i < chunk.length; i++) {
-        const record = chunk[i];
-        const embedding = embeddings[i];
-        if (!Array.isArray(embedding)) continue;
-        await StickerStorage.put({
-          ...record,
-          embedding,
-          embeddingModel: VOYAGE_MULTIMODAL_MODEL,
-          embeddedAt: Date.now(),
-          updatedAt: Date.now()
+  function usageExampleReady(example) {
+    const text = String(example?.text || '').trim();
+    return !!text && Array.isArray(example?.embedding) &&
+      example.embeddingModel === VOYAGE_TEXT_MODEL &&
+      example.embeddingTextHash === hashString(text);
+  }
+
+  function usageExampleState(example) {
+    if (usageExampleReady(example)) return 'ready';
+    return Number.isFinite(Number(example?.embeddedAt)) ? 'pending-update' : 'pending-create';
+  }
+
+  function usageExampleStateLabel(example) {
+    const state = usageExampleState(example);
+    if (state === 'ready') return 'vector ✓';
+    if (state === 'pending-update') return '待更新';
+    return '待建立';
+  }
+
+  function collectPendingUsageExamples(records) {
+    const pending = [];
+    for (const record of (records || [])) {
+      if (!record?.id || Number(record.weight) <= 0) continue;
+      for (const example of normalizeUsageExamples(record.usageExamples)) {
+        const text = String(example.text || '').trim();
+        if (!text || usageExampleReady(example)) continue;
+        pending.push({
+          stickerId: record.id,
+          exampleId: example.id,
+          text,
+          textHash: hashString(text)
         });
+      }
+    }
+    return pending;
+  }
+
+  async function embedPendingUsageExamples(pending, signal = null) {
+    if (!pending.length) return { ok: true, count: 0, skipped: 0 };
+    let count = 0;
+    let skipped = 0;
+    for (let offset = 0; offset < pending.length; offset += VOYAGE_TEXT_BATCH_SIZE) {
+      const chunk = pending.slice(offset, offset + VOYAGE_TEXT_BATCH_SIZE);
+      if (pending.length > VOYAGE_TEXT_BATCH_SIZE) {
+        updateVoyageStatus(`正在向量化 ${offset + 1}–${offset + chunk.length} / ${pending.length} 条用法`);
+      }
+      const embeddings = await postVoyageText(chunk.map(item => item.text), 'document', signal);
+      for (let i = 0; i < chunk.length; i++) {
+        const map = chunk[i];
+        const embedding = embeddings[i];
+        if (!Array.isArray(embedding)) { skipped++; continue; }
+        const record = await StickerStorage.get(map.stickerId);
+        if (!record) { skipped++; continue; }
+        const examples = normalizeUsageExamples(record.usageExamples);
+        const index = examples.findIndex(example => example.id === map.exampleId);
+        if (index < 0 || hashString(String(examples[index].text || '').trim()) !== map.textHash) {
+          skipped++;
+          continue;
+        }
+        examples[index] = {
+          ...examples[index],
+          embedding,
+          embeddingModel: VOYAGE_TEXT_MODEL,
+          embeddingTextHash: map.textHash,
+          embeddedAt: Date.now()
+        };
+        await StickerStorage.put({ ...record, usageExamples: examples, updatedAt: Date.now() });
         count++;
       }
-      if (offset + VOYAGE_DOCUMENT_BATCH_SIZE < usable.length) {
-        updateVoyageStatus('免费额度限速：等待下一批…');
+      if (offset + VOYAGE_TEXT_BATCH_SIZE < pending.length) {
+        updateVoyageStatus('等待下一批…');
         await sleepMs(VOYAGE_INTER_BATCH_WAIT_MS, signal);
       }
     }
-    return { ok: true, count };
+    return { ok: true, count, skipped };
   }
 
-  async function rebuildStickerEmbeddings() {
+  async function rebuildUsageEmbeddings() {
     if (!voyageApiKey) { setStatus('请先保存 Voyage API Key', 'err'); return; }
     const ready = await waitForStickerDB();
     if (!ready) { setStatus('表情包数据库尚未就绪', 'err'); return; }
-    const allRecords = await StickerStorage.list();
-    const records = allRecords.filter(record =>
-      Number(record.weight) > 0 &&
-      (!Array.isArray(record.embedding) || record.embeddingModel !== VOYAGE_MULTIMODAL_MODEL)
-    );
-    if (!allRecords.some(record => Number(record.weight) > 0)) {
-      flashStatus('图库里还没有可参与检索的表情包', 'err', 1800);
+    const records = await StickerStorage.list();
+    const pending = collectPendingUsageExamples(records);
+    const totalExamples = records.reduce((sum, record) => sum + normalizeUsageExamples(record.usageExamples).length, 0);
+    if (!totalExamples) {
+      flashStatus('还没有 Usage examples', 'err', 1800);
       return;
     }
-    if (!records.length) {
-      updateVoyageStatus('全部向量已是最新');
-      flashStatus('没有待处理的表情包向量 ✓', 'ok', 1800);
+    if (!pending.length) {
+      updateVoyageStatus('全部用法向量已是最新');
+      flashStatus('没有待处理的用法向量 ✓', 'ok', 1800);
       return;
     }
-    const pendingCounts = stickerLibraryCounts(allRecords);
-    const pendingParts = [];
-    if (pendingCounts.pendingCreate) pendingParts.push(`${pendingCounts.pendingCreate} 张待建立`);
-    if (pendingCounts.pendingUpdate) pendingParts.push(`${pendingCounts.pendingUpdate} 张待更新`);
-    updateVoyageStatus(`正在向量化 ${pendingParts.join(' + ')}…`);
+    updateVoyageStatus(`待处理 ${pending.length} 条用法…`);
     try {
-      const result = await embedStickerRecords(records);
-      updateVoyageStatus(`已更新 ${result.count} 张`);
-      flashStatus(`已建立 ${result.count} 张表情包向量 ✓`, 'ok', 2200);
+      const result = await embedPendingUsageExamples(pending);
+      updateVoyageStatus(`已更新 ${result.count} 条${result.skipped ? `；跳过 ${result.skipped} 条已变化内容` : ''}`);
+      flashStatus(`已建立 ${result.count} 条用法向量 ✓`, 'ok', 2200);
       renderStickerLibraryModal();
     } catch (e) {
       updateVoyageStatus('调用失败');
@@ -1840,67 +1930,107 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     return similarity + STICKER_WEIGHT_LOG_SCALE * Math.log(safeWeight);
   }
 
-  async function testStickerRetrieval() {
-    const intentEl = document.getElementById('stickerTestIntent');
-    const toneEl = document.getElementById('stickerTestTone');
-    const intensityEl = document.getElementById('stickerTestIntensity');
+  function readyUsageExamples(record) {
+    return normalizeUsageExamples(record?.usageExamples).filter(usageExampleReady);
+  }
+
+  function bestStickerUsageMatch(queryEmbedding, record) {
+    let best = null;
+    for (const example of readyUsageExamples(record)) {
+      const similarity = dotProduct(queryEmbedding, example.embedding);
+      if (!best || similarity > best.similarity) best = { example, similarity };
+    }
+    if (!best) return null;
+    return {
+      ...best,
+      adjustedScore: stickerAdjustedScore(best.similarity, record.weight)
+    };
+  }
+
+  function clearStickerCalibrationUrls() {
+    stickerCalibrationUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch (_) {} });
+    stickerCalibrationUrls = [];
+  }
+
+  async function testStickerRetrievalBatch() {
+    const inputEl = document.getElementById('stickerTestQueries');
+    const selectEl = document.getElementById('stickerTestResultSelect');
     const statusEl = document.getElementById('stickerRetrievalTestStatus');
     const resultsEl = document.getElementById('stickerRetrievalResults');
-    if (!intentEl || !toneEl || !intensityEl || !statusEl || !resultsEl) return;
-    const intent = String(intentEl.value || '').trim();
-    const visualTone = String(toneEl.value || '').trim() || 'contextually fitting';
-    const intensity = Math.min(1, Math.max(0, Number(intensityEl.value) || 0));
-    if (!intent) {
-      statusEl.textContent = '先输入 semantic intent。';
-      resultsEl.innerHTML = '';
+    if (!inputEl || !selectEl || !statusEl || !resultsEl) return;
+    const queries = String(inputEl.value || '').split(/\n+/).map(item => item.trim()).filter(Boolean).slice(0, 20);
+    if (!queries.length) {
+      statusEl.textContent = '至少输入一条 Sticker intent。';
       return;
     }
     if (!voyageApiKey) {
       statusEl.textContent = '请先保存 Voyage API Key。';
-      resultsEl.innerHTML = '';
       return;
     }
     await waitForStickerDB();
-    const allRecords = await StickerStorage.list();
-    const library = allRecords.filter(stickerVectorReady);
-    const counts = stickerLibraryCounts(allRecords);
-    if (!library.length) {
-      statusEl.textContent = '图库中没有可用于测试的 vector ✓。';
-      resultsEl.innerHTML = '';
+    const records = (await StickerStorage.list()).filter(record => Number(record.weight) > 0 && readyUsageExamples(record).length);
+    if (!records.length) {
+      statusEl.textContent = '图库中还没有可用于检索的 Usage example vectors。';
       return;
     }
-    statusEl.textContent = '正在生成 query vector 并与图库比较…';
+    statusEl.textContent = `正在一次性向量化 ${queries.length} 条 query…`;
     resultsEl.innerHTML = '';
+    selectEl.disabled = true;
     try {
-      const [query] = await postVoyageMultimodal([
-        stickerQueryInput({ intent, visualTone, intensity })
-      ], 'query', null, { retryOn429: false });
-      const ranked = library.map(record => {
-        const similarity = dotProduct(query, record.embedding);
-        return {
-          record,
-          similarity,
-          adjustedScore: stickerAdjustedScore(similarity, record.weight)
-        };
-      }).sort((a, b) => b.adjustedScore - a.adjustedScore);
-
-      const top = ranked.slice(0, Math.min(10, ranked.length));
-      const html = [];
-      for (let i = 0; i < top.length; i++) {
-        const item = top[i];
-        const url = URL.createObjectURL(item.record.blob);
-        stickerPreviewUrls.push(url);
-        html.push(`<div class="sticker-test-result">
-          <img src="${url}" alt="rank ${i + 1}">
-          <div class="sticker-test-score"><strong>#${i + 1}</strong> · similarity ${item.similarity.toFixed(4)}<br>adjusted ${item.adjustedScore.toFixed(4)} · weight ${Number(item.record.weight).toFixed(2)}</div>
-        </div>`);
-      }
-      resultsEl.innerHTML = html.join('');
-      const gap = ranked.length > 1 ? ranked[0].similarity - ranked[1].similarity : null;
-      statusEl.textContent = `已比较 ${ranked.length}/${counts.active} 张${counts.pending ? `；${counts.pending} 张待更新向量，未参与本次比较` : ''}。Top-1 raw similarity ${ranked[0].similarity.toFixed(4)}${gap !== null ? `；与 Top-2 差 ${gap.toFixed(4)}` : ''}。这里先看排序是否符合你的判断，不把分数当“正确率”。`;
+      const queryEmbeddings = await postVoyageText(queries, 'query', null, { retryOn429: false });
+      stickerCalibrationState = queries.map((query, queryIndex) => {
+        const ranked = records.map(record => {
+          const match = bestStickerUsageMatch(queryEmbeddings[queryIndex], record);
+          return match ? {
+            stickerId: record.id,
+            similarity: match.similarity,
+            adjustedScore: match.adjustedScore,
+            matchedExampleId: match.example.id,
+            matchedExampleText: match.example.text,
+            weight: Number(record.weight) || 1
+          } : null;
+        }).filter(Boolean).sort((a, b) => b.adjustedScore - a.adjustedScore);
+        return { query, ranked };
+      });
+      selectEl.innerHTML = stickerCalibrationState.map((item, index) => `<option value="${index}">${escHtml(item.query.slice(0, 72))}</option>`).join('');
+      selectEl.disabled = false;
+      statusEl.textContent = `已一次请求完成 ${queries.length} 组校准；结果只保存在当前页面内存。`;
+      await renderStickerCalibrationResult(0);
     } catch (e) {
+      stickerCalibrationState = [];
+      selectEl.innerHTML = '<option>暂无结果</option>';
+      selectEl.disabled = true;
       statusEl.textContent = '测试失败：' + (e?.message || String(e));
-      resultsEl.innerHTML = '';
+    }
+  }
+
+  async function renderStickerCalibrationResult(indexValue) {
+    const resultsEl = document.getElementById('stickerRetrievalResults');
+    const statusEl = document.getElementById('stickerRetrievalTestStatus');
+    if (!resultsEl) return;
+    const index = Math.max(0, Number(indexValue) || 0);
+    const state = stickerCalibrationState[index];
+    if (!state) { resultsEl.innerHTML = ''; return; }
+    clearStickerCalibrationUrls();
+    const top = state.ranked.slice(0, 10);
+    const html = [];
+    for (let i = 0; i < top.length; i++) {
+      const item = top[i];
+      const record = await StickerStorage.get(item.stickerId);
+      if (!record?.blob) continue;
+      const url = URL.createObjectURL(record.blob);
+      stickerCalibrationUrls.push(url);
+      html.push(`<div class="sticker-test-result">
+        <img src="${url}" alt="rank ${i + 1}">
+        <div class="sticker-test-score"><strong>#${i + 1}</strong> · similarity ${item.similarity.toFixed(4)}<br>adjusted ${item.adjustedScore.toFixed(4)} · weight ${item.weight.toFixed(2)}</div>
+        <div class="sticker-test-match">命中用法：${escHtml(item.matchedExampleText)}</div>
+        <div class="sticker-id" title="${escHtml(item.matchedExampleId)}">${escHtml(item.matchedExampleId)}</div>
+      </div>`);
+    }
+    resultsEl.innerHTML = html.join('');
+    if (statusEl && state.ranked.length) {
+      const gap = state.ranked.length > 1 ? state.ranked[0].similarity - state.ranked[1].similarity : null;
+      statusEl.textContent = `当前 query：${state.query} · Top-1 ${state.ranked[0].similarity.toFixed(4)}${gap !== null ? ` · 与 Top-2 差 ${gap.toFixed(4)}` : ''}。每个结果同时显示实际命中的 Usage example。`;
     }
   }
 
@@ -1908,24 +2038,18 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     if (!Array.isArray(events) || !events.length) return { events: [], retrievalError: null };
     if (!voyageApiKey) return { events: events.map(event => ({ ...event })), retrievalError: 'Voyage API Key 未设置' };
     await waitForStickerDB();
-    const library = (await StickerStorage.list()).filter(record =>
-      Number(record.weight) > 0 &&
-      Array.isArray(record.embedding) &&
-      record.embeddingModel === VOYAGE_MULTIMODAL_MODEL
-    );
-    if (!library.length) return { events: events.map(event => ({ ...event })), retrievalError: '图库尚无可用向量' };
+    const library = (await StickerStorage.list()).filter(record => Number(record.weight) > 0 && readyUsageExamples(record).length);
+    if (!library.length) return { events: events.map(event => ({ ...event })), retrievalError: '图库尚无可用 Usage example vectors' };
 
     try {
-      const queryEmbeddings = await postVoyageMultimodal(events.map(stickerQueryInput), 'query', signal, { retryOn429: false });
+      const queryEmbeddings = await postVoyageText(events.map(event => event.intent), 'query', signal, { retryOn429: false });
       const resolved = events.map((event, index) => {
         const query = queryEmbeddings[index];
         let best = null;
         for (const record of library) {
-          const similarity = dotProduct(query, record.embedding);
-          const adjustedScore = stickerAdjustedScore(similarity, record.weight);
-          if (!best || adjustedScore > best.adjustedScore) {
-            best = { record, similarity, adjustedScore };
-          }
+          const match = bestStickerUsageMatch(query, record);
+          if (!match) continue;
+          if (!best || match.adjustedScore > best.adjustedScore) best = { record, ...match };
         }
         if (!best) return { ...event };
         return {
@@ -1933,7 +2057,8 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
           stickerId: best.record.id,
           matchScore: Number(best.similarity.toFixed(6)),
           adjustedMatchScore: Number(best.adjustedScore.toFixed(6)),
-          embeddingModel: VOYAGE_MULTIMODAL_MODEL
+          matchedUsageExampleId: best.example.id,
+          embeddingModel: VOYAGE_TEXT_MODEL
         };
       });
       return { events: resolved, retrievalError: null };
@@ -3115,11 +3240,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   }
 
   function buildStickerSystemPrompt() {
-    return `STICKER: Decide stickerEvents as part of the reply's expressive delivery. Use [] when no sticker is wanted.
-
-Sticker use is open-ended. A sticker may express or amplify emotion or reaction, carry an interpersonal intention (for example teasing, pleading, coaxing, softening, showing embarrassment, seeking sympathy, warmth, or reluctance), replace a verbal reaction, add comic timing or emphasis, avoid or deflect a direct answer, shift the interactional tone, or serve another contextually fitting non-verbal purpose. These are examples, not a closed taxonomy: infer novel uses from the full conversational context and from what the reply is trying to do.
-
-Each stickerEvents item represents one desired sticker gesture and one independent sticker bubble. A sticker may appear before the first delivery block, between blocks, or after the final block. slot=0 means before deliveryBlocks[0]; slot=N means after deliveryBlocks[N-1] and before deliveryBlocks[N]; slot=deliveryBlocks.length means after the final block. Different sticker events may use different slots, including one after several successive blocks. When several DIFFERENT stickers should appear consecutively or form an emotional progression at the same position, emit separate events with the same slot in the intended order; each event will render as its own sticker bubble. repeat greater than 1 means deliberately repeat the SAME selected sticker consecutively; each repetition will also render as its own sticker bubble. intent should describe the pragmatic reaction, interpersonal intention, or communicative act the sticker should convey rather than literal image contents. visualTone should describe the desired visual register or manner (for example deadpan, cute, absurd, self-expressive, restrained); infer other tones freely when appropriate. intensity=0–1 describes the strength of this sticker gesture.`;
+    return `STICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when none is wanted. When using a sticker, intent must always be written in natural Chinese regardless of replyLanguage, and should describe the specific reaction, interpersonal intention, or communicative move wanted in this context rather than only a broad emotion label. When the desired manner matters to the choice (for example cute, absurd, restrained, playful, self-expressive), include that nuance naturally inside intent rather than in a separate field. Stickers may supplement or replace a verbal reaction. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. repeat>1 deliberately repeats the same sticker consecutively. History may contain [assistant sticker: ...] annotations describing stickers you previously sent.`;
   }
 
   function buildTimeAuthorityPrompt(temporalContext) {
@@ -3181,12 +3302,10 @@ Treat this runtime time data as the authoritative source of the current date, lo
           items: {
             type: 'object',
             additionalProperties: false,
-            required: ['slot', 'intent', 'visualTone', 'intensity', 'repeat'],
+            required: ['slot', 'intent', 'repeat'],
             properties: {
               slot: { type: 'integer' },
               intent: { type: 'string' },
-              visualTone: { type: 'string' },
-              intensity: { type: 'number' },
               repeat: { type: 'integer' }
             }
           }
@@ -3317,13 +3436,9 @@ Treat this runtime time data as the authoritative source of the current date, lo
       payload.stickerEvents.forEach((event, eventIndex) => {
         const slot = Number(event?.slot);
         const intent = typeof event?.intent === 'string' ? event.intent.trim() : '';
-        const visualTone = typeof event?.visualTone === 'string' ? event.visualTone.trim() : '';
-        const intensity = Number(event?.intensity);
         const repeat = Number(event?.repeat);
         if (!Number.isInteger(slot) || slot < 0) violations.push(`stickerEvents[${eventIndex}].slot must be a non-negative integer`);
         if (!intent) violations.push(`stickerEvents[${eventIndex}].intent must be non-empty`);
-        if (!visualTone) violations.push(`stickerEvents[${eventIndex}].visualTone must be non-empty`);
-        if (!Number.isFinite(intensity) || intensity < 0 || intensity > 1) violations.push(`stickerEvents[${eventIndex}].intensity must be a number from 0 to 1`);
         if (!Number.isInteger(repeat) || repeat < 1) violations.push(`stickerEvents[${eventIndex}].repeat must be a positive integer`);
       });
     }
@@ -3428,12 +3543,10 @@ Treat this runtime time data as the authoritative source of the current date, lo
     for (const raw of events) {
       const slot = Number(raw?.slot);
       const intent = typeof raw?.intent === 'string' ? raw.intent.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
-      const visualTone = typeof raw?.visualTone === 'string' ? raw.visualTone.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
-      const intensity = Number(raw?.intensity);
       const requestedRepeat = Number(raw?.repeat);
-      if (!Number.isInteger(slot) || slot < 0 || slot > blockCount || !intent || !visualTone || !Number.isFinite(intensity)) continue;
+      if (!Number.isInteger(slot) || slot < 0 || slot > blockCount || !intent) continue;
       const repeat = Number.isInteger(requestedRepeat) && requestedRepeat >= 1 ? requestedRepeat : 1;
-      normalized.push({ slot, intent, visualTone, intensity: Math.max(0, Math.min(1, intensity)), repeat });
+      normalized.push({ slot, intent, repeat });
     }
     return normalized;
   }
@@ -3557,6 +3670,16 @@ Treat this runtime time data as the authoritative source of the current date, lo
     return { ok: true, data: await res.json() };
   }
 
+  function buildApiHistoryContent(message) {
+    let content = String(message?.content || '');
+    if (message?.role !== 'assistant') return content;
+    const traces = (Array.isArray(message?.stickerEvents) ? message.stickerEvents : [])
+      .filter(event => typeof event?.stickerId === 'string' && event.stickerId && typeof event?.intent === 'string' && event.intent.trim())
+      .map(event => `${event.intent.trim()}${Number(event.repeat) > 1 ? ` ×${Number(event.repeat)}` : ''}`);
+    if (!traces.length) return content;
+    return `${content}\n\n[assistant sticker: ${traces.join('；')}]`;
+  }
+
   // API service layer: builds/sends the request and returns structured data.
   // It does not render, mutate chat history, or decide how retry is presented.
   async function requestAssistantReply(chatId, config, signal = null) {
@@ -3566,7 +3689,7 @@ Treat this runtime time data as the authoritative source of the current date, lo
 
     const apiMessages = chat.messages
       .filter(m => m.role !== 'thinking')
-      .map(({ role, content }) => ({ role, content }));
+      .map(message => ({ role: message.role, content: buildApiHistoryContent(message) }));
 
     const temporalContext = buildTemporalContext(chat);
     const body = {
@@ -4183,8 +4306,6 @@ ScrollMemory.clear(chatId);
         eventIndex,
         slot: event.slot,
         intent: event.intent,
-        visualTone: event.visualTone,
-        intensity: event.intensity,
         repeat: event.repeat,
         createdAt: message.createdAt || Date.now()
       });
@@ -4216,42 +4337,29 @@ ScrollMemory.clear(chatId);
     renderStickerLibraryModal();
   }
 
-  function stickerVectorReady(record) {
-    return Number(record?.weight) > 0 &&
-      Array.isArray(record?.embedding) &&
-      record.embeddingModel === VOYAGE_MULTIMODAL_MODEL;
-  }
-
-  function stickerVectorState(record) {
-    if (stickerVectorReady(record)) return 'ready';
-    return Number.isFinite(Number(record?.embeddedAt)) ? 'pending-update' : 'pending-create';
-  }
-
-  function stickerVectorStateLabel(record) {
-    const state = stickerVectorState(record);
-    if (state === 'ready') return 'vector ✓';
-    if (state === 'pending-update') return 'vector — · 待更新';
-    return 'vector — · 待建立';
-  }
-
-  function stickerLibraryCounts(records) {
+  function usageLibraryCounts(records) {
     const all = Array.isArray(records) ? records : [];
     const active = all.filter(record => Number(record?.weight) > 0);
-    const ready = active.filter(record => stickerVectorState(record) === 'ready');
-    const pendingCreate = active.filter(record => stickerVectorState(record) === 'pending-create');
-    const pendingUpdate = active.filter(record => stickerVectorState(record) === 'pending-update');
+    const examples = active.flatMap(record => normalizeUsageExamples(record.usageExamples));
+    const ready = examples.filter(example => usageExampleState(example) === 'ready').length;
+    const pendingCreate = examples.filter(example => usageExampleState(example) === 'pending-create').length;
+    const pendingUpdate = examples.filter(example => usageExampleState(example) === 'pending-update').length;
     return {
-      total: all.length,
-      active: active.length,
-      ready: ready.length,
-      pendingCreate: pendingCreate.length,
-      pendingUpdate: pendingUpdate.length,
-      pending: pendingCreate.length + pendingUpdate.length
+      totalStickers: all.length,
+      activeStickers: active.length,
+      totalExamples: examples.length,
+      ready,
+      pendingCreate,
+      pendingUpdate
     };
   }
 
-  function stickerLibrarySummaryText(counts) {
-    return `${counts.total} 张 · vector ${counts.ready} · 待建立 ${counts.pendingCreate} · 待更新 ${counts.pendingUpdate}`;
+  function usageLibrarySummaryText(counts) {
+    return `${counts.totalStickers} 张 · ${counts.totalExamples} 条用法 · vector ${counts.ready} · 待建立 ${counts.pendingCreate} · 待更新 ${counts.pendingUpdate}`;
+  }
+
+  function stripUsagePrefix(line) {
+    return String(line || '').replace(/^\s*(?:[-*•]|\d+[.)、])\s*/, '').trim();
   }
 
   async function renderStickerLibraryModal() {
@@ -4265,8 +4373,8 @@ ScrollMemory.clear(chatId);
 
     clearStickerPreviewUrls();
     const records = (await StickerStorage.list()).sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
-    const counts = stickerLibraryCounts(records);
-    if (summary) summary.textContent = stickerLibrarySummaryText(counts);
+    const counts = usageLibraryCounts(records);
+    if (summary) summary.textContent = usageLibrarySummaryText(counts);
 
     if (!records.length) {
       grid.innerHTML = '<div class="viewer-empty">还没有表情包。先添加几张 PNG / JPG / WebP 静态图。</div>';
@@ -4274,51 +4382,99 @@ ScrollMemory.clear(chatId);
       grid.innerHTML = records.map(record => {
         const url = URL.createObjectURL(record.blob);
         stickerPreviewUrls.push(url);
+        const examples = normalizeUsageExamples(record.usageExamples);
+        const usageHtml = examples.length ? examples.map(example => `
+          <div class="usage-row" data-usage-id="${escHtml(example.id)}">
+            <textarea data-usage-text>${escHtml(example.text)}</textarea>
+            <div class="usage-row-foot">
+              <span class="usage-vector-state">${escHtml(usageExampleStateLabel(example))}</span>
+              <button class="usage-delete" type="button" data-delete-usage>删除</button>
+            </div>
+          </div>`).join('') : '<div class="viewer-empty">暂无 Usage examples。</div>';
         return `<div class="sticker-card" data-sticker-id="${escHtml(record.id)}">
           <img class="sticker-preview" src="${url}" alt="sticker">
           <div class="sticker-meta">
             <div class="sticker-id" title="${escHtml(record.id)}">${escHtml(record.id)}</div>
-            <div class="sticker-vector-state">${stickerVectorStateLabel(record)}</div>
             <div class="sticker-weight-row">权重 <input data-sticker-field="weight" type="number" min="0" step="0.1" value="${Number.isFinite(Number(record.weight)) ? Number(record.weight) : 1}"></div>
-            <input data-sticker-field="overlayText" type="text" value="${escHtml(record.overlayText || '')}" placeholder="图片上的文字（可选）">
-            <textarea data-sticker-field="note" placeholder="补充语义/氛围说明（可选）">${escHtml(record.note || '')}</textarea>
+            <div class="seed-label">粗使用含义（仅供你维护，不直接参与检索）</div>
+            <textarea data-sticker-field="seedMeaning" placeholder="例如：小得意 / 撒娇 / 憋坏">${escHtml(record.seedMeaning || '')}</textarea>
+            <div class="usage-block">
+              <div class="usage-head"><span>Usage examples</span><span>${examples.length} 条</span></div>
+              <div data-usage-list>${usageHtml}</div>
+              <div class="usage-add">
+                <textarea data-new-usage placeholder="每行一条，可一次粘贴多条 Usage example"></textarea>
+                <button class="btn-cancel" type="button" data-add-usage>加入用法</button>
+              </div>
+            </div>
           </div>
         </div>`;
       }).join('');
 
-      grid.querySelectorAll('[data-sticker-field]').forEach(input => {
-        input.addEventListener('change', async event => {
-          const card = event.target.closest('[data-sticker-id]');
-          const id = card?.dataset?.stickerId;
-          const field = event.target.dataset.stickerField;
-          const record = await StickerStorage.get(id);
-          if (!record || !field) return;
+      grid.onchange = async event => {
+        const card = event.target.closest('[data-sticker-id]');
+        const id = card?.dataset?.stickerId;
+        if (!id) return;
+        const record = await StickerStorage.get(id);
+        if (!record) return;
+        const field = event.target.dataset.stickerField;
+        if (field) {
           let value = event.target.value;
           if (field === 'weight') value = Math.max(0, Number(value) || 0);
-          const semanticFieldChanged = field === 'overlayText' || field === 'note';
-          const next = semanticFieldChanged
-            ? { ...record, [field]: value, updatedAt: Date.now(), embedding: null, embeddingModel: null }
-            : { ...record, [field]: value, updatedAt: Date.now() };
-          await StickerStorage.put(next);
-          if (semanticFieldChanged) {
-            updateVoyageStatus('有待更新向量');
-            const state = card?.querySelector('.sticker-vector-state');
-            if (state) state.textContent = 'vector — · 待更新';
-          }
-          if (summary) {
-            const latest = await StickerStorage.list();
-            const counts = stickerLibraryCounts(latest);
-            summary.textContent = stickerLibrarySummaryText(counts);
-          }
-        });
-      });
+          await StickerStorage.put({ ...record, [field]: value, updatedAt: Date.now() });
+          if (summary) summary.textContent = usageLibrarySummaryText(usageLibraryCounts(await StickerStorage.list()));
+          return;
+        }
+        if (event.target.matches('[data-usage-text]')) {
+          const row = event.target.closest('[data-usage-id]');
+          const usageId = row?.dataset?.usageId;
+          const examples = normalizeUsageExamples(record.usageExamples);
+          const index = examples.findIndex(example => example.id === usageId);
+          if (index < 0) return;
+          const text = String(event.target.value || '').trim();
+          examples[index] = {
+            ...examples[index],
+            text,
+            embedding: null,
+            embeddingModel: null,
+            embeddingTextHash: null
+          };
+          await StickerStorage.put({ ...record, usageExamples: examples.filter(example => example.text), updatedAt: Date.now() });
+          renderStickerLibraryModal();
+        }
+      };
+
+      grid.onclick = async event => {
+        const card = event.target.closest('[data-sticker-id]');
+        const id = card?.dataset?.stickerId;
+        if (!id) return;
+        const record = await StickerStorage.get(id);
+        if (!record) return;
+        if (event.target.closest('[data-add-usage]')) {
+          const textarea = card.querySelector('[data-new-usage]');
+          const lines = String(textarea?.value || '').split(/\n+/).map(stripUsagePrefix).filter(Boolean);
+          if (!lines.length) return;
+          const existing = normalizeUsageExamples(record.usageExamples);
+          const existingTexts = new Set(existing.map(example => example.text));
+          const additions = lines.filter(text => !existingTexts.has(text)).map(text => makeUsageExample(text));
+          await StickerStorage.put({ ...record, usageExamples: [...existing, ...additions], updatedAt: Date.now() });
+          renderStickerLibraryModal();
+          return;
+        }
+        if (event.target.closest('[data-delete-usage]')) {
+          const row = event.target.closest('[data-usage-id]');
+          const usageId = row?.dataset?.usageId;
+          const examples = normalizeUsageExamples(record.usageExamples).filter(example => example.id !== usageId);
+          await StickerStorage.put({ ...record, usageExamples: examples, updatedAt: Date.now() });
+          renderStickerLibraryModal();
+        }
+      };
     }
 
     const missing = loadMissingStickerRequests();
     missingRoot.innerHTML = missing.length ? missing.slice(0, 60).map(item => `
       <div class="missing-sticker-card" data-missing-sticker-id="${escHtml(item.id)}">
         <div class="missing-sticker-intent">${escHtml(item.intent || '')}</div>
-        <div class="missing-sticker-meta">tone: ${escHtml(item.visualTone || '—')} · intensity ${Number(item.intensity || 0).toFixed(2)} · slot ${item.slot} · repeat ${item.repeat || 1}</div>
+        <div class="missing-sticker-meta">slot ${item.slot} · repeat ${item.repeat || 1}</div>
         <div class="missing-sticker-actions"><button class="btn-cancel" type="button" data-ignore-missing>忽略</button></div>
       </div>`).join('') : '<div class="viewer-empty">暂无缺失请求。</div>';
 
@@ -4340,7 +4496,6 @@ ScrollMemory.clear(chatId);
     if (!ready) { setStatus('表情包数据库尚未就绪', 'err'); return; }
 
     let added = 0;
-    const addedRecords = [];
     for (const file of files) {
       if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) continue;
       const now = Date.now();
@@ -4348,24 +4503,14 @@ ScrollMemory.clear(chatId);
         id: 'stk_' + generateUuid(),
         blob: file,
         weight: 1,
-        overlayText: '',
-        note: '',
-        embedding: null,
-        embeddingModel: null,
+        seedMeaning: '',
+        usageExamples: [],
         createdAt: now,
         updatedAt: now
       };
-      const ok = await StickerStorage.put(record);
-      if (ok) { added++; addedRecords.push(record); }
+      if (await StickerStorage.put(record)) added++;
     }
-    flashStatus(
-      voyageApiKey && addedRecords.length
-        ? `已加入 ${added} 张；点击“建立 / 更新待处理向量”后再调用 Voyage`
-        : `已加入 ${added} 张表情包 ✓`,
-      'ok',
-      2600
-    );
-    if (addedRecords.length) updateVoyageStatus('有待建立向量');
+    flashStatus(`已加入 ${added} 张表情包 ✓`, 'ok', 2200);
     renderStickerLibraryModal();
   }
 
@@ -4376,33 +4521,6 @@ ScrollMemory.clear(chatId);
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
-  }
-
-  async function blobToEmbeddingDataUrl(blob) {
-    const objectUrl = URL.createObjectURL(blob);
-    try {
-      const img = await new Promise((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error('无法读取表情包图片'));
-        image.src = objectUrl;
-      });
-      const width = img.naturalWidth || img.width;
-      const height = img.naturalHeight || img.height;
-      const longest = Math.max(width, height);
-      if (!width || !height || longest <= VOYAGE_EMBED_MAX_EDGE) return blobToDataUrl(blob);
-      const scale = VOYAGE_EMBED_MAX_EDGE / longest;
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(width * scale));
-      canvas.height = Math.max(1, Math.round(height * scale));
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return blobToDataUrl(blob);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const resizedBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.92));
-      return resizedBlob ? blobToDataUrl(resizedBlob) : canvas.toDataURL('image/png');
-    } finally {
-      URL.revokeObjectURL(objectUrl);
-    }
   }
 
   function dataUrlToBlob(dataUrl) {
@@ -4421,12 +4539,13 @@ ScrollMemory.clear(chatId);
     for (const record of records) {
       serialized.push({
         ...record,
+        usageExamples: normalizeUsageExamples(record.usageExamples),
         blob: undefined,
         imageDataUrl: await blobToDataUrl(record.blob)
       });
     }
     const payload = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: new Date().toISOString(),
       stickers: serialized
     };
@@ -4457,15 +4576,13 @@ ScrollMemory.clear(chatId);
         if (!item?.id || !item?.imageDataUrl) continue;
         const blob = dataUrlToBlob(item.imageDataUrl);
         if (!blob) continue;
+        const usageExamples = normalizeUsageExamples(item.usageExamples);
         const ok = await StickerStorage.put({
           id: item.id,
           blob,
           weight: Number.isFinite(Number(item.weight)) ? Number(item.weight) : 1,
-          overlayText: typeof item.overlayText === 'string' ? item.overlayText : '',
-          note: typeof item.note === 'string' ? item.note : '',
-          embedding: Array.isArray(item.embedding) ? item.embedding : null,
-          embeddingModel: item.embeddingModel || null,
-          embeddedAt: Number.isFinite(Number(item.embeddedAt)) ? Number(item.embeddedAt) : null,
+          seedMeaning: typeof item.seedMeaning === 'string' ? item.seedMeaning : (typeof item.note === 'string' ? item.note : ''),
+          usageExamples,
           createdAt: Number.isFinite(item.createdAt) ? item.createdAt : Date.now(),
           updatedAt: Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now()
         });
@@ -4574,7 +4691,7 @@ ScrollMemory.clear(chatId);
   }
   function closeModal(id) {
     document.getElementById(id).classList.remove('open');
-    if (id === 'stickerModal') clearStickerPreviewUrls();
+    if (id === 'stickerModal') { clearStickerPreviewUrls(); clearStickerCalibrationUrls(); stickerCalibrationState = []; }
   }
 
   // ── TRASH UI ─────────────────────────────────────────
