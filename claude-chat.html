@@ -1611,6 +1611,8 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     : 'en';
   let audioDB = null;
   let stickerDB = null;
+  let resolveStickerDBReady;
+  const stickerDBReady = new Promise(resolve => { resolveStickerDBReady = resolve; });
   let stickerPreviewUrls = [];
   let stickerChatUrls = [];
   let stickerCalibrationUrls = [];
@@ -1659,11 +1661,13 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
         };
       }
     };
-    req.onsuccess = e => { stickerDB = e.target.result; };
+    req.onsuccess = e => { stickerDB = e.target.result; resolveStickerDBReady?.(stickerDB); };
+    req.onerror = () => { resolveStickerDBReady?.(null); };
   })();
 
   const StickerStorage = {
-    list() {
+    async list() {
+      await stickerDBReady;
       return new Promise(resolve => {
         if (!stickerDB) return resolve([]);
         try {
@@ -1673,7 +1677,8 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
         } catch (_) { resolve([]); }
       });
     },
-    get(id) {
+    async get(id) {
+      await stickerDBReady;
       return new Promise(resolve => {
         if (!stickerDB || !id) return resolve(null);
         try {
@@ -1683,7 +1688,8 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
         } catch (_) { resolve(null); }
       });
     },
-    put(record) {
+    async put(record) {
+      await stickerDBReady;
       return new Promise(resolve => {
         if (!stickerDB || !record?.id) return resolve(false);
         try {
