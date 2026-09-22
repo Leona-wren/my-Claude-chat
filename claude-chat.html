@@ -1182,8 +1182,6 @@
   .sticker-id { font-size: 10px; color: var(--text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sticker-meta input, .sticker-meta textarea { width: 100%; background: var(--input-bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 6px 7px; font-size: 11px; line-height: 1.35; font-family: -apple-system, 'Helvetica Neue', sans-serif; }
   .sticker-meta textarea { min-height: 48px; resize: vertical; }
-  .sticker-weight-row { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--text-soft); }
-  .sticker-weight-row input { width: 68px; }
   .missing-sticker-card { border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 9px 10px; display: flex; flex-direction: column; gap: 4px; }
   .missing-sticker-intent { font-size: 12.5px; color: var(--text); line-height: 1.5; }
   .missing-sticker-meta { font-size: 10.5px; color: var(--text-soft); line-height: 1.45; }
@@ -1553,7 +1551,6 @@
   const VOYAGE_TEXT_BATCH_SIZE = 500;
   const VOYAGE_INTER_BATCH_WAIT_MS = 22000;
   const VOYAGE_RATE_LIMIT_RETRY_MS = 65000;
-  const STICKER_WEIGHT_LOG_SCALE = 0.03;
   const DEFAULT_CORE_SYSTEM_PROMPT = `LANG: If replyLanguage=zh, compose directly in natural, idiomatic native Chinese; if replyLanguage=en, compose directly in natural, idiomatic English. User input language does not change replyLanguage; do not translate from another language.
 
 TEXT: All deliveryBlocks.parts[].text in order form the complete visible reply. For short everyday conversation, usually use one natural sentence or tightly linked short expression per block. For longer replies, group blocks by natural paragraph or complete semantic section rather than mechanically splitting every sentence. Within a block, split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
@@ -1617,6 +1614,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   let stickerChatUrls = [];
   let stickerCalibrationUrls = [];
   let stickerCalibrationState = [];
+  const stickerDebugTraceByMessageId = new Map(); // transient test observability only; never persisted/exported
   let draftSaveTimer = null;
   let draftEditorInitialized = false;
 
@@ -1634,13 +1632,13 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   // This is the authoritative local private sticker library for the current browser.
   // It is not a cache. Messages should reference stable stickerId values, never Blob URLs.
   (function openStickerDB() {
-    const req = indexedDB.open('claude_stickers', 2);
+    const req = indexedDB.open('claude_stickers', 3);
     req.onupgradeneeded = e => {
       const db = e.target.result;
       const store = db.objectStoreNames.contains('stickers')
         ? e.target.transaction.objectStore('stickers')
         : db.createObjectStore('stickers', { keyPath: 'id' });
-      if (e.oldVersion < 2) {
+      if (e.oldVersion < 3) {
         const cursorReq = store.openCursor();
         cursorReq.onsuccess = event => {
           const cursor = event.target.result;
@@ -1656,6 +1654,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
           delete migrated.embedding;
           delete migrated.embeddingModel;
           delete migrated.embeddedAt;
+          delete migrated.weight;
           cursor.update(migrated);
           cursor.continue();
         };
@@ -1841,7 +1840,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   function collectPendingUsageExamples(records) {
     const pending = [];
     for (const record of (records || [])) {
-      if (!record?.id || Number(record.weight) <= 0) continue;
+      if (!record?.id) continue;
       for (const example of normalizeUsageExamples(record.usageExamples)) {
         const text = String(example.text || '').trim();
         if (!text || usageExampleReady(example)) continue;
@@ -1931,11 +1930,6 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     return sum;
   }
 
-  function stickerAdjustedScore(similarity, weight) {
-    const safeWeight = Math.max(0.0001, Number(weight) || 0.0001);
-    return similarity + STICKER_WEIGHT_LOG_SCALE * Math.log(safeWeight);
-  }
-
   function readyUsageExamples(record) {
     return normalizeUsageExamples(record?.usageExamples).filter(usageExampleReady);
   }
@@ -1946,11 +1940,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       const similarity = dotProduct(queryEmbedding, example.embedding);
       if (!best || similarity > best.similarity) best = { example, similarity };
     }
-    if (!best) return null;
-    return {
-      ...best,
-      adjustedScore: stickerAdjustedScore(best.similarity, record.weight)
-    };
+    return best;
   }
 
   function clearStickerCalibrationUrls() {
@@ -1988,7 +1978,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       return;
     }
     await waitForStickerDB();
-    const records = (await StickerStorage.list()).filter(record => Number(record.weight) > 0 && readyUsageExamples(record).length);
+    const records = (await StickerStorage.list()).filter(record => readyUsageExamples(record).length);
     if (!records.length) {
       statusEl.textContent = '图库中还没有可用于检索的 Usage example vectors。';
       return;
@@ -2004,12 +1994,10 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
           return match ? {
             stickerId: record.id,
             similarity: match.similarity,
-            adjustedScore: match.adjustedScore,
             matchedExampleId: match.example.id,
-            matchedExampleText: match.example.text,
-            weight: Number(record.weight) || 1
+            matchedExampleText: match.example.text
           } : null;
-        }).filter(Boolean).sort((a, b) => b.adjustedScore - a.adjustedScore);
+        }).filter(Boolean).sort((a, b) => b.similarity - a.similarity);
         return { query, ranked };
       });
       selectEl.innerHTML = stickerCalibrationState.map((item, index) => `<option value="${index}">${escHtml(item.query.slice(0, 72))}</option>`).join('');
@@ -2042,7 +2030,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       stickerCalibrationUrls.push(url);
       html.push(`<div class="sticker-test-result">
         <img src="${url}" alt="rank ${i + 1}">
-        <div class="sticker-test-score"><strong>#${i + 1}</strong> · similarity ${item.similarity.toFixed(4)}<br>adjusted ${item.adjustedScore.toFixed(4)} · weight ${item.weight.toFixed(2)}</div>
+        <div class="sticker-test-score"><strong>#${i + 1}</strong> · similarity ${item.similarity.toFixed(4)}</div>
         <div class="sticker-test-match">命中用法：${escHtml(item.matchedExampleText)}</div>
         <div class="sticker-id" title="${escHtml(item.matchedExampleId)}">${escHtml(item.matchedExampleId)}</div>
       </div>`);
@@ -2055,36 +2043,57 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   }
 
   async function resolveStickerEvents(events, signal = null) {
-    if (!Array.isArray(events) || !events.length) return { events: [], retrievalError: null };
-    if (!voyageApiKey) return { events: events.map(event => ({ ...event })), retrievalError: 'Voyage API Key 未设置' };
+    if (!Array.isArray(events) || !events.length) return { events: [], retrievalError: null, calibrationTrace: [] };
+    if (!voyageApiKey) return { events: events.map(event => ({ ...event })), retrievalError: 'Voyage API Key 未设置', calibrationTrace: [] };
     await waitForStickerDB();
-    const library = (await StickerStorage.list()).filter(record => Number(record.weight) > 0 && readyUsageExamples(record).length);
-    if (!library.length) return { events: events.map(event => ({ ...event })), retrievalError: '图库尚无可用 Usage example vectors' };
+    const library = (await StickerStorage.list()).filter(record => readyUsageExamples(record).length);
+    if (!library.length) return { events: events.map(event => ({ ...event })), retrievalError: '图库尚无可用 Usage example vectors', calibrationTrace: [] };
 
     try {
       const queryEmbeddings = await postVoyageText(events.map(event => event.intent), 'query', signal, { retryOn429: false });
+      const calibrationTrace = [];
       const resolved = events.map((event, index) => {
         const query = queryEmbeddings[index];
-        let best = null;
-        for (const record of library) {
+        const ranked = library.map(record => {
           const match = bestStickerUsageMatch(query, record);
-          if (!match) continue;
-          if (!best || match.adjustedScore > best.adjustedScore) best = { record, ...match };
-        }
+          return match ? {
+            stickerId: record.id,
+            similarity: match.similarity,
+            matchedUsageExampleId: match.example.id,
+            matchedUsageExampleText: match.example.text
+          } : null;
+        }).filter(Boolean).sort((a, b) => b.similarity - a.similarity);
+
+        const best = ranked[0] || null;
+        calibrationTrace.push({
+          eventIndex: index,
+          intent: event.intent,
+          selectedStickerId: best?.stickerId || null,
+          selectedSimilarity: best ? Number(best.similarity.toFixed(6)) : null,
+          matchedUsageExampleId: best?.matchedUsageExampleId || null,
+          matchedUsageExampleText: best?.matchedUsageExampleText || null,
+          topCandidates: ranked.slice(0, 3).map((candidate, rankIndex) => ({
+            rank: rankIndex + 1,
+            stickerId: candidate.stickerId,
+            similarity: Number(candidate.similarity.toFixed(6)),
+            matchedUsageExampleId: candidate.matchedUsageExampleId,
+            matchedUsageExampleText: candidate.matchedUsageExampleText
+          }))
+        });
+
         if (!best) return { ...event };
         return {
           ...event,
-          stickerId: best.record.id,
+          stickerId: best.stickerId,
           matchScore: Number(best.similarity.toFixed(6)),
-          adjustedMatchScore: Number(best.adjustedScore.toFixed(6)),
-          matchedUsageExampleId: best.example.id,
+          matchedUsageExampleId: best.matchedUsageExampleId,
           embeddingModel: VOYAGE_TEXT_MODEL
         };
       });
-      return { events: resolved, retrievalError: null };
+      return { events: resolved, retrievalError: null, calibrationTrace };
     } catch (e) {
       if (e?.name === 'AbortError') throw e;
-      return { events: events.map(event => ({ ...event })), retrievalError: e.message || 'Voyage retrieval failed' };
+      return { events: events.map(event => ({ ...event })), retrievalError: e.message || 'Voyage retrieval failed', calibrationTrace: [] };
     }
   }
 
@@ -3260,7 +3269,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   }
 
   function buildStickerSystemPrompt() {
-    return `STICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when none is wanted. When using a sticker, intent must always be written in natural Chinese regardless of replyLanguage, and should describe the specific reaction, interpersonal intention, or communicative move wanted in this context rather than only a broad emotion label. When the desired manner matters to the choice (for example cute, absurd, restrained, playful, self-expressive), include that nuance naturally inside intent rather than in a separate field. Stickers may supplement or replace a verbal reaction. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. repeat>1 deliberately repeats the same sticker consecutively. History may contain [assistant sticker: ...] annotations describing stickers you previously sent.`;
+    return `STICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when none is wanted. When using a sticker, intent is retrieval text rather than visible reply text. Always compose intent directly in natural, idiomatic Chinese, independently of replyLanguage; do not translate or paraphrase the visible reply into Chinese. Write intent at the semantic granularity needed to choose among stickers: specific enough to distinguish the relevant reaction, interpersonal intention, or communicative move, but abstract away incidental topic details that do not affect sticker choice. Avoid overly broad labels such as “满足” or “心虚”. Good granularity examples: “事情顺利后有点满足，想带点小得意地表现出来”; “被发现小心思后有点心虚，想装乖蒙混过去”; “想请对方帮个小忙，带点撒娇卖萌地请求”. Avoid over-specific descriptions tied to incidental details such as a particular code bug, document, person name, or one-off event unless that detail genuinely changes the sticker meaning. When the desired manner matters to the choice (for example cute, absurd, restrained, playful, self-expressive, acting pitiful, pleading, or deliberately silly), include that nuance naturally inside intent rather than in a separate field. Stickers may supplement or replace a verbal reaction. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. repeat>1 deliberately repeats the same sticker consecutively. History may contain [assistant sticker: ...] annotations describing stickers you previously sent.`;
   }
 
   function buildTimeAuthorityPrompt(temporalContext) {
@@ -3756,6 +3765,7 @@ Treat this runtime time data as the authoritative source of the current date, lo
         deliveryBlocks: responseCore.deliveryBlocks,
         stickerEvents: stickerResolution.events,
         stickerRetrievalError: stickerResolution.retrievalError,
+        stickerCalibrationTrace: stickerResolution.calibrationTrace || [],
         languageValidation,
         responseFormat: config.structuredOutputSupported ? 'json_schema' : 'prompt_json'
       };
@@ -3806,6 +3816,11 @@ Treat this runtime time data as the authoritative source of the current date, lo
     };
     chat.messages.push(assistantMessage);
     chat.updatedAt = Date.now();
+    if (Array.isArray(result.stickerCalibrationTrace) && result.stickerCalibrationTrace.length) {
+      stickerDebugTraceByMessageId.set(assistantMessage.id, result.stickerCalibrationTrace);
+    } else {
+      stickerDebugTraceByMessageId.delete(assistantMessage.id);
+    }
     save();
 
 
@@ -3986,6 +4001,21 @@ ScrollMemory.clear(chatId);
       `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${compileDeliveryBlockForElevenV3(block)}`
     ).join('\n\n') : '—';
 
+    const stickerTrace = stickerDebugTraceByMessageId.get(msg.id) || [];
+    const stickerTracePreview = stickerTrace.length ? stickerTrace.map(trace => {
+      const top = Array.isArray(trace.topCandidates) ? trace.topCandidates : [];
+      const topText = top.length ? top.map(candidate =>
+        `#${candidate.rank} ${candidate.stickerId} · ${Number(candidate.similarity).toFixed(4)}
+   ↳ ${candidate.matchedUsageExampleText || '—'}`
+      ).join('\n') : '—';
+      return `event ${Number(trace.eventIndex) + 1}
+intent: ${trace.intent || '—'}
+selected: ${trace.selectedStickerId || '—'}${Number.isFinite(Number(trace.selectedSimilarity)) ? ` · ${Number(trace.selectedSimilarity).toFixed(4)}` : ''}
+matched usage: ${trace.matchedUsageExampleText || '—'}
+Top candidates:
+${topText}`;
+    }).join('\n\n') : '—';
+
     const rows = [
       ['messageId', msg.id || '—'],
       ['language', msg.language ? `${msg.language} (${languageLabel(msg.language)})` : 'legacy / 未记录'],
@@ -3993,6 +4023,7 @@ ScrollMemory.clear(chatId);
       ['SpeechPlan schema', msg.speechPlanSchemaVersion ? `v${msg.speechPlanSchemaVersion}` : (blocks.length ? 'legacy / unversioned' : 'none')],
       ['Sticker events', Array.isArray(msg.stickerEvents) && msg.stickerEvents.length ? JSON.stringify(msg.stickerEvents) : '[]'],
       ['Sticker retrieval', msg.stickerRetrievalError || 'ok / not requested'],
+      ['Sticker calibration trace', stickerTracePreview],
       ['Speech blocks / provider input', speechBlocksPreview],
       ['planned voice route', plannedProvider],
       ['current TTS', currentVoice]
@@ -4359,14 +4390,12 @@ ScrollMemory.clear(chatId);
 
   function usageLibraryCounts(records) {
     const all = Array.isArray(records) ? records : [];
-    const active = all.filter(record => Number(record?.weight) > 0);
-    const examples = active.flatMap(record => normalizeUsageExamples(record.usageExamples));
+    const examples = all.flatMap(record => normalizeUsageExamples(record.usageExamples));
     const ready = examples.filter(example => usageExampleState(example) === 'ready').length;
     const pendingCreate = examples.filter(example => usageExampleState(example) === 'pending-create').length;
     const pendingUpdate = examples.filter(example => usageExampleState(example) === 'pending-update').length;
     return {
       totalStickers: all.length,
-      activeStickers: active.length,
       totalExamples: examples.length,
       ready,
       pendingCreate,
@@ -4415,7 +4444,6 @@ ScrollMemory.clear(chatId);
           <img class="sticker-preview" src="${url}" alt="sticker">
           <div class="sticker-meta">
             <div class="sticker-id" title="${escHtml(record.id)}">${escHtml(record.id)}</div>
-            <div class="sticker-weight-row">权重 <input data-sticker-field="weight" type="number" min="0" step="0.1" value="${Number.isFinite(Number(record.weight)) ? Number(record.weight) : 1}"></div>
             <div class="seed-label">粗使用含义（仅供你维护，不直接参与检索）</div>
             <textarea data-sticker-field="seedMeaning" placeholder="例如：小得意 / 撒娇 / 憋坏">${escHtml(record.seedMeaning || '')}</textarea>
             <div class="usage-block">
@@ -4438,8 +4466,7 @@ ScrollMemory.clear(chatId);
         if (!record) return;
         const field = event.target.dataset.stickerField;
         if (field) {
-          let value = event.target.value;
-          if (field === 'weight') value = Math.max(0, Number(value) || 0);
+          const value = event.target.value;
           await StickerStorage.put({ ...record, [field]: value, updatedAt: Date.now() });
           if (summary) summary.textContent = usageLibrarySummaryText(usageLibraryCounts(await StickerStorage.list()));
           return;
@@ -4522,7 +4549,6 @@ ScrollMemory.clear(chatId);
       const record = {
         id: 'stk_' + generateUuid(),
         blob: file,
-        weight: 1,
         seedMeaning: '',
         usageExamples: [],
         createdAt: now,
@@ -4558,9 +4584,11 @@ ScrollMemory.clear(chatId);
     const serialized = [];
     for (const record of records) {
       serialized.push({
-        ...record,
+        id: record.id,
+        seedMeaning: typeof record.seedMeaning === 'string' ? record.seedMeaning : '',
         usageExamples: normalizeUsageExamples(record.usageExamples),
-        blob: undefined,
+        createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : null,
+        updatedAt: Number.isFinite(Number(record.updatedAt)) ? Number(record.updatedAt) : null,
         imageDataUrl: await blobToDataUrl(record.blob)
       });
     }
@@ -4600,7 +4628,6 @@ ScrollMemory.clear(chatId);
         const ok = await StickerStorage.put({
           id: item.id,
           blob,
-          weight: Number.isFinite(Number(item.weight)) ? Number(item.weight) : 1,
           seedMeaning: typeof item.seedMeaning === 'string' ? item.seedMeaning : (typeof item.note === 'string' ? item.note : ''),
           usageExamples,
           createdAt: Number.isFinite(item.createdAt) ? item.createdAt : Date.now(),
