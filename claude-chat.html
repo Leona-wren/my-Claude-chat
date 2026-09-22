@@ -1958,6 +1958,20 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     stickerCalibrationUrls = [];
   }
 
+  function resetStickerCalibrationUI() {
+    clearStickerCalibrationUrls();
+    stickerCalibrationState = [];
+    const selectEl = document.getElementById('stickerTestResultSelect');
+    const statusEl = document.getElementById('stickerRetrievalTestStatus');
+    const resultsEl = document.getElementById('stickerRetrievalResults');
+    if (selectEl) {
+      selectEl.innerHTML = '<option>暂无结果</option>';
+      selectEl.disabled = true;
+    }
+    if (resultsEl) resultsEl.innerHTML = '';
+    if (statusEl) statusEl.textContent = '测试结果只保存在当前页面内存，不写入聊天、localStorage 或 IndexedDB。排名会同时显示命中的具体 Usage example，便于检查向量分组是否正确。';
+  }
+
   async function testStickerRetrievalBatch() {
     const inputEl = document.getElementById('stickerTestQueries');
     const selectEl = document.getElementById('stickerTestResultSelect');
@@ -4697,7 +4711,10 @@ ScrollMemory.clear(chatId);
   }
   function closeModal(id) {
     document.getElementById(id).classList.remove('open');
-    if (id === 'stickerModal') { clearStickerPreviewUrls(); clearStickerCalibrationUrls(); stickerCalibrationState = []; }
+    if (id === 'stickerModal') {
+      clearStickerPreviewUrls();
+      resetStickerCalibrationUI();
+    }
   }
 
   // ── TRASH UI ─────────────────────────────────────────
