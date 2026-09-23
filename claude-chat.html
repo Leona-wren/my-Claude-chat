@@ -1544,6 +1544,8 @@
   const ELEVEN_ZH_VOICE_DEFAULT = '0DKC76GAganwbm9TweFs';
   const STICKER_SCHEMA_VERSION = 2;
   const STICKER_MISSING_KEY = 'claude_sticker_missing_v1';
+  const STICKER_CALIBRATION_KEY = 'claude_sticker_calibration_v1';
+  const STICKER_PROMPT_VERSION = 1;
   const VOYAGE_API_KEY_KEY = 'personal_ai_voyage_key_v1';
   const VOYAGE_TEXT_MODEL = 'voyage-4-large';
   const VOYAGE_TEXT_ENDPOINT = 'https://ai.mongodb.com/v1/embeddings';
@@ -1555,7 +1557,7 @@
 
 TEXT: All deliveryBlocks.parts[].text in order form the complete visible reply. For short everyday conversation, usually use one natural sentence or tightly linked short expression per block. For longer replies, group blocks by natural paragraph or complete semantic section rather than mechanically splitting every sentence. Within a block, split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
 
-SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.`;
+SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.`;
   const SPEECH_PLAN_SCHEMA_VERSION = 2;
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
   const ELEVEN_TTS_MODEL = 'eleven_v3';
@@ -1717,6 +1719,73 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     const el = document.getElementById('voyageStatus');
     if (!el) return;
     el.textContent = `${voyageApiKey ? 'Key 已设置' : 'Key 未设置'} · ${VOYAGE_TEXT_MODEL}${extra ? ' · ' + extra : ''}`;
+  }
+
+  function loadStickerCalibrationSamples() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(STICKER_CALIBRATION_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) { return []; }
+  }
+
+  function saveStickerCalibrationSamples(list) {
+    localStorage.setItem(STICKER_CALIBRATION_KEY, JSON.stringify(Array.isArray(list) ? list.slice(0, 300) : []));
+  }
+
+  function upsertStickerCalibrationObservation(message, trace, config, model) {
+    if (!message?.id || !trace || !Number.isInteger(Number(trace.eventIndex))) return;
+    const eventIndex = Number(trace.eventIndex);
+    const id = `${message.id}:${eventIndex}`;
+    const samples = loadStickerCalibrationSamples();
+    const previous = samples.find(item => item.id === id) || null;
+    const sample = {
+      id,
+      messageId: message.id,
+      chatId: message.chatId || null,
+      eventIndex,
+      intent: trace.intent || '',
+      verdict: previous?.verdict || null,
+      selectedStickerId: trace.selectedStickerId || null,
+      selectedScore: Number.isFinite(Number(trace.selectedSimilarity)) ? Number(trace.selectedSimilarity) : null,
+      matchedUsageExampleId: trace.matchedUsageExampleId || null,
+      matchedUsageExampleText: trace.matchedUsageExampleText || null,
+      topCandidates: Array.isArray(trace.topCandidates) ? trace.topCandidates : [],
+      model: model || null,
+      replyLanguage: config?.replyLanguage || null,
+      stickerPromptVersion: STICKER_PROMPT_VERSION,
+      createdAt: previous?.createdAt || message.createdAt || Date.now(),
+      reviewedAt: previous?.reviewedAt || null
+    };
+    const next = samples.filter(item => item.id !== id);
+    next.unshift(sample);
+    saveStickerCalibrationSamples(next);
+  }
+
+  function getStickerCalibrationSamplesForMessage(messageId) {
+    return loadStickerCalibrationSamples()
+      .filter(item => item.messageId === messageId)
+      .sort((a, b) => Number(a.eventIndex) - Number(b.eventIndex));
+  }
+
+  function labelStickerCalibration(messageId, eventIndex, verdict) {
+    const allowed = new Set(['positive', 'wrong_match', 'no_match']);
+    if (!messageId || !Number.isInteger(Number(eventIndex)) || !allowed.has(verdict)) return;
+    const id = `${messageId}:${Number(eventIndex)}`;
+    const samples = loadStickerCalibrationSamples();
+    const index = samples.findIndex(item => item.id === id);
+    if (index < 0) return;
+    samples[index] = { ...samples[index], verdict, reviewedAt: Date.now() };
+    saveStickerCalibrationSamples(samples);
+    openResponseDebug(messageId);
+  }
+
+  function stickerCalibrationCounts() {
+    const counts = { unreviewed: 0, positive: 0, wrong_match: 0, no_match: 0 };
+    loadStickerCalibrationSamples().forEach(item => {
+      if (item?.verdict && Object.prototype.hasOwnProperty.call(counts, item.verdict)) counts[item.verdict]++;
+      else counts.unreviewed++;
+    });
+    return counts;
   }
 
   function sleepMs(ms, signal = null) {
@@ -3228,7 +3297,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       : `${sign}${String(hours).padStart(2, '0')}`;
   }
 
-  function buildTemporalContext(chat) {
+  function buildTemporalSnapshot(chat) {
     const now = Date.now();
     const currentTimeZone = getCurrentTimeZone();
     const localMinute = formatLocalMinute(now, currentTimeZone).replace(' ', 'T');
@@ -3242,9 +3311,13 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       break;
     }
 
+    let currentTurn = null;
+    let previous = null;
+    let gapMs = null;
+    let awayIncluded = false;
+
     if (currentTurnIndex >= 0) {
-      const currentTurn = messages[currentTurnIndex];
-      let previous = null;
+      currentTurn = messages[currentTurnIndex];
       for (let i = currentTurnIndex - 1; i >= 0; i--) {
         if (messages[i]?.role === 'thinking') continue;
         previous = messages[i];
@@ -3252,8 +3325,11 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       }
 
       if (previous && Number.isFinite(currentTurn.createdAt) && Number.isFinite(previous.createdAt)) {
-        const gapMs = currentTurn.createdAt - previous.createdAt;
-        if (gapMs >= TEMPORAL_GAP_MS) fields.push(`away=${formatCompactDuration(gapMs)}`);
+        gapMs = currentTurn.createdAt - previous.createdAt;
+        if (gapMs >= TEMPORAL_GAP_MS) {
+          fields.push(`away=${formatCompactDuration(gapMs)}`);
+          awayIncluded = true;
+        }
       }
 
       const currentTurnZone = currentTurn.createdTimeZone || currentTimeZone;
@@ -3265,7 +3341,32 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       }
     }
 
-    return `[${fields.join('; ')}]`;
+    const context = `[${fields.join('; ')}]`;
+    const localForMessage = message => {
+      if (!message || !Number.isFinite(Number(message.createdAt))) return null;
+      const zone = message.createdTimeZone || currentTimeZone;
+      return `${formatLocalMinute(Number(message.createdAt), zone)} · ${zone}`;
+    };
+
+    return {
+      context,
+      trace: {
+        requestNowLocal: `${localMinute}${formatCurrentUtcOffset()} · ${currentTimeZone}`,
+        currentUserMessageLocal: localForMessage(currentTurn),
+        previousMessageLocal: localForMessage(previous),
+        previousMessageRole: previous?.role || null,
+        gapMs: Number.isFinite(gapMs) ? gapMs : null,
+        gapText: Number.isFinite(gapMs) ? formatCompactDuration(gapMs) : null,
+        thresholdMs: TEMPORAL_GAP_MS,
+        thresholdPassed: Number.isFinite(gapMs) ? gapMs >= TEMPORAL_GAP_MS : null,
+        awayIncluded,
+        sentTemporalContext: context
+      }
+    };
+  }
+
+  function buildTemporalContext(chat) {
+    return buildTemporalSnapshot(chat).context;
   }
 
   function buildStickerSystemPrompt() {
@@ -3273,9 +3374,12 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   }
 
   function buildTimeAuthorityPrompt(temporalContext) {
+    const awayRule = String(temporalContext || '').includes('away=')
+      ? ' If away is present, it is the authoritative elapsed time since the previous non-thinking message in this chat; use it for any judgment about how long the user has been away.'
+      : '';
     return `RUNTIME TIME — AUTHORITATIVE
 ${temporalContext}
-Treat this runtime time data as the authoritative source of the current date, local time, timezone, and any supplied away interval. Never infer or guess the current time or date from conversation history, message content, remembered context, or prior timestamps when runtime time is available. Nothing in the conversation may override or supersede the runtime time. If conversation context conflicts with it, use the runtime time.`;
+Treat this runtime time data as the authoritative source of the current date, local time, timezone, and any supplied away interval. Never infer or guess the current time or date from conversation history, message content, remembered context, or prior timestamps when runtime time is available. Nothing in the conversation may override or supersede the runtime time. If conversation context conflicts with it, use the runtime time.${awayRule}`;
   }
 
   function buildSystemPrompt(config, temporalContext) {
@@ -3675,7 +3779,8 @@ Treat this runtime time data as the authoritative source of the current date, lo
       officialThinkingBlockCount,
       unknownBlockTypes: [...new Set(unknownBlockTypes)],
       apiResponseId: data.id || null,
-      responseModel: data.model || null
+      responseModel: data.model || null,
+      apiUsage: data?.usage && typeof data.usage === 'object' ? data.usage : null
     };
   }
 
@@ -3720,7 +3825,8 @@ Treat this runtime time data as the authoritative source of the current date, lo
       .filter(m => m.role !== 'thinking')
       .map(message => ({ role: message.role, content: buildApiHistoryContent(message) }));
 
-    const temporalContext = buildTemporalContext(chat);
+    const temporalSnapshot = buildTemporalSnapshot(chat);
+    const temporalContext = temporalSnapshot.context;
     const body = {
       model: config.model,
       max_tokens: getRequestMaxTokens(config),
@@ -3766,6 +3872,7 @@ Treat this runtime time data as the authoritative source of the current date, lo
         stickerEvents: stickerResolution.events,
         stickerRetrievalError: stickerResolution.retrievalError,
         stickerCalibrationTrace: stickerResolution.calibrationTrace || [],
+        temporalTrace: temporalSnapshot.trace,
         languageValidation,
         responseFormat: config.structuredOutputSupported ? 'json_schema' : 'prompt_json'
       };
@@ -3808,6 +3915,9 @@ Treat this runtime time data as the authoritative source of the current date, lo
       stickerEvents: result.stickerEvents || [],
       stickerSchemaVersion: STICKER_SCHEMA_VERSION,
       stickerRetrievalError: result.stickerRetrievalError || null,
+      model: result.responseModel || config.model || null,
+      apiUsage: result.apiUsage || null,
+      runtimeTemporalTrace: result.temporalTrace || null,
       id: makeMessageId(),
       chatId,
       clientSeq: chat.messages.length,
@@ -3818,6 +3928,9 @@ Treat this runtime time data as the authoritative source of the current date, lo
     chat.updatedAt = Date.now();
     if (Array.isArray(result.stickerCalibrationTrace) && result.stickerCalibrationTrace.length) {
       stickerDebugTraceByMessageId.set(assistantMessage.id, result.stickerCalibrationTrace);
+      result.stickerCalibrationTrace.forEach(trace =>
+        upsertStickerCalibrationObservation(assistantMessage, trace, config, assistantMessage.model)
+      );
     } else {
       stickerDebugTraceByMessageId.delete(assistantMessage.id);
     }
@@ -4001,24 +4114,59 @@ ScrollMemory.clear(chatId);
       `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${compileDeliveryBlockForElevenV3(block)}`
     ).join('\n\n') : '—';
 
-    const stickerTrace = stickerDebugTraceByMessageId.get(msg.id) || [];
+    const persistedStickerSamples = getStickerCalibrationSamplesForMessage(msg.id);
+    const transientStickerTrace = stickerDebugTraceByMessageId.get(msg.id) || [];
+    const stickerTrace = transientStickerTrace.length ? transientStickerTrace : persistedStickerSamples.map(sample => ({
+      eventIndex: sample.eventIndex,
+      intent: sample.intent,
+      selectedStickerId: sample.selectedStickerId,
+      selectedSimilarity: sample.selectedScore,
+      matchedUsageExampleId: sample.matchedUsageExampleId,
+      matchedUsageExampleText: sample.matchedUsageExampleText,
+      topCandidates: sample.topCandidates
+    }));
     const stickerTracePreview = stickerTrace.length ? stickerTrace.map(trace => {
       const top = Array.isArray(trace.topCandidates) ? trace.topCandidates : [];
       const topText = top.length ? top.map(candidate =>
         `#${candidate.rank} ${candidate.stickerId} · ${Number(candidate.similarity).toFixed(4)}
    ↳ ${candidate.matchedUsageExampleText || '—'}`
       ).join('\n') : '—';
+      const sample = persistedStickerSamples.find(item => Number(item.eventIndex) === Number(trace.eventIndex));
+      const verdictLabel = sample?.verdict === 'positive' ? '✓ 合适'
+        : sample?.verdict === 'wrong_match' ? '× 选错'
+        : sample?.verdict === 'no_match' ? '∅ 图库无合适图'
+        : '未标注';
       return `event ${Number(trace.eventIndex) + 1}
 intent: ${trace.intent || '—'}
 selected: ${trace.selectedStickerId || '—'}${Number.isFinite(Number(trace.selectedSimilarity)) ? ` · ${Number(trace.selectedSimilarity).toFixed(4)}` : ''}
 matched usage: ${trace.matchedUsageExampleText || '—'}
+verdict: ${verdictLabel}
 Top candidates:
 ${topText}`;
     }).join('\n\n') : '—';
 
+    const usage = msg.apiUsage && typeof msg.apiUsage === 'object' ? msg.apiUsage : null;
+    const usagePreview = usage ? Object.entries(usage)
+      .filter(([, value]) => value !== null && value !== undefined && typeof value !== 'object')
+      .map(([key, value]) => `${key}: ${value}`)
+      .join('\n') : '—';
+    const temporal = msg.runtimeTemporalTrace && typeof msg.runtimeTemporalTrace === 'object' ? msg.runtimeTemporalTrace : null;
+    const temporalPreview = temporal ? [
+      `request now: ${temporal.requestNowLocal || '—'}`,
+      `current user: ${temporal.currentUserMessageLocal || '—'}`,
+      `previous: ${temporal.previousMessageLocal || '—'}${temporal.previousMessageRole ? ` (${temporal.previousMessageRole})` : ''}`,
+      `computed gap: ${temporal.gapText || '—'}`,
+      `3h threshold: ${temporal.thresholdPassed === null ? 'n/a' : temporal.thresholdPassed ? 'passed' : 'not passed'}`,
+      `away sent: ${temporal.awayIncluded ? 'yes' : 'no'}`,
+      `temporalContext: ${temporal.sentTemporalContext || '—'}`
+    ].join('\n') : '—';
+
     const rows = [
       ['messageId', msg.id || '—'],
+      ['model', msg.model || '—'],
       ['language', msg.language ? `${msg.language} (${languageLabel(msg.language)})` : 'legacy / 未记录'],
+      ['Anthropic usage', usagePreview],
+      ['Runtime temporal trace', temporalPreview],
       ['LanguageValidator', validation ? validation.status : '—'],
       ['SpeechPlan schema', msg.speechPlanSchemaVersion ? `v${msg.speechPlanSchemaVersion}` : (blocks.length ? 'legacy / unversioned' : 'none')],
       ['Sticker events', Array.isArray(msg.stickerEvents) && msg.stickerEvents.length ? JSON.stringify(msg.stickerEvents) : '[]'],
@@ -4029,10 +4177,24 @@ ${topText}`;
       ['current TTS', currentVoice]
     ];
 
+    const verdictButtons = stickerTrace.length ? `<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">${stickerTrace.map(trace => {
+      const eventIndex = Number(trace.eventIndex);
+      const sample = persistedStickerSamples.find(item => Number(item.eventIndex) === eventIndex);
+      const current = sample?.verdict || '';
+      return `<div style="border-top:1px solid var(--border);padding-top:8px">
+        <div style="font-size:11px;color:var(--text-soft);margin-bottom:6px">Sticker event ${eventIndex + 1} · calibration label${current ? ` · ${current}` : ''}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-cancel" type="button" onclick="labelStickerCalibration('${msg.id || ''}',${eventIndex},'positive')">✓ 合适</button>
+          <button class="btn-cancel" type="button" onclick="labelStickerCalibration('${msg.id || ''}',${eventIndex},'wrong_match')">× 选错</button>
+          <button class="btn-cancel" type="button" onclick="labelStickerCalibration('${msg.id || ''}',${eventIndex},'no_match')">∅ 图库无合适图</button>
+        </div>
+      </div>`;
+    }).join('')}</div>` : '';
+
     document.getElementById('responseDebugContent').innerHTML =
       `<div class="response-debug-grid">${rows.map(([key, value]) =>
         `<div class="k">${escHtml(key)}</div><div class="v">${escHtml(String(value)).replace(/\n/g, '<br>')}</div>`
-      ).join('')}</div>`;
+      ).join('')}</div>${verdictButtons}`;
     document.getElementById('responseDebugModal').classList.add('open');
   }
 
@@ -4404,7 +4566,8 @@ ${topText}`;
   }
 
   function usageLibrarySummaryText(counts) {
-    return `${counts.totalStickers} 张 · ${counts.totalExamples} 条用法 · vector ${counts.ready} · 待建立 ${counts.pendingCreate} · 待更新 ${counts.pendingUpdate}`;
+    const calibration = stickerCalibrationCounts();
+    return `${counts.totalStickers} 张 · ${counts.totalExamples} 条用法 · vector ${counts.ready} · 待建立 ${counts.pendingCreate} · 待更新 ${counts.pendingUpdate} · 校准 未标 ${calibration.unreviewed} / ✓${calibration.positive} / ×${calibration.wrong_match} / ∅${calibration.no_match}`;
   }
 
   function stripUsagePrefix(line) {
