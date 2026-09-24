@@ -974,8 +974,8 @@
     display: none !important;
   }
 
-  /* Make each voice/transcript pair read as one message unit.
-     Transcript remains the primary reading surface; voice is the original-message cue. */
+  /* Voice-first assistant presentation. Transcript is a local UI disclosure state,
+     not part of message persistence or Claude history. */
   .msg.ai .delivery-block {
     gap: 5px;
   }
@@ -984,12 +984,53 @@
     margin-top: 9px;
   }
 
+  .voice-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+  }
+
+  .transcript-toggle {
+    flex: 0 0 auto;
+    height: 29px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--input-bg) 86%, var(--bg));
+    color: var(--text-soft);
+    font-size: 10.5px;
+    font-family: 'Helvetica Neue', sans-serif;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+  }
+  .transcript-toggle:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+  .transcript-toggle:active { transform: scale(0.96); }
+  .transcript-toggle[aria-expanded="true"] { color: var(--accent); }
+
   .transcript-bubble {
     margin-top: 0;
     border-bottom-left-radius: 18px !important;
     padding-top: 10px;
     padding-bottom: 10px;
     box-shadow: none !important;
+  }
+  .transcript-bubble[hidden] { display: none !important; }
+
+  .assistant-reveal-item {
+    transform-origin: left center;
+    animation: assistantItemPop 0.25s cubic-bezier(0.22, 1.35, 0.5, 1) both;
+  }
+  .assistant-reveal-item.sticker-bubble { transform-origin: center; }
+
+  @keyframes assistantItemPop {
+    0% { opacity: 0; transform: translateY(7px) scale(0.9); }
+    68% { opacity: 1; transform: translateY(-1px) scale(1.025); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .assistant-reveal-item { animation: none; }
   }
 
   /* Surface hierarchy: the voice bar is the original-message object.
@@ -1533,6 +1574,7 @@
   const DRAFTS_KEY = 'claude_drafts_v1';
   const NEW_CHAT_DRAFT_KEY = '__new__';
   const SCROLL_MEMORY_KEY = 'claude_scroll_memory_v1';
+  const TRANSCRIPT_UI_STATE_KEY = 'claude_transcript_ui_v1';
   const SCROLL_MEMORY_TTL_MS = 60 * 60 * 1000; // 1 hour
   const TEMPORAL_GAP_MS = 3 * 60 * 60 * 1000; // 3 hours; request-time context only
   const CHAT_BOTTOM_THRESHOLD_PX = 100;
@@ -1587,6 +1629,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   let chatOrder = JSON.parse(localStorage.getItem('claude_order') || '[]');
   let currentId = null;
   let isLoading = false;
+  let isAssistantRevealActive = false;
   let activeRequestChatId = null;
   let activeRequestAbortController = null;
   // Transient UI status revision must exist before Init can call loadChat()/status renderers.
@@ -2319,6 +2362,44 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     }
   };
 
+
+  // ── LOCAL TRANSCRIPT DISCLOSURE STATE ─────────────────
+  // Device-local UI preference only. It is intentionally excluded from chat export/import,
+  // message identity, Claude history, Sticker logic and SpeechPlan persistence.
+  const TranscriptUIState = {
+    loadAll() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(TRANSCRIPT_UI_STATE_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch (_) { return {}; }
+    },
+    key(chatId, messageId, blockId) {
+      return [chatId || '', messageId || '', blockId || 'legacy'].join('::');
+    },
+    isExpanded(chatId, messageId, blockId) {
+      if (!chatId || !messageId) return false;
+      return this.loadAll()[this.key(chatId, messageId, blockId)] === true;
+    },
+    setExpanded(chatId, messageId, blockId, expanded) {
+      if (!chatId || !messageId) return;
+      const all = this.loadAll();
+      const key = this.key(chatId, messageId, blockId);
+      if (expanded) all[key] = true;
+      else delete all[key];
+      localStorage.setItem(TRANSCRIPT_UI_STATE_KEY, JSON.stringify(all));
+    },
+    clearChat(chatId) {
+      if (!chatId) return;
+      const all = this.loadAll();
+      const prefix = chatId + '::';
+      let changed = false;
+      Object.keys(all).forEach(key => {
+        if (key.startsWith(prefix)) { delete all[key]; changed = true; }
+      });
+      if (changed) localStorage.setItem(TRANSCRIPT_UI_STATE_KEY, JSON.stringify(all));
+    }
+  };
+
   function isChatAreaNearBottom(area, threshold = CHAT_BOTTOM_THRESHOLD_PX) {
     if (!area) return true;
     return area.scrollHeight - area.scrollTop - area.clientHeight <= threshold;
@@ -2771,7 +2852,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     const sendBtn = document.getElementById('sendBtn');
     const stopBtn = document.getElementById('stopBtn');
     if (sendBtn) {
-      sendBtn.disabled = !apiKey || isLoading || !hasUsableModel;
+      sendBtn.disabled = !apiKey || isLoading || isAssistantRevealActive || !hasUsableModel;
       sendBtn.style.display = isLoading ? 'none' : 'flex';
     }
     if (stopBtn) {
@@ -3098,15 +3179,214 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     setTimeout(refresh, 120);
   }
 
+  function getTranscriptBlockId(msg, blockIndex) {
+    if (Number.isInteger(blockIndex) && blockIndex >= 0) {
+      return msg?.deliveryBlocks?.[blockIndex]?.blockId || `b${blockIndex + 1}`;
+    }
+    return 'legacy';
+  }
+
+  function transcriptToggleMarkup(msg, blockIndex) {
+    if (!msg?.id) return '';
+    const blockId = getTranscriptBlockId(msg, blockIndex);
+    const chatId = msg.chatId || currentId || '';
+    const expanded = TranscriptUIState.isExpanded(chatId, msg.id, blockId);
+    const blockIndexAttr = Number.isInteger(blockIndex) ? ` data-block-index="${blockIndex}"` : '';
+    return `<button class="transcript-toggle" type="button"
+      data-chat-id="${escHtml(chatId)}" data-message-id="${escHtml(msg.id)}" data-block-id="${escHtml(blockId)}"${blockIndexAttr}
+      aria-expanded="${expanded ? 'true' : 'false'}" onclick="toggleTranscript(this)">${expanded ? '收起' : '转文字'}</button>`;
+  }
+
+  function transcriptBubbleMarkup(msg, blockIndex, text) {
+    const blockId = getTranscriptBlockId(msg, blockIndex);
+    const chatId = msg?.chatId || currentId || '';
+    const expanded = !!msg?.id && TranscriptUIState.isExpanded(chatId, msg.id, blockId);
+    return `<div class="bubble transcript-bubble"${expanded ? '' : ' hidden'}>${escHtml(text || '')}</div>`;
+  }
+
+  function getTranscriptTextForButton(button) {
+    const chatId = button?.dataset?.chatId || currentId || '';
+    const messageId = button?.dataset?.messageId || '';
+    const blockId = button?.dataset?.blockId || 'legacy';
+    const chat = chats[chatId];
+    const msg = chat?.messages?.find(message => message.id === messageId);
+    if (!msg) return '';
+    const index = Number(button?.dataset?.blockIndex);
+    if (Number.isInteger(index) && Array.isArray(msg.deliveryBlocks) && msg.deliveryBlocks[index]) {
+      return getDeliveryBlockCleanText(msg.deliveryBlocks[index]);
+    }
+    if (blockId !== 'legacy' && Array.isArray(msg.deliveryBlocks)) {
+      const block = msg.deliveryBlocks.find(item => (item.blockId || '') === blockId);
+      if (block) return getDeliveryBlockCleanText(block);
+    }
+    return String(msg.content || '');
+  }
+
+  function revealTranscriptText(element, text) {
+    if (!element) return;
+    const value = String(text || '');
+    element.textContent = '';
+    if (!value) return;
+    const totalSteps = Math.min(90, Math.max(18, value.length));
+    const chunkSize = Math.max(1, Math.ceil(value.length / totalSteps));
+    const intervalMs = 18;
+    let index = 0;
+    const token = String(Date.now()) + Math.random();
+    element.dataset.revealToken = token;
+    const step = () => {
+      if (!element.isConnected || element.hidden || element.dataset.revealToken !== token) return;
+      index = Math.min(value.length, index + chunkSize);
+      element.textContent = value.slice(0, index);
+      if (index < value.length) setTimeout(step, intervalMs);
+    };
+    step();
+  }
+
+  function toggleTranscript(button) {
+    const unit = button?.closest?.('.delivery-block');
+    const bubble = unit?.querySelector?.('.transcript-bubble');
+    if (!bubble) return;
+    const chatId = button.dataset.chatId || currentId || '';
+    const messageId = button.dataset.messageId || '';
+    const blockId = button.dataset.blockId || 'legacy';
+    const willExpand = button.getAttribute('aria-expanded') !== 'true';
+    TranscriptUIState.setExpanded(chatId, messageId, blockId, willExpand);
+    button.setAttribute('aria-expanded', String(willExpand));
+    button.textContent = willExpand ? '收起' : '转文字';
+    if (willExpand) {
+      bubble.hidden = false;
+      revealTranscriptText(bubble, getTranscriptTextForButton(button));
+    } else {
+      bubble.dataset.revealToken = '';
+      bubble.hidden = true;
+    }
+    if (currentId === chatId) {
+      const area = document.getElementById('chatArea');
+      if (area && isChatAreaNearBottom(area, 180)) {
+        requestAnimationFrame(() => area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' }));
+      }
+    }
+  }
+
+  function stickerEventsAtSlot(msg, slot) {
+    return (Array.isArray(msg?.stickerEvents) ? msg.stickerEvents : []).filter(event =>
+      Number(event?.slot) === slot && typeof event?.stickerId === 'string' && event.stickerId
+    );
+  }
+
+  function buildAssistantRenderItems(msg) {
+    const items = [];
+    const blocks = Array.isArray(msg?.deliveryBlocks) && msg.deliveryBlocks.length ? msg.deliveryBlocks : null;
+    const pushStickers = slot => {
+      stickerEventsAtSlot(msg, slot).forEach(event => {
+        const repeat = Number.isInteger(Number(event.repeat)) && Number(event.repeat) > 0 ? Number(event.repeat) : 1;
+        for (let i = 0; i < repeat; i++) items.push({ type: 'sticker', event });
+      });
+    };
+
+    if (blocks) {
+      pushStickers(0);
+      blocks.forEach((block, blockIndex) => {
+        items.push({ type: 'voiceBlock', block, blockIndex, text: getDeliveryBlockCleanText(block) });
+        pushStickers(blockIndex + 1);
+      });
+    } else {
+      items.push({ type: 'voiceBlock', block: null, blockIndex: null, text: String(msg?.content || '') });
+    }
+    return items;
+  }
+
+  function voiceRevealUnits(text) {
+    let units = 0;
+    for (const ch of String(text || '')) {
+      if (/\s/.test(ch)) units += 0.12;
+      else if (/[\u3400-\u9fff]/.test(ch)) units += 1;
+      else units += 0.46;
+    }
+    return Math.max(1, units);
+  }
+
+  function assistantRevealDelay(item, itemIndex) {
+    if (itemIndex === 0) return 0;
+    if (item?.type === 'sticker') return 320;
+    const units = voiceRevealUnits(item?.text || '');
+    return Math.min(3000, Math.round(80 + Math.sqrt(units) * 130));
+  }
+
+  function waitMs(ms) {
+    return ms > 0 ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve();
+  }
+
+  async function appendAssistantRenderItem(container, msg, msgIndex, item, animate = true) {
+    if (!container || !item) return null;
+    let node = null;
+    if (item.type === 'sticker') {
+      node = document.createElement('div');
+      node.className = 'sticker-bubble' + (animate ? ' assistant-reveal-item' : '');
+      node.dataset.stickerId = item.event.stickerId;
+      node.innerHTML = '<img class="sticker-inline" alt="sticker" hidden>';
+    } else if (item.type === 'voiceBlock') {
+      const blockText = String(item.text || '');
+      const hasVoice = !!blockText && canPlayElevenLanguage(msg.language);
+      node = document.createElement('div');
+      node.className = 'delivery-block' + (animate ? ' assistant-reveal-item' : '');
+      const blockIndex = Number.isInteger(item.blockIndex) ? item.blockIndex : null;
+      node.innerHTML = `
+        <div class="voice-row">
+          ${hasVoice ? voiceBarMarkup(msg, msgIndex, blockIndex, blockText) : ''}
+          ${hasVoice ? transcriptToggleMarkup(msg, blockIndex) : ''}
+        </div>
+        ${hasVoice ? transcriptBubbleMarkup(msg, blockIndex, blockText) : `<div class="bubble transcript-bubble">${escHtml(blockText)}</div>`}`;
+    }
+    if (!node) return null;
+    container.appendChild(node);
+    hydrateVoiceBarCacheState(node);
+    await hydrateStickerBubbles(node);
+    return node;
+  }
+
+  async function renderAssistantMessageStaged(msg, msgIndex, options = {}) {
+    const area = document.getElementById('chatArea');
+    if (!area || !msg) return;
+    const hint = document.getElementById('emptyHint');
+    if (hint) hint.remove();
+
+    const div = document.createElement('div');
+    div.className = 'msg ai';
+    div.style.animation = 'none';
+    area.appendChild(div);
+
+    const followBottom = options.followBottom !== false;
+    const items = buildAssistantRenderItems(msg);
+    for (let i = 0; i < items.length; i++) {
+      if (currentId !== (msg.chatId || currentId)) return;
+      await waitMs(assistantRevealDelay(items[i], i));
+      if (!div.isConnected || currentId !== (msg.chatId || currentId)) return;
+      await appendAssistantRenderItem(div, msg, msgIndex, items[i], true);
+      if (followBottom) {
+        requestAnimationFrame(() => {
+          if (div.isConnected) area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
+        });
+      }
+    }
+
+    const hasDebug = !!msg.language || !!msg.deliveryBlocks || Array.isArray(msg.stickerEvents);
+    const footer = document.createElement('div');
+    footer.innerHTML = `${hasDebug ? `<button class="debug-btn" type="button" onclick="openResponseDebug('${msg.id || ''}')">Debug</button>` : ''}
+      <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
+    while (footer.firstChild) div.appendChild(footer.firstChild);
+    if (followBottom) {
+      requestAnimationFrame(() => area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' }));
+    }
+  }
+
   function clearStickerChatUrls() {
     stickerChatUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch (_) {} });
     stickerChatUrls = [];
   }
 
   function stickerSlotMarkup(msg, slot) {
-    const events = (Array.isArray(msg?.stickerEvents) ? msg.stickerEvents : []).filter(event =>
-      Number(event?.slot) === slot && typeof event?.stickerId === 'string' && event.stickerId
-    );
+    const events = stickerEventsAtSlot(msg, slot);
     const chunks = [];
     for (const event of events) {
       const repeat = Number.isInteger(Number(event.repeat)) && Number(event.repeat) > 0 ? Number(event.repeat) : 1;
@@ -3153,8 +3433,11 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
             const blockText = getDeliveryBlockCleanText(block);
             const hasVoice = !!blockText && canPlayElevenLanguage(msg.language);
             blockHtml += `<div class="delivery-block">
-              ${hasVoice ? voiceBarMarkup(msg, msgIndex, blockIndex, blockText) : ''}
-              <div class="bubble transcript-bubble">${escHtml(blockText)}</div>
+              <div class="voice-row">
+                ${hasVoice ? voiceBarMarkup(msg, msgIndex, blockIndex, blockText) : ''}
+                ${hasVoice ? transcriptToggleMarkup(msg, blockIndex) : ''}
+              </div>
+              ${hasVoice ? transcriptBubbleMarkup(msg, blockIndex, blockText) : `<div class="bubble transcript-bubble">${escHtml(blockText)}</div>`}
             </div>`;
             blockHtml += stickerSlotMarkup(msg, blockIndex + 1);
           });
@@ -3164,8 +3447,13 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
         } else {
           const hasVoice = !!msg.content && canPlayElevenLanguage(msg.language);
           div.innerHTML = `
-            ${hasVoice ? voiceBarMarkup(msg, msgIndex, null, msg.content || '') : ''}
-            <div class="bubble transcript-bubble">${escHtml(msg.content || '')}</div>
+            <div class="delivery-block">
+              <div class="voice-row">
+                ${hasVoice ? voiceBarMarkup(msg, msgIndex, null, msg.content || '') : ''}
+                ${hasVoice ? transcriptToggleMarkup(msg, null) : ''}
+              </div>
+              ${hasVoice ? transcriptBubbleMarkup(msg, null, msg.content || '') : `<div class="bubble transcript-bubble">${escHtml(msg.content || '')}</div>`}
+            </div>
             ${hasDebug ? `<button class="debug-btn" type="button" onclick="openResponseDebug('${msg.id || ''}')">Debug</button>` : ''}
             <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
         }
@@ -4017,7 +4305,16 @@ Treat this runtime time data as the authoritative source of the current date, lo
 
     if (currentId === chatId) {
       if (committed.thinkingMessage) renderThinking(committed.thinkingMessage.content);
-      renderMsg('ai', committed.assistantMessage, true, committed.assistantIndex);
+      isAssistantRevealActive = true;
+      updateSendAvailability();
+      try {
+        await renderAssistantMessageStaged(committed.assistantMessage, committed.assistantIndex, {
+          followBottom: !preserveReadingPosition
+        });
+      } finally {
+        isAssistantRevealActive = false;
+        updateSendAvailability();
+      }
       if (preserveReadingPosition) {
         const area = document.getElementById('chatArea');
         if (area) area.scrollTop = readingScrollTop;
@@ -4043,7 +4340,7 @@ ScrollMemory.clear(chatId);
   // Normal send creates exactly one user message, then calls the shared
   // generation controller. Retry never passes through this creation path.
   async function send() {
-    if (!apiKey || isLoading) return;
+    if (!apiKey || isLoading || isAssistantRevealActive) return;
     if (!getCurrentGenerationConfig()) { flashStatus('请选择可用模型', 'err', 2200); return; }
     const input = document.getElementById('input');
     const text = input.value.trim();
@@ -4089,7 +4386,7 @@ ScrollMemory.clear(chatId);
   // UI controller entry point. It reuses the existing latest user turn and
   // therefore never duplicates user content, ids, timestamps, clientSeq, or chatId.
   async function handleRetryLatestReply(chatId) {
-    if (!apiKey || isLoading) return;
+    if (!apiKey || isLoading || isAssistantRevealActive) return;
     if (!getCurrentGenerationConfig()) { flashStatus('请选择可用模型', 'err', 2200); return; }
     const chat = chats[chatId];
     if (!getLatestUnresolvedUserTurn(chat)) {
@@ -4348,7 +4645,7 @@ ${topText}`;
         }
       }
 
-      setStatus('生成中文语音中…');
+      setStatus('语音加载中…');
 
       const payload = {
         token: doubaoProxyToken,
@@ -4456,7 +4753,7 @@ ${topText}`;
         if (historicalCached) { playBlob(historicalCached); return; }
       }
 
-      setStatus(language === 'zh' ? '生成中文语音中…' : '生成语音中…');
+      setStatus('语音加载中…');
       const elUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
       const requestBody = {
         text: ttsText,
@@ -5317,6 +5614,7 @@ ${topText}`;
     delete trash[chatId];
     saveTrash(trash);
     DraftStore.clear(chatId);
+    TranscriptUIState.clearChat(chatId);
     // Text snapshot deletion above is already committed; audio cleanup failure
     // must not block or reverse it — deleteAudioWithFallback queues a retry instead.
     deleteAudioWithFallback(chatId);
@@ -5335,7 +5633,10 @@ ${topText}`;
     });
     if (purged.length) saveTrash(trash);
     DraftStore.clearMany(purged);
-    purged.forEach(chatId => deleteAudioWithFallback(chatId));
+    purged.forEach(chatId => {
+      TranscriptUIState.clearChat(chatId);
+      deleteAudioWithFallback(chatId);
+    });
     return { ok: true, action: 'purged', chatIds: purged };
   }
 
