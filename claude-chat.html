@@ -1398,6 +1398,23 @@
   </div>
 </div>
 
+<!-- CHAT ACTIONS / RENAME -->
+<div class="modal-overlay" id="chatActionsModal">
+  <div class="modal">
+    <h2>对话设置</h2>
+    <p>名称只用于显示和导出 metadata；不会改变 chatId 或消息身份。</p>
+    <input id="chatRenameInput" type="text" maxlength="120" placeholder="对话名称"
+      onkeydown="if(event.key==='Enter'){event.preventDefault();saveChatRename();}" />
+    <div class="modal-btns" style="justify-content:space-between;align-items:center;">
+      <button class="btn-cancel" type="button" style="color:#C47A6A" onclick="deleteChatFromActions()">移到回收站</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-cancel" type="button" onclick="closeModal('chatActionsModal')">取消</button>
+        <button class="btn-save" type="button" onclick="saveChatRename()">保存名称</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- API KEY MODAL -->
 <div class="modal-overlay" id="keyModal">
   <div class="modal">
@@ -1629,6 +1646,7 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   let chats = JSON.parse(localStorage.getItem('claude_chats') || '{}');
   let chatOrder = JSON.parse(localStorage.getItem('claude_order') || '[]');
   let currentId = null;
+  let chatActionTargetId = null;
   let isLoading = false;
   let isAssistantRevealActive = false;
   let activeRequestChatId = null;
@@ -1794,6 +1812,11 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       matchedUsageExampleId: trace.matchedUsageExampleId || null,
       matchedUsageExampleText: trace.matchedUsageExampleText || null,
       topCandidates: Array.isArray(trace.topCandidates) ? trace.topCandidates : [],
+      preferredStickerId: previous?.preferredStickerId || null,
+      preferredRank: Number.isInteger(Number(previous?.preferredRank)) ? Number(previous.preferredRank) : null,
+      preferredScore: Number.isFinite(Number(previous?.preferredScore)) ? Number(previous.preferredScore) : null,
+      preferredMatchedUsageExampleId: previous?.preferredMatchedUsageExampleId || null,
+      preferredMatchedUsageExampleText: previous?.preferredMatchedUsageExampleText || null,
       model: model || null,
       replyLanguage: config?.replyLanguage || null,
       stickerPromptVersion: STICKER_PROMPT_VERSION,
@@ -1811,21 +1834,68 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
       .sort((a, b) => Number(a.eventIndex) - Number(b.eventIndex));
   }
 
+  function stickerCalibrationVerdictLabel(verdict, preferredRank = null) {
+    if (verdict === 'positive') return '✓ 合适';
+    if (verdict === 'borderline') return '△ 勉强';
+    if (verdict === 'better_match') return `↑ 有更好的${Number.isInteger(Number(preferredRank)) ? ` · #${Number(preferredRank)}` : ''}`;
+    if (verdict === 'no_match') return '∅ 完全不匹配 / 无合适图';
+    if (verdict === 'wrong_match') return '旧：× 选错（建议重标）';
+    return '未标注';
+  }
+
   function labelStickerCalibration(messageId, eventIndex, verdict) {
-    const allowed = new Set(['positive', 'wrong_match', 'no_match']);
+    // Four-way human judgement only. This labels calibration ground truth;
+    // it does not change runtime retrieval, thresholds, prompts, or Sticker selection.
+    // "better_match" is recorded through labelStickerCalibrationBetter(), because
+    // that judgement is only meaningful when the human also identifies the preferred candidate.
+    const allowed = new Set(['positive', 'borderline', 'no_match']);
     if (!messageId || !Number.isInteger(Number(eventIndex)) || !allowed.has(verdict)) return;
     const id = `${messageId}:${Number(eventIndex)}`;
     const samples = loadStickerCalibrationSamples();
     const index = samples.findIndex(item => item.id === id);
     if (index < 0) return;
-    samples[index] = { ...samples[index], verdict, reviewedAt: Date.now() };
+    samples[index] = {
+      ...samples[index],
+      verdict,
+      preferredStickerId: null,
+      preferredRank: null,
+      preferredScore: null,
+      preferredMatchedUsageExampleId: null,
+      preferredMatchedUsageExampleText: null,
+      reviewedAt: Date.now()
+    };
+    saveStickerCalibrationSamples(samples);
+    openResponseDebug(messageId);
+  }
+
+  function labelStickerCalibrationBetter(messageId, eventIndex, rank) {
+    if (!messageId || !Number.isInteger(Number(eventIndex)) || !Number.isInteger(Number(rank)) || Number(rank) <= 1) return;
+    const id = `${messageId}:${Number(eventIndex)}`;
+    const samples = loadStickerCalibrationSamples();
+    const index = samples.findIndex(item => item.id === id);
+    if (index < 0) return;
+    const sample = samples[index];
+    const candidate = (Array.isArray(sample.topCandidates) ? sample.topCandidates : [])
+      .find(item => Number(item?.rank) === Number(rank));
+    if (!candidate?.stickerId) return;
+    samples[index] = {
+      ...sample,
+      verdict: 'better_match',
+      preferredStickerId: candidate.stickerId,
+      preferredRank: Number(rank),
+      preferredScore: Number.isFinite(Number(candidate.similarity)) ? Number(candidate.similarity) : null,
+      preferredMatchedUsageExampleId: candidate.matchedUsageExampleId || null,
+      preferredMatchedUsageExampleText: candidate.matchedUsageExampleText || null,
+      reviewedAt: Date.now()
+    };
     saveStickerCalibrationSamples(samples);
     openResponseDebug(messageId);
   }
 
   function stickerCalibrationCounts() {
-    const counts = { unreviewed: 0, positive: 0, wrong_match: 0, no_match: 0 };
+    const counts = { unreviewed: 0, positive: 0, borderline: 0, better_match: 0, no_match: 0, legacyWrong: 0 };
     loadStickerCalibrationSamples().forEach(item => {
+      if (item?.verdict === 'wrong_match') { counts.legacyWrong++; return; }
       if (item?.verdict && Object.prototype.hasOwnProperty.call(counts, item.verdict)) counts[item.verdict]++;
       else counts.unreviewed++;
     });
@@ -3003,14 +3073,50 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   }
 
   // ── PER-CHAT ACTIONS (UI controller layer) ──
-  // Generic actions entry — NOT bound to "delete" only. First version has a single
-  // action; future items (rename / export single chat / clear audio cache) can be
-  // added here without touching the domain lifecycle functions below.
+  // title is display metadata only. Rename must never change chatId, message ids,
+  // import routing, dedupe identity, or message ordering.
   function openChatActions(event, chatId) {
     event.stopPropagation(); // must not trigger loadChat
-    if (confirm('删除到回收站？')) {
-      handleMoveChatToTrash(chatId);
+    const chat = chats[chatId];
+    if (!chat) return;
+    chatActionTargetId = chatId;
+    const input = document.getElementById('chatRenameInput');
+    if (input) input.value = chat.title || '新对话';
+    document.getElementById('chatActionsModal').classList.add('open');
+    requestAnimationFrame(() => {
+      if (!input) return;
+      input.focus();
+      input.select();
+    });
+  }
+
+  function saveChatRename() {
+    const chatId = chatActionTargetId;
+    const chat = chatId ? chats[chatId] : null;
+    const input = document.getElementById('chatRenameInput');
+    if (!chat || !input) return;
+    const title = String(input.value || '').trim();
+    if (!title) {
+      flashStatus('对话名称不能为空', 'err', 1800);
+      input.focus();
+      return;
     }
+    if (chat.title !== title) {
+      // Deliberately do not touch updatedAt: rename is presentation metadata,
+      // not conversational activity and not chat identity.
+      chat.title = title;
+      save();
+      renderSidebar();
+    }
+    closeModal('chatActionsModal');
+    flashStatus('对话已重命名 ✓', 'ok', 1600);
+  }
+
+  function deleteChatFromActions() {
+    const chatId = chatActionTargetId;
+    if (!chatId || !chats[chatId]) return;
+    closeModal('chatActionsModal');
+    if (confirm('删除到回收站？')) handleMoveChatToTrash(chatId);
   }
 
   function handleMoveChatToTrash(chatId) {
@@ -4432,10 +4538,7 @@ ScrollMemory.clear(chatId);
    ↳ ${candidate.matchedUsageExampleText || '—'}`
       ).join('\n') : '—';
       const sample = persistedStickerSamples.find(item => Number(item.eventIndex) === Number(trace.eventIndex));
-      const verdictLabel = sample?.verdict === 'positive' ? '✓ 合适'
-        : sample?.verdict === 'wrong_match' ? '× 选错'
-        : sample?.verdict === 'no_match' ? '∅ 图库无合适图'
-        : '未标注';
+      const verdictLabel = stickerCalibrationVerdictLabel(sample?.verdict, sample?.preferredRank);
       return `event ${Number(trace.eventIndex) + 1}
 intent: ${trace.intent || '—'}
 selected: ${trace.selectedStickerId || '—'}${Number.isFinite(Number(trace.selectedSimilarity)) ? ` · ${Number(trace.selectedSimilarity).toFixed(4)}` : ''}
@@ -4481,12 +4584,20 @@ ${topText}`;
       const eventIndex = Number(trace.eventIndex);
       const sample = persistedStickerSamples.find(item => Number(item.eventIndex) === eventIndex);
       const current = sample?.verdict || '';
+      const betterCandidates = (Array.isArray(trace.topCandidates) ? trace.topCandidates : [])
+        .filter(candidate => Number(candidate?.rank) > 1 && candidate?.stickerId);
+      const betterButtons = betterCandidates.map(candidate => {
+        const rank = Number(candidate.rank);
+        const usage = String(candidate.matchedUsageExampleText || '').trim();
+        return `<button class="btn-cancel" type="button" title="${escHtml(usage || candidate.stickerId)}" onclick="labelStickerCalibrationBetter('${msg.id || ''}',${eventIndex},${rank})">↑ 有更好的 #${rank}</button>`;
+      }).join('');
       return `<div style="border-top:1px solid var(--border);padding-top:8px">
-        <div style="font-size:11px;color:var(--text-soft);margin-bottom:6px">Sticker event ${eventIndex + 1} · calibration label${current ? ` · ${current}` : ''}</div>
+        <div style="font-size:11px;color:var(--text-soft);margin-bottom:6px">Sticker event ${eventIndex + 1} · calibration label${current ? ` · ${stickerCalibrationVerdictLabel(current, sample?.preferredRank)}` : ''}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn-cancel" type="button" onclick="labelStickerCalibration('${msg.id || ''}',${eventIndex},'positive')">✓ 合适</button>
-          <button class="btn-cancel" type="button" onclick="labelStickerCalibration('${msg.id || ''}',${eventIndex},'wrong_match')">× 选错</button>
-          <button class="btn-cancel" type="button" onclick="labelStickerCalibration('${msg.id || ''}',${eventIndex},'no_match')">∅ 图库无合适图</button>
+          <button class="btn-cancel" type="button" onclick="labelStickerCalibration('${msg.id || ''}',${eventIndex},'borderline')">△ 勉强</button>
+          ${betterButtons}
+          <button class="btn-cancel" type="button" onclick="labelStickerCalibration('${msg.id || ''}',${eventIndex},'no_match')">∅ 完全不匹配 / 无合适图</button>
         </div>
       </div>`;
     }).join('')}</div>` : '';
@@ -4867,7 +4978,7 @@ ${topText}`;
 
   function usageLibrarySummaryText(counts) {
     const calibration = stickerCalibrationCounts();
-    return `${counts.totalStickers} 张 · ${counts.totalExamples} 条用法 · vector ${counts.ready} · 待建立 ${counts.pendingCreate} · 待更新 ${counts.pendingUpdate} · 校准 未标 ${calibration.unreviewed} / ✓${calibration.positive} / ×${calibration.wrong_match} / ∅${calibration.no_match}`;
+    return `${counts.totalStickers} 张 · ${counts.totalExamples} 条用法 · vector ${counts.ready} · 待建立 ${counts.pendingCreate} · 待更新 ${counts.pendingUpdate} · 校准 未标 ${calibration.unreviewed} / ✓${calibration.positive} / △${calibration.borderline} / ↑${calibration.better_match} / ∅${calibration.no_match}${calibration.legacyWrong ? ` / 旧×${calibration.legacyWrong}` : ''}`;
   }
 
   function stripUsagePrefix(line) {
@@ -5205,6 +5316,7 @@ ${topText}`;
       clearStickerPreviewUrls();
       resetStickerCalibrationUI();
     }
+    if (id === 'chatActionsModal') chatActionTargetId = null;
   }
 
   // ── TRASH UI ─────────────────────────────────────────
