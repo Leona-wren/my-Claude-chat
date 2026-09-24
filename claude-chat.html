@@ -850,7 +850,7 @@
     width: var(--voice-width, 148px);
     min-width: 104px;
     max-width: min(214px, 56vw);
-    height: 39px;
+    height: 45px;
     padding: 0 10px 0 11px;
     border: 1px solid color-mix(in srgb, var(--border) 82%, var(--text-soft) 18%);
     border-radius: 12px;
@@ -993,20 +993,21 @@
 
   .transcript-toggle {
     flex: 0 0 auto;
-    height: 29px;
-    padding: 0 8px;
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    background: color-mix(in srgb, var(--input-bg) 86%, var(--bg));
-    color: var(--text-soft);
-    font-size: 10.5px;
+    height: 24px;
+    padding: 0 6px;
+    border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+    border-radius: 8px;
+    background: transparent;
+    color: color-mix(in srgb, var(--text-soft) 84%, transparent);
+    font-size: 9.5px;
     font-family: 'Helvetica Neue', sans-serif;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+    opacity: 0.82;
+    transition: color 0.15s, border-color 0.15s, opacity 0.15s, transform 0.1s;
   }
-  .transcript-toggle:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+  .transcript-toggle:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 26%, var(--border)); opacity: 1; }
   .transcript-toggle:active { transform: scale(0.96); }
-  .transcript-toggle[aria-expanded="true"] { color: var(--accent); }
+  .transcript-toggle[aria-expanded="true"] { color: color-mix(in srgb, var(--accent) 72%, var(--text-soft)); opacity: 0.92; }
 
   .transcript-bubble {
     margin-top: 0;
@@ -1072,7 +1073,7 @@
     .voice-bar {
       min-width: 98px;
       max-width: min(186px, 54vw);
-      height: 37px;
+      height: 43px;
       border-radius: 11px;
       border-bottom-left-radius: 5px;
     }
@@ -3227,9 +3228,9 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
     const value = String(text || '');
     element.textContent = '';
     if (!value) return;
-    const totalSteps = Math.min(90, Math.max(18, value.length));
+    const totalSteps = Math.min(72, Math.max(1, value.length));
     const chunkSize = Math.max(1, Math.ceil(value.length / totalSteps));
-    const intervalMs = 18;
+    const intervalMs = 42;
     let index = 0;
     const token = String(Date.now()) + Math.random();
     element.dataset.revealToken = token;
@@ -3398,7 +3399,9 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   }
 
   async function hydrateStickerBubbles(root) {
-    const bubbles = Array.from(root?.querySelectorAll?.('.sticker-bubble[data-sticker-id]') || []);
+    const bubbles = [];
+    if (root?.matches?.('.sticker-bubble[data-sticker-id]')) bubbles.push(root);
+    bubbles.push(...Array.from(root?.querySelectorAll?.('.sticker-bubble[data-sticker-id]') || []));
     for (const bubble of bubbles) {
       const id = bubble.dataset.stickerId;
       const img = bubble.querySelector('img');
