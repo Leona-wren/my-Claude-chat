@@ -1617,6 +1617,7 @@
   const STICKER_SCHEMA_VERSION = 2;
   const STICKER_MISSING_KEY = 'claude_sticker_missing_v1';
   const STICKER_CALIBRATION_KEY = 'claude_sticker_calibration_v1';
+  const RESPONSE_ANOMALY_DEBUG_KEY = 'claude_response_anomaly_debug_v2';
   const VOYAGE_API_KEY_KEY = 'personal_ai_voyage_key_v1';
   const VOYAGE_TEXT_MODEL = 'voyage-4-large';
   const VOYAGE_TEXT_ENDPOINT = 'https://ai.mongodb.com/v1/embeddings';
@@ -1716,6 +1717,42 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
   let stickerCalibrationUrls = [];
   let stickerCalibrationState = [];
   const stickerDebugTraceByMessageId = new Map(); // transient test observability only; never persisted/exported
+
+  const responseRawSessionDebugByMessageId = new Map();
+
+  const ResponseAnomalyDebugStore = {
+    loadAll() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(RESPONSE_ANOMALY_DEBUG_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch (_) {
+        return {};
+      }
+    },
+    get(messageId) {
+      if (!messageId) return null;
+      return this.loadAll()[messageId] || null;
+    },
+    set(messageId, entry) {
+      if (!messageId || !entry) return;
+      const all = this.loadAll();
+      all[messageId] = entry;
+      localStorage.setItem(RESPONSE_ANOMALY_DEBUG_KEY, JSON.stringify(all));
+    },
+    clearChat(chatId) {
+      if (!chatId) return;
+      const all = this.loadAll();
+      let changed = false;
+      Object.keys(all).forEach(messageId => {
+        if (all[messageId]?.chatId === chatId) {
+          delete all[messageId];
+          changed = true;
+        }
+      });
+      if (changed) localStorage.setItem(RESPONSE_ANOMALY_DEBUG_KEY, JSON.stringify(all));
+    }
+  };
+
   let draftSaveTimer = null;
   let draftEditorInitialized = false;
 
@@ -4143,12 +4180,110 @@ Treat this runtime time data as the authoritative source of the current date, lo
       ok: true,
       content,
       deliveryBlocks,
-      stickerEvents
+      stickerEvents,
+      diagnostics: {
+        sourceDeliveryBlockCount: Array.isArray(payload.deliveryBlocks) ? payload.deliveryBlocks.length : 0,
+        normalizedDeliveryBlockCount: deliveryBlocks.length,
+        sourceStickerEventCount: Array.isArray(payload.stickerEvents) ? payload.stickerEvents.length : 0,
+        normalizedStickerEventCount: stickerEvents.length
+      }
     };
   }
 
   // Conservative client-side guard. It deliberately ignores code/URLs and returns UNKNOWN
   // for short or script-ambiguous replies rather than rejecting legitimate technical text.
+  function compactResponseDebugText(value) {
+    return String(value || '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[\s\u00A0]+/g, '')
+      .replace(/[，。！？；：、,.!?;:“”‘’"'（）()\[\]【】《》<>…—–\-~～]/g, '');
+  }
+
+  function inspectResponseForPersistentRawDebug(parsedResponse, responseCore) {
+    const reasons = [];
+    const blocks = Array.isArray(responseCore?.deliveryBlocks) ? responseCore.deliveryBlocks : [];
+
+    // In this chat contract, end_turn is the ordinary completed assistant turn.
+    // Anything else is worth retaining verbatim for later inspection.
+    if (parsedResponse?.stopReason !== 'end_turn') {
+      reasons.push(`stop_reason=${String(parsedResponse?.stopReason ?? 'null')}`);
+    }
+
+    if (Array.isArray(parsedResponse?.unknownBlockTypes) && parsedResponse.unknownBlockTypes.length) {
+      reasons.push(`unknown Anthropic content block: ${parsedResponse.unknownBlockTypes.join(', ')}`);
+    }
+
+    const diagnostics = responseCore?.diagnostics || {};
+    if (Number.isFinite(diagnostics.sourceDeliveryBlockCount) &&
+        diagnostics.sourceDeliveryBlockCount !== diagnostics.normalizedDeliveryBlockCount) {
+      reasons.push(
+        `deliveryBlocks normalized ${diagnostics.sourceDeliveryBlockCount}→${diagnostics.normalizedDeliveryBlockCount}`
+      );
+    }
+    if (Number.isFinite(diagnostics.sourceStickerEventCount) &&
+        diagnostics.sourceStickerEventCount !== diagnostics.normalizedStickerEventCount) {
+      reasons.push(
+        `stickerEvents normalized ${diagnostics.sourceStickerEventCount}→${diagnostics.normalizedStickerEventCount}`
+      );
+    }
+
+    const visibleBlocks = blocks.map(block => getDeliveryBlockCleanText(block));
+
+    for (let i = 1; i < visibleBlocks.length; i++) {
+      const previous = compactResponseDebugText(visibleBlocks[i - 1]);
+      const current = compactResponseDebugText(visibleBlocks[i]);
+      if (!previous || !current) continue;
+
+      if (previous === current && current.length >= 4) {
+        reasons.push(`adjacent deliveryBlocks ${i}/${i + 1} repeat`);
+        continue;
+      }
+
+      const shorter = previous.length <= current.length ? previous : current;
+      const longer = previous.length > current.length ? previous : current;
+      const containedAtBoundary =
+        longer.startsWith(shorter) || longer.endsWith(shorter);
+
+      if (shorter.length >= 5 &&
+          shorter.length < longer.length &&
+          containedAtBoundary &&
+          shorter.length / longer.length >= 0.28) {
+        reasons.push(`adjacent deliveryBlocks ${i}/${i + 1} overlap at boundary`);
+      }
+    }
+
+    for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+      const parts = Array.isArray(blocks[blockIndex]?.parts) ? blocks[blockIndex].parts : [];
+      for (let partIndex = 1; partIndex < parts.length; partIndex++) {
+        const previous = compactResponseDebugText(parts[partIndex - 1]?.text);
+        const current = compactResponseDebugText(parts[partIndex]?.text);
+        if (!previous || !current) continue;
+
+        if (previous === current && current.length >= 4) {
+          reasons.push(`deliveryBlock ${blockIndex + 1} has repeated adjacent parts`);
+          break;
+        }
+
+        const shorter = previous.length <= current.length ? previous : current;
+        const longer = previous.length > current.length ? previous : current;
+        if (shorter.length >= 5 &&
+            shorter.length < longer.length &&
+            (longer.startsWith(shorter) || longer.endsWith(shorter)) &&
+            shorter.length / longer.length >= 0.35) {
+          reasons.push(`deliveryBlock ${blockIndex + 1} has overlapping adjacent parts`);
+          break;
+        }
+      }
+    }
+
+    return {
+      suspicious: reasons.length > 0,
+      reasons: [...new Set(reasons)]
+    };
+  }
+
+
   function validateReplyLanguage(text, expectedLanguage) {
     const sample = String(text || '')
       .replace(/```[\s\S]*?```/g, ' ')
@@ -4209,7 +4344,9 @@ Treat this runtime time data as the authoritative source of the current date, lo
       unknownBlockTypes: [...new Set(unknownBlockTypes)],
       apiResponseId: data.id || null,
       responseModel: data.model || null,
-      apiUsage: data?.usage && typeof data.usage === 'object' ? data.usage : null
+      apiUsage: data?.usage && typeof data.usage === 'object' ? data.usage : null,
+      stopReason: data?.stop_reason ?? null,
+      stopSequence: data?.stop_sequence ?? null
     };
   }
 
@@ -4292,6 +4429,7 @@ Treat this runtime time data as the authoritative source of the current date, lo
       }
 
       const stickerResolution = await resolveStickerEvents(responseCore.stickerEvents, signal);
+      const rawDebugInspection = inspectResponseForPersistentRawDebug(parsedResponse, responseCore);
 
       return {
         ok: true,
@@ -4303,7 +4441,9 @@ Treat this runtime time data as the authoritative source of the current date, lo
         stickerCalibrationTrace: stickerResolution.calibrationTrace || [],
         temporalTrace: temporalSnapshot.trace,
         languageValidation,
-        responseFormat: config.structuredOutputSupported ? 'json_schema' : 'prompt_json'
+        responseFormat: config.structuredOutputSupported ? 'json_schema' : 'prompt_json',
+        rawResponseText: parsedResponse.replyText,
+        rawDebugInspection
       };
     } catch (e) {
       if (e?.name === 'AbortError') return { ok: false, kind: 'aborted', error: '已停止生成' };
@@ -4355,6 +4495,23 @@ Treat this runtime time data as the authoritative source of the current date, lo
     };
     chat.messages.push(assistantMessage);
     chat.updatedAt = Date.now();
+
+    const rawDebugEntry = {
+      rawResponseText: typeof result.rawResponseText === 'string' ? result.rawResponseText : '',
+      stopReason: result.stopReason ?? null,
+      stopSequence: result.stopSequence ?? null,
+      apiResponseId: result.apiResponseId || null,
+      chatId,
+      messageId: assistantMessage.id,
+      suspicious: !!result.rawDebugInspection?.suspicious,
+      reasons: Array.isArray(result.rawDebugInspection?.reasons) ? result.rawDebugInspection.reasons : [],
+      savedAt: Date.now()
+    };
+    responseRawSessionDebugByMessageId.set(assistantMessage.id, rawDebugEntry);
+    if (rawDebugEntry.suspicious) {
+      ResponseAnomalyDebugStore.set(assistantMessage.id, rawDebugEntry);
+    }
+
     if (Array.isArray(result.stickerCalibrationTrace) && result.stickerCalibrationTrace.length) {
       stickerDebugTraceByMessageId.set(assistantMessage.id, result.stickerCalibrationTrace);
       result.stickerCalibrationTrace.forEach(trace =>
@@ -4596,6 +4753,8 @@ ${topText}`;
       `temporalContext: ${temporal.sentTemporalContext || '—'}`
     ].join('\n') : '—';
 
+    const rawDebug = responseRawSessionDebugByMessageId.get(msg.id) || ResponseAnomalyDebugStore.get(msg.id);
+
     const rows = [
       ['messageId', msg.id || '—'],
       ['model', msg.model || '—'],
@@ -4609,7 +4768,11 @@ ${topText}`;
       ['Sticker calibration trace', stickerTracePreview],
       ['Speech blocks / provider input', speechBlocksPreview],
       ['planned voice route', plannedProvider],
-      ['current TTS', currentVoice]
+      ['current TTS', currentVoice],
+      ['Anthropic stop reason', rawDebug?.stopReason ?? '—'],
+      ['Anthropic stop sequence', rawDebug?.stopSequence ?? '—'],
+      ['Raw validator', rawDebug ? (rawDebug.suspicious ? `保留 · ${rawDebug.reasons.join('；')}` : '正常 · 刷新后不保留') : '—'],
+      ['Raw response', rawDebug?.rawResponseText ?? '—']
     ];
 
     const verdictButtons = stickerTrace.length ? `<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">${stickerTrace.map(trace => {
@@ -5771,6 +5934,7 @@ ${topText}`;
     saveTrash(trash);
     DraftStore.clear(chatId);
     TranscriptUIState.clearChat(chatId);
+    ResponseAnomalyDebugStore.clearChat(chatId);
     // Text snapshot deletion above is already committed; audio cleanup failure
     // must not block or reverse it — deleteAudioWithFallback queues a retry instead.
     deleteAudioWithFallback(chatId);
@@ -5791,6 +5955,7 @@ ${topText}`;
     DraftStore.clearMany(purged);
     purged.forEach(chatId => {
       TranscriptUIState.clearChat(chatId);
+      ResponseAnomalyDebugStore.clearChat(chatId);
       deleteAudioWithFallback(chatId);
     });
     return { ok: true, action: 'purged', chatIds: purged };
