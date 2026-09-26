@@ -1618,6 +1618,7 @@
   const STICKER_MISSING_KEY = 'claude_sticker_missing_v1';
   const STICKER_CALIBRATION_KEY = 'claude_sticker_calibration_v1';
   const RESPONSE_ANOMALY_DEBUG_KEY = 'claude_response_anomaly_debug_v2';
+  const RESPONSE_FAILED_DEBUG_KEY = 'claude_response_failed_debug_v1';
   const VOYAGE_API_KEY_KEY = 'personal_ai_voyage_key_v1';
   const VOYAGE_TEXT_MODEL = 'voyage-4-large';
   const VOYAGE_TEXT_ENDPOINT = 'https://ai.mongodb.com/v1/embeddings';
@@ -1750,6 +1751,42 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
         }
       });
       if (changed) localStorage.setItem(RESPONSE_ANOMALY_DEBUG_KEY, JSON.stringify(all));
+    }
+  };
+
+  const ResponseFailedDebugStore = {
+    loadAll() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(RESPONSE_FAILED_DEBUG_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch (_) {
+        return {};
+      }
+    },
+    set(attemptId, entry) {
+      if (!attemptId || !entry) return;
+      const all = this.loadAll();
+      all[attemptId] = entry;
+      localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify(all));
+    },
+    getLatestForChat(chatId) {
+      if (!chatId) return null;
+      const entries = Object.values(this.loadAll())
+        .filter(entry => entry?.chatId === chatId)
+        .sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
+      return entries[0] || null;
+    },
+    clearChat(chatId) {
+      if (!chatId) return;
+      const all = this.loadAll();
+      let changed = false;
+      Object.keys(all).forEach(attemptId => {
+        if (all[attemptId]?.chatId === chatId) {
+          delete all[attemptId];
+          changed = true;
+        }
+      });
+      if (changed) localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify(all));
     }
   };
 
@@ -4018,7 +4055,12 @@ Treat this runtime time data as the authoritative source of the current date, lo
   function normalizeSpeechTag(tag) {
     let value = typeof tag === 'string' ? tag.trim() : '';
     if (!value) return null;
-    value = value.replace(/^\[+|\]+$/g, '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    value = value
+      .replace(/^\[+|\]+$/g, '')
+      .replace(/[,，]+/g, '')
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
     return value || null;
   }
 
@@ -4046,13 +4088,10 @@ Treat this runtime time data as the authoritative source of the current date, lo
       (block?.parts || []).forEach((part, partIndex) => {
         const tags = part?.tags;
         if (!Array.isArray(tags)) return;
-        if (tags.length > 2) {
-          violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].tags must contain at most 2 tags`);
-        }
         tags.forEach((rawTag, tagIndex) => {
           const tag = typeof rawTag === 'string' ? rawTag.trim() : '';
-          if (!tag || /[\[\],\r\n]/.test(tag) || /[\u3400-\u9fff]/.test(tag)) {
-            violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].tags[${tagIndex}] must be one non-empty English tag without brackets, commas, or newlines`);
+          if (!tag || /[\[\]\r\n]/.test(tag) || /[\u3400-\u9fff]/.test(tag)) {
+            violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].tags[${tagIndex}] must be one non-empty English tag without brackets or newlines`);
           }
         });
       });
@@ -4185,7 +4224,11 @@ Treat this runtime time data as the authoritative source of the current date, lo
         sourceDeliveryBlockCount: Array.isArray(payload.deliveryBlocks) ? payload.deliveryBlocks.length : 0,
         normalizedDeliveryBlockCount: deliveryBlocks.length,
         sourceStickerEventCount: Array.isArray(payload.stickerEvents) ? payload.stickerEvents.length : 0,
-        normalizedStickerEventCount: stickerEvents.length
+        normalizedStickerEventCount: stickerEvents.length,
+        speechTagCommaNormalizedCount: (Array.isArray(payload.deliveryBlocks) ? payload.deliveryBlocks : [])
+          .reduce((total, block) => total + (Array.isArray(block?.parts) ? block.parts : [])
+            .reduce((partTotal, part) => partTotal + (Array.isArray(part?.tags) ? part.tags : [])
+              .filter(tag => typeof tag === 'string' && /[,，]/.test(tag)).length, 0), 0)
       }
     };
   }
@@ -4226,6 +4269,10 @@ Treat this runtime time data as the authoritative source of the current date, lo
       reasons.push(
         `stickerEvents normalized ${diagnostics.sourceStickerEventCount}→${diagnostics.normalizedStickerEventCount}`
       );
+    }
+
+    if (Number(diagnostics.speechTagCommaNormalizedCount) > 0) {
+      reasons.push(`SpeechPlan comma removed in ${Number(diagnostics.speechTagCommaNormalizedCount)} tag(s)`);
     }
 
     const visibleBlocks = blocks.map(block => getDeliveryBlockCleanText(block));
@@ -4414,7 +4461,13 @@ Treat this runtime time data as the authoritative source of the current date, lo
           ok: false,
           kind: 'validation',
           error: responseCore.error,
-          violations: responseCore.violations || []
+          violations: responseCore.violations || [],
+          rawResponseText: parsedResponse.replyText,
+          stopReason: parsedResponse.stopReason ?? null,
+          stopSequence: parsedResponse.stopSequence ?? null,
+          apiResponseId: parsedResponse.apiResponseId || null,
+          responseModel: parsedResponse.responseModel || null,
+          unknownBlockTypes: parsedResponse.unknownBlockTypes || []
         };
       }
 
@@ -4424,7 +4477,13 @@ Treat this runtime time data as the authoritative source of the current date, lo
           ok: false,
           kind: 'validation',
           error: `回复语言异常：当前要求 ${languageLabel(config.replyLanguage)}`,
-          languageValidation
+          languageValidation,
+          rawResponseText: parsedResponse.replyText,
+          stopReason: parsedResponse.stopReason ?? null,
+          stopSequence: parsedResponse.stopSequence ?? null,
+          apiResponseId: parsedResponse.apiResponseId || null,
+          responseModel: parsedResponse.responseModel || null,
+          unknownBlockTypes: parsedResponse.unknownBlockTypes || []
         };
       }
 
@@ -4538,6 +4597,28 @@ Treat this runtime time data as the authoritative source of the current date, lo
     };
   }
 
+  function recordFailedResponseDebug(chatId, userMessageId, result, config) {
+    if (!chatId || typeof result?.rawResponseText !== 'string') return null;
+    const attemptId = `attempt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const entry = {
+      attemptId,
+      chatId,
+      userMessageId: userMessageId || null,
+      errorKind: result.kind || 'validation',
+      error: result.error || 'Unknown response validation failure',
+      violations: Array.isArray(result.violations) ? result.violations : [],
+      rawResponseText: result.rawResponseText,
+      stopReason: result.stopReason ?? null,
+      stopSequence: result.stopSequence ?? null,
+      apiResponseId: result.apiResponseId || null,
+      responseModel: result.responseModel || config?.model || null,
+      unknownBlockTypes: Array.isArray(result.unknownBlockTypes) ? result.unknownBlockTypes : [],
+      createdAt: Date.now()
+    };
+    ResponseFailedDebugStore.set(attemptId, entry);
+    return entry;
+  }
+
     // Shared controller for both a fresh send and a retry. It owns transient UI
   // state but delegates API work and persistence to the layers above.
   async function generateAssistantReply(chatId) {
@@ -4562,6 +4643,9 @@ Treat this runtime time data as the authoritative source of the current date, lo
 
     const requestBaselineMessageId = getLastMessageId(chats[chatId]);
     const result = await requestAssistantReply(chatId, config, requestAbortController.signal);
+    if (!result.ok && typeof result.rawResponseText === 'string') {
+      recordFailedResponseDebug(chatId, requestBaselineMessageId, result, config);
+    }
 
     let preserveReadingPosition = false;
     let readingScrollTop = 0;
@@ -4695,6 +4779,31 @@ ScrollMemory.clear(chatId);
   }
 
   // ── RESPONSE DEBUG ─────────────────────────────────────
+  function openLatestFailedResponseDebug(chatId) {
+    const entry = ResponseFailedDebugStore.getLatestForChat(chatId);
+    if (!entry) return;
+
+    const rows = [
+      ['attemptId', entry.attemptId || '—'],
+      ['userMessageId', entry.userMessageId || '—'],
+      ['model', entry.responseModel || '—'],
+      ['error kind', entry.errorKind || '—'],
+      ['validation error', entry.error || '—'],
+      ['violations', Array.isArray(entry.violations) && entry.violations.length ? entry.violations.join('\n') : '—'],
+      ['Anthropic stop reason', entry.stopReason ?? '—'],
+      ['Anthropic stop sequence', entry.stopSequence ?? '—'],
+      ['Anthropic response id', entry.apiResponseId || '—'],
+      ['unknown content blocks', Array.isArray(entry.unknownBlockTypes) && entry.unknownBlockTypes.length ? entry.unknownBlockTypes.join(', ') : '—'],
+      ['saved at', entry.createdAt ? new Date(entry.createdAt).toISOString() : '—'],
+      ['Raw response', entry.rawResponseText ?? '—']
+    ];
+
+    document.getElementById('responseDebugContent').innerHTML = rows.map(([label, value]) =>
+      `<div class="debug-row"><div class="debug-label">${escHtml(label)}</div><pre>${escHtml(String(value))}</pre></div>`
+    ).join('');
+    document.getElementById('responseDebugModal').classList.add('open');
+  }
+
   function openResponseDebug(messageId) {
     const messages = chats[currentId]?.messages || [];
     const msg = messages.find(message => message.id === messageId);
@@ -5935,6 +6044,7 @@ ${topText}`;
     DraftStore.clear(chatId);
     TranscriptUIState.clearChat(chatId);
     ResponseAnomalyDebugStore.clearChat(chatId);
+    ResponseFailedDebugStore.clearChat(chatId);
     // Text snapshot deletion above is already committed; audio cleanup failure
     // must not block or reverse it — deleteAudioWithFallback queues a retry instead.
     deleteAudioWithFallback(chatId);
@@ -5956,6 +6066,7 @@ ${topText}`;
     purged.forEach(chatId => {
       TranscriptUIState.clearChat(chatId);
       ResponseAnomalyDebugStore.clearChat(chatId);
+      ResponseFailedDebugStore.clearChat(chatId);
       deleteAudioWithFallback(chatId);
     });
     return { ok: true, action: 'purged', chatIds: purged };
@@ -6485,7 +6596,17 @@ ${topText}`;
     retry.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66"></path><path d="M20 4v7h-7"></path></svg>';
     retry.addEventListener('click', () => handleRetryLatestReply(chatId));
 
-    el.append(text, retry);
+    const failedDebug = ResponseFailedDebugStore.getLatestForChat(chatId);
+    if (failedDebug) {
+      const debug = document.createElement('button');
+      debug.type = 'button';
+      debug.className = 'debug-btn';
+      debug.textContent = 'Debug';
+      debug.addEventListener('click', () => openLatestFailedResponseDebug(chatId));
+      el.append(text, debug, retry);
+    } else {
+      el.append(text, retry);
+    }
   }
 
   function syncRequestStatusForChat(chatId) {
