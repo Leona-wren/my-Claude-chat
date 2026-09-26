@@ -1626,11 +1626,13 @@
   const VOYAGE_TEXT_BATCH_SIZE = 500;
   const VOYAGE_INTER_BATCH_WAIT_MS = 22000;
   const VOYAGE_RATE_LIMIT_RETRY_MS = 65000;
+  const CORE_PROMPT_FIELD_ROLE_LINE = 'Field roles: deliveryBlocks.parts[].tags[] are English audible ElevenLabs delivery cues; stickerEvents[].intent is Chinese semantic sticker-retrieval text.';
+  const CORE_PROMPT_FIELD_ROLE_MIGRATION_KEY = 'claude_core_prompt_field_role_v1';
   const DEFAULT_CORE_SYSTEM_PROMPT = `LANG: If replyLanguage=zh, compose directly in natural, idiomatic native Chinese; if replyLanguage=en, compose directly in natural, idiomatic English. User input language does not change replyLanguage; do not translate from another language.
 
 TEXT: All deliveryBlocks.parts[].text in order form the complete visible reply. For short everyday conversation, usually use one natural sentence or tightly linked short expression per block. For longer replies, group blocks by natural paragraph or complete semantic section rather than mechanically splitting every sentence. Within a block, split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
 
-SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.\n\nSTICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when none is wanted. When using a sticker, intent is retrieval text rather than visible reply text. Always compose intent directly in natural, idiomatic Chinese, independently of replyLanguage; do not translate or paraphrase the visible reply into Chinese. Write intent at the semantic granularity needed to choose among stickers: specific enough to distinguish the relevant reaction, interpersonal intention, or communicative move, but abstract away incidental topic details that do not affect sticker choice. Treat each sticker intent as one sticker-sized expressive act, not a summary of the whole situation. Include one primary reaction or communicative move plus only the manner needed to distinguish it. Do not combine several simultaneous emotions, intentions, reversals, or contextual facts into one intent. Omit situational details unless they materially change which sticker should be chosen. If several reactions are present, choose the one the sticker itself is meant to perform; use multiple stickerEvents only when distinct consecutive sticker expressions are genuinely wanted. Avoid overly broad labels such as “满足” or “心虚”. Good granularity examples: “事情顺利后有点满足，想带点小得意地表现出来”; “被发现小心思后有点心虚，想装乖蒙混过去”; “想请对方帮个小忙，带点撒娇卖萌地请求”. Avoid over-specific descriptions tied to incidental details such as a particular code bug, document, person name, or one-off event unless that detail genuinely changes the sticker meaning. When the desired manner matters to the choice (for example cute, absurd, restrained, playful, self-expressive, acting pitiful, pleading, or deliberately silly), include that nuance naturally inside intent rather than in a separate field. Stickers may supplement or replace a verbal reaction. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. repeat>1 deliberately repeats the same sticker consecutively. History may contain [assistant sticker: ...] annotations describing stickers you previously sent.`;
+SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.\n\n${CORE_PROMPT_FIELD_ROLE_LINE}\n\nSTICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when none is wanted. When using a sticker, intent is retrieval text rather than visible reply text. Always compose intent directly in natural, idiomatic Chinese, independently of replyLanguage; do not translate or paraphrase the visible reply into Chinese. Write intent at the semantic granularity needed to choose among stickers: specific enough to distinguish the relevant reaction, interpersonal intention, or communicative move, but abstract away incidental topic details that do not affect sticker choice. Treat each sticker intent as one sticker-sized expressive act, not a summary of the whole situation. Include one primary reaction or communicative move plus only the manner needed to distinguish it. Do not combine several simultaneous emotions, intentions, reversals, or contextual facts into one intent. Omit situational details unless they materially change which sticker should be chosen. If several reactions are present, choose the one the sticker itself is meant to perform; use multiple stickerEvents only when distinct consecutive sticker expressions are genuinely wanted. Avoid overly broad labels such as “满足” or “心虚”. Good granularity examples: “事情顺利后有点满足，想带点小得意地表现出来”; “被发现小心思后有点心虚，想装乖蒙混过去”; “想请对方帮个小忙，带点撒娇卖萌地请求”. Avoid over-specific descriptions tied to incidental details such as a particular code bug, document, person name, or one-off event unless that detail genuinely changes the sticker meaning. When the desired manner matters to the choice (for example cute, absurd, restrained, playful, self-expressive, acting pitiful, pleading, or deliberately silly), include that nuance naturally inside intent rather than in a separate field. Stickers may supplement or replace a verbal reaction. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. repeat>1 deliberately repeats the same sticker consecutively. History may contain [assistant sticker: ...] annotations describing stickers you previously sent.`;
   const DEFAULT_LEGACY_JSON_PROMPT = 'Return only one valid JSON object matching the deliveryBlocks/stickerEvents contract; no Markdown fence or extra text.';
   const SPEECH_PLAN_SCHEMA_VERSION = 2;
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
@@ -1680,20 +1682,35 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
 
   function loadCoreSystemPrompt() {
     const stored = localStorage.getItem(CORE_SYSTEM_PROMPT_KEY);
-    if (localStorage.getItem(CORE_PROMPT_STICKER_MIGRATION_KEY) === '1') {
-      return stored || DEFAULT_CORE_SYSTEM_PROMPT;
+    let merged = stored || '';
+    const stickerMergeDone = localStorage.getItem(CORE_PROMPT_STICKER_MIGRATION_KEY) === '1';
+
+    if (stickerMergeDone) {
+      merged = merged || DEFAULT_CORE_SYSTEM_PROMPT;
     }
 
-    let merged = stored || '';
-    const legacySticker = localStorage.getItem(LEGACY_STICKER_SYSTEM_PROMPT_KEY) || '';
-    const hasStickerSection = /(^|\n)STICKER:/m.test(merged);
+    if (!stickerMergeDone) {
+      const legacySticker = localStorage.getItem(LEGACY_STICKER_SYSTEM_PROMPT_KEY) || '';
+      const hasStickerSection = /(^|\n)STICKER:/m.test(merged);
 
-    if (!merged) {
-      merged = DEFAULT_CORE_SYSTEM_PROMPT;
-    } else if (!hasStickerSection) {
-      const defaultStickerMatch = DEFAULT_CORE_SYSTEM_PROMPT.match(/(^|\n)(STICKER:[\s\S]*)$/m);
-      const stickerSection = legacySticker.trim() || (defaultStickerMatch ? defaultStickerMatch[2].trim() : '');
-      if (stickerSection) merged = `${merged.trim()}\n\n${stickerSection}`;
+      if (!merged) {
+        merged = DEFAULT_CORE_SYSTEM_PROMPT;
+      } else if (!hasStickerSection) {
+        const defaultStickerMatch = DEFAULT_CORE_SYSTEM_PROMPT.match(/(^|\n)(STICKER:[\s\S]*)$/m);
+        const stickerSection = legacySticker.trim() || (defaultStickerMatch ? defaultStickerMatch[2].trim() : '');
+        if (stickerSection) merged = `${merged.trim()}\n\n${stickerSection}`;
+      }
+    }
+
+    if (localStorage.getItem(CORE_PROMPT_FIELD_ROLE_MIGRATION_KEY) !== '1') {
+      if (!merged.includes(CORE_PROMPT_FIELD_ROLE_LINE)) {
+        if (/(^|\n)STICKER:/m.test(merged)) {
+          merged = merged.replace(/\n\nSTICKER:/, `\n\n${CORE_PROMPT_FIELD_ROLE_LINE}\n\nSTICKER:`);
+        } else {
+          merged = `${merged.trim()}\n\n${CORE_PROMPT_FIELD_ROLE_LINE}`;
+        }
+      }
+      localStorage.setItem(CORE_PROMPT_FIELD_ROLE_MIGRATION_KEY, '1');
     }
 
     localStorage.setItem(CORE_SYSTEM_PROMPT_KEY, merged);
@@ -3926,7 +3943,14 @@ Treat this runtime time data as the authoritative source of the current date, lo
                   required: ['text', 'tags'],
                   properties: {
                     text: { type: 'string' },
-                    tags: { type: 'array', items: { type: 'string' } }
+                    tags: {
+                      type: 'array',
+                      description: 'ElevenLabs vocal-performance cues for this spoken text part. Each item is one concise English audible delivery cue, not semantic or sticker intent.',
+                      items: {
+                        type: 'string',
+                        description: 'One concise English audible vocal-performance cue, for example softly, teasing, sighs, or low and steady.'
+                      }
+                    }
                   }
                 }
               }
@@ -3941,7 +3965,10 @@ Treat this runtime time data as the authoritative source of the current date, lo
             required: ['slot', 'intent', 'repeat'],
             properties: {
               slot: { type: 'integer' },
-              intent: { type: 'string' },
+              intent: {
+                type: 'string',
+                description: 'Chinese semantic retrieval text used only to choose a sticker: one sticker-sized reaction or communicative move, not a speech or audio tag.'
+              },
               repeat: { type: 'integer' }
             }
           }
@@ -3954,7 +3981,7 @@ Treat this runtime time data as the authoritative source of the current date, lo
     // This frontend intentionally uses only the smallest, proven-safe subset needed by
     // Response Core. If a future edit adds another schema keyword, fail locally before
     // sending the request instead of discovering an Anthropic incompatibility via HTTP 400.
-    const allowedKeywords = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum']);
+    const allowedKeywords = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'description']);
     const visit = (node, path = '$', isPropertiesMap = false) => {
       if (!node || typeof node !== 'object') return;
       if (Array.isArray(node)) {
