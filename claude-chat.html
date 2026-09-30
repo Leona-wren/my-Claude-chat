@@ -1758,7 +1758,7 @@
 <div class="modal-overlay" id="elModal">
   <div class="modal">
     <h2>ElevenLabs 语音</h2>
-    <p>中英文都使用 Eleven v3；播放时按消息自身的 language 选择对应 voice。设置只保存在本地浏览器。</p>
+    <p>中英文都使用 Eleven v4；播放时按消息自身的 language 选择对应 voice。设置只保存在本地浏览器。</p>
     <label for="elKeyInput">ElevenLabs API Key</label>
     <input type="password" id="elKeyInput" placeholder="sk_..." />
     <label>English Voice ID</label>
@@ -1914,17 +1914,18 @@
   const CORE_PROMPT_FIELD_ROLE_MIGRATION_KEY = 'claude_core_prompt_field_role_v1';
   const STICKER_PROMPT_COMPACT_MIGRATION_KEY = 'claude_sticker_prompt_compact_v1';
   const STICKER_INTENT_ATOMIC_MIGRATION_KEY = 'claude_sticker_intent_atomic_v1';
+  const ELEVEN_V4_SPEECH_PROMPT_MIGRATION_KEY = 'claude_eleven_v4_speech_prompt_v1';
   const DEFAULT_CORE_SYSTEM_PROMPT = `LANG: If replyLanguage=zh, compose directly in natural, idiomatic native Chinese; if replyLanguage=en, compose directly in natural, idiomatic English. User input language does not change replyLanguage; do not translate from another language.
 
 TEXT: All deliveryBlocks.parts[].text in order form the complete visible reply. For short everyday conversation, usually use one natural sentence or tightly linked short expression per block. For longer replies, group blocks by natural paragraph or complete semantic section rather than mechanically splitting every sentence. Within a block, split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
 
-SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.\n\n${CORE_PROMPT_FIELD_ROLE_LINE}\n\nSTICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when none is wanted. When using a sticker, intent is retrieval text rather than visible reply text. Always compose intent directly in natural, idiomatic Chinese, independently of replyLanguage. Write each intent as one compact Chinese sticker label, usually one simple clause in the form [optional manner or attitude + visible reaction or action], starting directly with the reaction itself. Examples: “慌乱甩锅”; “假装委屈投降”; “嘴馋抗议”; “坏笑戳穿”; “小得意邀功”; “被逗笑了”. Stickers may supplement or replace a verbal reaction. If several distinct sticker expressions are genuinely wanted in sequence, use multiple stickerEvents. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. repeat controls consecutive repetition of the same sticker. Use repeat>1 only when repetition itself is part of the expression, such as emphatic insistence, excited spam, repeated pleading, or an intentionally repeated reaction; otherwise use 1. History may contain [assistant sticker: ...] annotations describing stickers you previously sent.`;
+SPEECH: Compose Eleven v4 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: warm, calm, curious, thoughtful, uncertain, hesitant, nervous, worried, scared, alarmed, terrified, excited, delighted, amused, surprised, sarcastic, mischievously, teasing, annoyed, angry, furious, upset, resigned, tired, sleepy drowsy voice, deadpan, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, building, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, nervous laugh, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, yawning, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.\n\n${CORE_PROMPT_FIELD_ROLE_LINE}\n\nSTICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when none is wanted. When using a sticker, intent is retrieval text rather than visible reply text. Always compose intent directly in natural, idiomatic Chinese, independently of replyLanguage. Write each intent as one compact Chinese sticker label, usually one simple clause in the form [optional manner or attitude + visible reaction or action], starting directly with the reaction itself. Examples: “慌乱甩锅”; “假装委屈投降”; “嘴馋抗议”; “坏笑戳穿”; “小得意邀功”; “被逗笑了”. Stickers may supplement or replace a verbal reaction. If several distinct sticker expressions are genuinely wanted in sequence, use multiple stickerEvents. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. repeat controls consecutive repetition of the same sticker. Use repeat>1 only when repetition itself is part of the expression, such as emphatic insistence, excited spam, repeated pleading, or an intentionally repeated reaction; otherwise use 1. History may contain [assistant sticker: ...] annotations describing stickers you previously sent.`;
   const DEFAULT_LEGACY_JSON_PROMPT = 'Return only one valid JSON object matching the deliveryBlocks/stickerEvents contract; no Markdown fence or extra text.';
   const SPEECH_PLAN_SCHEMA_VERSION = 2;
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
-  const ELEVEN_TTS_MODEL = 'eleven_v3';
+  const ELEVEN_TTS_MODEL = 'eleven_v4';
   const ELEVEN_RENDER_VERSION = 1;
-  const ELEVEN_V3_VOICE_SETTINGS = { stability: 0.35, similarity_boost: 0.75, style: 0, speed: 1 };
+  const ELEVEN_V4_VOICE_SETTINGS = { stability: 0.5, similarity_boost: 0.75 };
   const DOUBAO_PROXY_URL = 'https://persona-gateway-oxcpmcibhq.cn-beijing.fcapp.run';
   const DOUBAO_PROXY_TOKEN_KEY = 'personal_ai_tts_proxy_token_v1';
 
@@ -2015,6 +2016,15 @@ SPEECH: Compose Eleven v3 delivery from the same full-context understanding as t
         merged = merged.replace(oldIntentStickerPrompt, newIntentStickerPrompt);
       }
       localStorage.setItem(STICKER_INTENT_ATOMIC_MIGRATION_KEY, '1');
+    }
+
+    if (localStorage.getItem(ELEVEN_V4_SPEECH_PROMPT_MIGRATION_KEY) !== '1') {
+      const oldElevenSpeechPrompt = `SPEECH: Compose Eleven v3 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: happy, sad, excited, angry, annoyed, appalled, thoughtful, surprised, curious, sarcastic, mischievously, worried, tired, upset, resigned, awe, deadpan, teasing, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, soft chuckle, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.`;
+      const newElevenSpeechPrompt = `SPEECH: Compose Eleven v4 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: warm, calm, curious, thoughtful, uncertain, hesitant, nervous, worried, scared, alarmed, terrified, excited, delighted, amused, surprised, sarcastic, mischievously, teasing, annoyed, angry, furious, upset, resigned, tired, sleepy drowsy voice, deadpan, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, building, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, nervous laugh, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, yawning, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.`;
+      if (merged.includes(oldElevenSpeechPrompt)) {
+        merged = merged.replace(oldElevenSpeechPrompt, newElevenSpeechPrompt);
+      }
+      localStorage.setItem(ELEVEN_V4_SPEECH_PROMPT_MIGRATION_KEY, '1');
     }
 
     localStorage.setItem(CORE_SYSTEM_PROMPT_KEY, merged);
@@ -5158,12 +5168,12 @@ ScrollMemory.clear(chatId);
     if (!msg || msg.role !== 'assistant') return;
 
     const validation = msg.language ? validateReplyLanguage(msg.content, msg.language) : null;
-    const plannedProvider = REPLY_LANGUAGES.has(msg.language) ? 'ElevenLabs v3' : 'Legacy';
+    const plannedProvider = REPLY_LANGUAGES.has(msg.language) ? 'ElevenLabs v4' : 'Legacy';
     const voiceId = REPLY_LANGUAGES.has(msg.language) ? getElevenVoiceId(msg.language) : '';
     const currentVoice = voiceId ? `ElevenLabs · ${ELEVEN_TTS_MODEL} · ${voiceId}` : '—';
     const blocks = Array.isArray(msg.deliveryBlocks) ? msg.deliveryBlocks : [];
     const speechBlocksPreview = blocks.length ? blocks.map((block, blockIndex) =>
-      `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${compileDeliveryBlockForElevenV3(block)}`
+      `b${blockIndex + 1} · joinAfter=${block.joinAfter}\n${compileDeliveryBlockForElevenV4(block)}`
     ).join('\n\n') : '—';
 
     const persistedStickerSamples = getStickerCalibrationSamplesForMessage(msg.id);
@@ -5273,7 +5283,7 @@ ${topText}`;
   // Provider adapter only: no semantic inference here. New SpeechPlan v2 parts
   // carry inline tags that apply immediately before that part's text. Legacy v1
   // tagsBefore/tagsAfter remain readable for existing stored messages.
-  function compileDeliveryBlockForElevenV3(block) {
+  function compileDeliveryBlockForElevenV4(block) {
     const partStreams = [];
     (block?.parts || []).forEach(part => {
       const text = normalizeTtsInlineText(part?.text);
@@ -5448,7 +5458,7 @@ ${topText}`;
   }
 
   // ── 语音 ─────────────────────────────────────────────
-  // Both en/zh use Eleven v3. msg.language selects the voice ID only when playback is requested.
+  // Both en/zh use Eleven v4. msg.language selects the voice ID only when playback is requested.
   // Existing cached audio wins, including historical Chinese Doubao artifacts.
   async function playVoice(btn) {
     const msgId = btn.dataset.msgId;
@@ -5470,7 +5480,7 @@ ${topText}`;
 
     if (blocks && requestedBlockIndex !== null && blocks[requestedBlockIndex]) {
       const block = blocks[requestedBlockIndex];
-      ttsText = compileDeliveryBlockForElevenV3(block);
+      ttsText = compileDeliveryBlockForElevenV4(block);
       blockId = block.blockId || `b${requestedBlockIndex + 1}`;
     } else if (msg?.language === 'zh' || msg?.language === 'en') {
       ttsText = normalizeTtsInlineText(msg.content || '');
@@ -5524,7 +5534,8 @@ ${topText}`;
       const requestBody = {
         text: ttsText,
         model_id: ELEVEN_TTS_MODEL,
-        voice_settings: { ...ELEVEN_V3_VOICE_SETTINGS }
+        language_code: language,
+        voice_settings: { ...ELEVEN_V4_VOICE_SETTINGS }
       };
       const res = await fetch(elUrl, {
         method: 'POST',
@@ -5926,6 +5937,7 @@ ${topText}`;
     localStorage.removeItem(CORE_SYSTEM_PROMPT_KEY);
     localStorage.removeItem(LEGACY_STICKER_SYSTEM_PROMPT_KEY);
     localStorage.setItem(CORE_PROMPT_STICKER_MIGRATION_KEY, '1');
+    localStorage.setItem(ELEVEN_V4_SPEECH_PROMPT_MIGRATION_KEY, '1');
     localStorage.removeItem(LEGACY_JSON_PROMPT_KEY);
     document.getElementById('systemPromptInput').value = coreSystemPrompt;
     document.getElementById('legacyJsonPromptInput').value = legacyJsonPrompt;
