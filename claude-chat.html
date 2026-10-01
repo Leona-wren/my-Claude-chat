@@ -787,6 +787,53 @@
 
   .modal input:focus, .modal textarea:focus { border-color: var(--accent); }
 
+
+  .tts-tuning-panel {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .tts-tuning-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .tts-tuning-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .tts-tuning-value {
+    min-width: 38px;
+    text-align: right;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tts-tuning-row input[type="range"] {
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    accent-color: var(--accent);
+  }
+
+  .tts-tuning-hint {
+    font-size: 10.5px;
+    line-height: 1.45;
+    color: var(--text-soft);
+  }
+
   .modal-btns {
     display: flex;
     gap: 8px;
@@ -1765,6 +1812,27 @@
     <input type="text" id="elEnVoiceIdInput" readonly />
     <label for="elZhVoiceIdInput">中文 Voice ID</label>
     <input type="text" id="elZhVoiceIdInput" placeholder="0DKC76GAganwbm9TweFs" />
+
+    <div class="tts-tuning-panel">
+      <div class="tts-tuning-row">
+        <div class="tts-tuning-head">
+          <label for="elStabilityInput">稳定性 Stability</label>
+          <span class="tts-tuning-value" id="elStabilityValue">75</span>
+        </div>
+        <input type="range" id="elStabilityInput" min="0" max="100" step="1" value="75" oninput="syncElevenTuningLabels()" />
+        <div class="tts-tuning-hint">越高越稳定、克制；越低越灵活、情绪起伏更大。</div>
+      </div>
+      <div class="tts-tuning-row">
+        <div class="tts-tuning-head">
+          <label for="elSimilarityInput">相似性 Similarity</label>
+          <span class="tts-tuning-value" id="elSimilarityValue">80</span>
+        </div>
+        <input type="range" id="elSimilarityInput" min="0" max="100" step="1" value="80" oninput="syncElevenTuningLabels()" />
+        <div class="tts-tuning-hint">越高越贴近原始音色身份；过高时可能减少部分自然变化。</div>
+      </div>
+      <div class="tts-tuning-hint">只影响之后首次生成、尚未缓存的语音；已缓存的历史语音保持原样。</div>
+    </div>
+
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('elModal')">取消</button>
       <button class="btn-save" onclick="saveElKey()">保存</button>
@@ -1925,7 +1993,10 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
   const ELEVEN_TTS_MODEL = 'eleven_v4';
   const ELEVEN_RENDER_VERSION = 1;
-  const ELEVEN_V4_VOICE_SETTINGS = { stability: 0.5, similarity_boost: 0.75 };
+  const ELEVEN_V4_STABILITY_KEY = 'eleven_v4_stability_v1';
+  const ELEVEN_V4_SIMILARITY_KEY = 'eleven_v4_similarity_v1';
+  const ELEVEN_V4_DEFAULT_STABILITY = 0.75;
+  const ELEVEN_V4_DEFAULT_SIMILARITY = 0.80;
   const DOUBAO_PROXY_URL = 'https://persona-gateway-oxcpmcibhq.cn-beijing.fcapp.run';
   const DOUBAO_PROXY_TOKEN_KEY = 'personal_ai_tts_proxy_token_v1';
 
@@ -1961,7 +2032,24 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
   let selectedModelId = localStorage.getItem(MODEL_SELECTION_KEY) || '';
   let modelPrefs = JSON.parse(localStorage.getItem(MODEL_PREFS_KEY) || '{}');
   let modelRegistry = [];
+  function loadElevenV4Setting(key, fallback) {
+    const raw = localStorage.getItem(key);
+    if (raw === null || raw === '') return fallback;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return fallback;
+    return Math.max(0, Math.min(1, value));
+  }
+
+  function getElevenV4VoiceSettings() {
+    return {
+      stability: elevenV4Stability,
+      similarity_boost: elevenV4Similarity
+    };
+  }
+
   let elKey = localStorage.getItem('el_key') || '';
+  let elevenV4Stability = loadElevenV4Setting(ELEVEN_V4_STABILITY_KEY, ELEVEN_V4_DEFAULT_STABILITY);
+  let elevenV4Similarity = loadElevenV4Setting(ELEVEN_V4_SIMILARITY_KEY, ELEVEN_V4_DEFAULT_SIMILARITY);
   let doubaoProxyToken = localStorage.getItem(DOUBAO_PROXY_TOKEN_KEY) || '';
   let voyageApiKey = localStorage.getItem(VOYAGE_API_KEY_KEY) || '';
   const ELEVEN_EN_VOICE_ID = '0qHbGTWOPgPUvThY4Te6';
@@ -5535,7 +5623,7 @@ ${topText}`;
         text: ttsText,
         model_id: ELEVEN_TTS_MODEL,
         language_code: language,
-        voice_settings: { ...ELEVEN_V4_VOICE_SETTINGS }
+        voice_settings: getElevenV4VoiceSettings()
       };
       const res = await fetch(elUrl, {
         method: 'POST',
@@ -5958,16 +6046,30 @@ ${topText}`;
     flashStatus('Instruction 已保存 ✓', 'ok', 1800);
   }
 
+  function syncElevenTuningLabels() {
+    const stabilityInput = document.getElementById('elStabilityInput');
+    const similarityInput = document.getElementById('elSimilarityInput');
+    const stabilityValue = document.getElementById('elStabilityValue');
+    const similarityValue = document.getElementById('elSimilarityValue');
+    if (stabilityInput && stabilityValue) stabilityValue.textContent = stabilityInput.value;
+    if (similarityInput && similarityValue) similarityValue.textContent = similarityInput.value;
+  }
+
   function openElKey() {
     document.getElementById('elKeyInput').value = elKey ? '••••••••••••••••' : '';
     document.getElementById('elEnVoiceIdInput').value = ELEVEN_EN_VOICE_ID;
     document.getElementById('elZhVoiceIdInput').value = elevenZhVoiceId;
+    document.getElementById('elStabilityInput').value = String(Math.round(elevenV4Stability * 100));
+    document.getElementById('elSimilarityInput').value = String(Math.round(elevenV4Similarity * 100));
+    syncElevenTuningLabels();
     document.getElementById('elModal').classList.add('open');
   }
 
   function saveElKey() {
     const elVal = document.getElementById('elKeyInput').value.trim();
     const zhVoiceVal = document.getElementById('elZhVoiceIdInput').value.trim();
+    const stabilityPct = Number(document.getElementById('elStabilityInput').value);
+    const similarityPct = Number(document.getElementById('elSimilarityInput').value);
 
     if (elVal && !elVal.startsWith('•')) {
       elKey = elVal;
@@ -5978,10 +6080,15 @@ ${topText}`;
     if (elevenZhVoiceId) localStorage.setItem(ELEVEN_ZH_VOICE_KEY, elevenZhVoiceId);
     else localStorage.removeItem(ELEVEN_ZH_VOICE_KEY);
 
+    elevenV4Stability = Math.max(0, Math.min(1, Number.isFinite(stabilityPct) ? stabilityPct / 100 : ELEVEN_V4_DEFAULT_STABILITY));
+    elevenV4Similarity = Math.max(0, Math.min(1, Number.isFinite(similarityPct) ? similarityPct / 100 : ELEVEN_V4_DEFAULT_SIMILARITY));
+    localStorage.setItem(ELEVEN_V4_STABILITY_KEY, String(elevenV4Stability));
+    localStorage.setItem(ELEVEN_V4_SIMILARITY_KEY, String(elevenV4Similarity));
+
     closeModal('elModal');
     if (currentId) loadChat(currentId);
     else renderSidebar();
-    flashStatus('ElevenLabs 语音设置已保存 ✓', 'ok', 2000);
+    flashStatus(`ElevenLabs 语音设置已保存 · Stability ${Math.round(elevenV4Stability * 100)} / Similarity ${Math.round(elevenV4Similarity * 100)} ✓`, 'ok', 2200);
   }
   function closeModal(id) {
     document.getElementById(id).classList.remove('open');
