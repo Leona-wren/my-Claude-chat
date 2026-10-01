@@ -4358,7 +4358,15 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return fallback?.capabilities?.structured_outputs?.supported === true;
   }
 
-  function buildResponseJsonSchema() {
+  function buildResponseJsonSchema(replyLanguage = null) {
+    const visibleTextSchema = replyLanguage === 'en'
+      ? {
+          type: 'string',
+          description: 'Compose this visible reply text directly in natural idiomatic English.',
+          pattern: '^[^\\u3400-\\u9fff]*$'
+        }
+      : { type: 'string' };
+
     return {
       type: 'object',
       additionalProperties: false,
@@ -4379,7 +4387,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
                   additionalProperties: false,
                   required: ['text', 'tags'],
                   properties: {
-                    text: { type: 'string' },
+                    text: visibleTextSchema,
                     tags: {
                       type: 'array',
                       description: 'ElevenLabs vocal-performance cues for this spoken text part. Each item is one concise English audible delivery cue, not semantic or sticker intent.',
@@ -4418,7 +4426,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     // This frontend intentionally uses only the smallest, proven-safe subset needed by
     // Response Core. If a future edit adds another schema keyword, fail locally before
     // sending the request instead of discovering an Anthropic incompatibility via HTTP 400.
-    const allowedKeywords = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'description']);
+    const allowedKeywords = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'description', 'pattern']);
     const visit = (node, path = '$', isPropertiesMap = false) => {
       if (!node || typeof node !== 'object') return;
       if (Array.isArray(node)) {
@@ -4440,7 +4448,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
 
   function applyResponseFormatToBody(body, config) {
     if (!config.structuredOutputSupported) return;
-    const schema = buildResponseJsonSchema();
+    const schema = buildResponseJsonSchema(config.replyLanguage);
     assertAnthropicSchemaCompatibility(schema);
     body.output_config = {
       ...(body.output_config || {}),
