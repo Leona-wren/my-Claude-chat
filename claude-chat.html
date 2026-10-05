@@ -3118,7 +3118,7 @@ body.skin-wa #sendBtn::before{
   const ELEVEN_ZH_VOICE_DEFAULT = '0DKC76GAganwbm9TweFs';
   const STICKER_SCHEMA_VERSION = 2;
   const STICKER_MISSING_KEY = 'claude_sticker_missing_v1';
-  const STICKER_CALIBRATION_KEY = 'claude_sticker_calibration_visual_v1';
+  const STICKER_CALIBRATION_KEY = 'claude_sticker_calibration_visual_v2';
   const RESPONSE_ANOMALY_DEBUG_KEY = 'claude_response_anomaly_debug_v2';
   const RESPONSE_FAILED_DEBUG_KEY = 'claude_response_failed_debug_v1';
   const VOYAGE_API_KEY_KEY = 'personal_ai_voyage_key_v1';
@@ -3131,11 +3131,12 @@ body.skin-wa #sendBtn::before{
   const CORE_PROMPT_FIELD_ROLE_LINE = 'Field roles: deliveryBlocks.parts[].tags[] are English audible ElevenLabs delivery cues; stickerEvents[].intent is Chinese semantic sticker-retrieval text.';
   const CORE_PROMPT_FIELD_ROLE_MIGRATION_KEY = 'claude_core_prompt_field_role_v1';
   const STICKER_VISUAL_STATE_PROMPT_MIGRATION_KEY = 'claude_sticker_visual_state_prompt_v1';
+  const STICKER_VISUAL_STATE_PROMPT_V2_MIGRATION_KEY = 'claude_sticker_visual_state_prompt_v2';
   const ELEVEN_V4_SPEECH_PROMPT_MIGRATION_KEY = 'claude_eleven_v4_speech_prompt_v1';
   const REPLY_LANGUAGE_CONTROL_MIGRATION_KEY = 'claude_reply_language_control_v1';
   const DEFAULT_CORE_SYSTEM_PROMPT = `TEXT: All deliveryBlocks.parts[].text in order form the complete visible reply. For short everyday conversation, usually use one natural sentence or tightly linked short expression per block. For longer replies, group blocks by natural paragraph or complete semantic section rather than mechanically splitting every sentence. Within a block, split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
 
-SPEECH: Compose Eleven v4 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: warm, calm, curious, thoughtful, uncertain, hesitant, nervous, worried, scared, alarmed, terrified, excited, delighted, amused, surprised, sarcastic, mischievously, teasing, annoyed, angry, furious, upset, resigned, tired, sleepy drowsy voice, deadpan, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, building, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, nervous laugh, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, yawning, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.\n\n${CORE_PROMPT_FIELD_ROLE_LINE}\n\nSTICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when no sticker expression is wanted. When using a sticker, intent is Chinese retrieval text used only to choose a sticker. Describe only one immediate sticker-sized state that could be directly depicted in a single image: a facial expression, pose, or affective reaction/state. Do not summarize the situation, explain its cause, state a goal toward the other person, describe a relationship intention, or describe what happened before or after. Write intent as one compact, natural Chinese state label rather than a sentence or mini-narrative. Examples: “心虚偷看”; “委屈巴巴”; “一脸震惊”; “得意偷笑”; “无语凝住”; “眼巴巴期待”; “尴尬捂脸”; “气鼓鼓”. If the expression cannot be represented as one such immediate visual state, use no sticker. If several distinct sticker expressions are genuinely wanted in sequence, use multiple stickerEvents. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. repeat controls consecutive repetition of the same sticker. Use repeat>1 only when repetition itself is part of the expression; otherwise use 1. History may contain [assistant sticker: ...] annotations describing stickers you previously sent.`;
+SPEECH: Compose Eleven v4 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: warm, calm, curious, thoughtful, uncertain, hesitant, nervous, worried, scared, alarmed, terrified, excited, delighted, amused, surprised, sarcastic, mischievously, teasing, annoyed, angry, furious, upset, resigned, tired, sleepy drowsy voice, deadpan, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, building, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, nervous laugh, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, yawning, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.\n\n${CORE_PROMPT_FIELD_ROLE_LINE}\n\nSTICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when no sticker expression is wanted. When using a sticker, intent is Chinese retrieval text used only to choose a sticker. Describe only one immediate sticker-sized state that could be directly depicted in a single image: a facial expression, pose, or affective reaction/state. Do not summarize the situation, explain its cause, state a goal toward the other person, describe a relationship intention, or describe what happened before or after. Write intent as one compact, natural Chinese state label rather than a sentence or mini-narrative. Choose the immediate state from the current moment rather than copying a previous sticker label; reuse the same wording only when the same immediate state is genuinely still being expressed. History may contain [assistant sticker: ...] annotations recording stickers you actually used; treat them as factual conversational history so later references to those stickers remain understandable, not as preferred labels or examples to copy. Do not treat prior sticker labels as a fixed vocabulary. If the expression cannot be represented as one such immediate visual state, use no sticker. If several distinct sticker expressions are genuinely wanted in sequence, use multiple stickerEvents. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. repeat controls consecutive repetition of the same sticker. Use repeat>1 only when repetition itself is part of the expression; otherwise use 1.`;
   const DEFAULT_LEGACY_JSON_PROMPT = 'Return only one valid JSON object matching the deliveryBlocks/stickerEvents contract; no Markdown fence or extra text.';
   const SPEECH_PLAN_SCHEMA_VERSION = 2;
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
@@ -3251,6 +3252,22 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       localStorage.removeItem('claude_sticker_prompt_compact_v1');
       localStorage.removeItem('claude_sticker_intent_atomic_v1');
       localStorage.setItem(STICKER_VISUAL_STATE_PROMPT_MIGRATION_KEY, '1');
+    }
+
+    if (localStorage.getItem(STICKER_VISUAL_STATE_PROMPT_V2_MIGRATION_KEY) !== '1') {
+      const stickerIndex = merged.search(/(^|\n)STICKER:/m);
+      let prefix = stickerIndex >= 0 ? merged.slice(0, stickerIndex).trimEnd() : merged.trim();
+      if (!prefix.includes(CORE_PROMPT_FIELD_ROLE_LINE)) {
+        prefix = `${prefix}\n\n${CORE_PROMPT_FIELD_ROLE_LINE}`;
+      }
+      const defaultStickerMatch = DEFAULT_CORE_SYSTEM_PROMPT.match(/(^|\n)(STICKER:[\s\S]*)$/m);
+      const stickerSection = defaultStickerMatch ? defaultStickerMatch[2].trim() : '';
+      merged = stickerSection ? `${prefix}\n\n${stickerSection}` : prefix;
+
+      // The first visual-state run was strongly anchored by concrete examples/history echoes.
+      // Start a clean calibration epoch after removing those lexical anchors.
+      localStorage.removeItem('claude_sticker_calibration_visual_v1');
+      localStorage.setItem(STICKER_VISUAL_STATE_PROMPT_V2_MIGRATION_KEY, '1');
     }
 
     if (localStorage.getItem(REPLY_LANGUAGE_CONTROL_MIGRATION_KEY) !== '1') {
@@ -5541,7 +5558,8 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
                       description: 'ElevenLabs vocal-performance cues for this spoken text part. Each item is one concise English audible delivery cue, not semantic or sticker intent.',
                       items: {
                         type: 'string',
-                        description: 'One concise English audible vocal-performance cue, for example softly, teasing, sighs, or low and steady.'
+                        description: 'One concise English audible vocal-performance cue, for example softly, teasing, sighs, or low and steady.',
+                        pattern: "^[A-Za-z][A-Za-z .'-]*$"
                       }
                     }
                   }
@@ -5704,14 +5722,15 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       });
     }
 
+
     (payload?.deliveryBlocks || []).forEach((block, blockIndex) => {
       (block?.parts || []).forEach((part, partIndex) => {
         const tags = part?.tags;
         if (!Array.isArray(tags)) return;
         tags.forEach((rawTag, tagIndex) => {
           const tag = typeof rawTag === 'string' ? rawTag.trim() : '';
-          if (!tag || /[\[\]\r\n]/.test(tag) || /[\u3400-\u9fff]/.test(tag)) {
-            violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].tags[${tagIndex}] must be one non-empty English tag without brackets or newlines`);
+          if (!tag || !/^[A-Za-z][A-Za-z .'-]*$/.test(tag)) {
+            violations.push(`deliveryBlocks[${blockIndex}].parts[${partIndex}].tags[${tagIndex}] must be one non-empty English tag using only letters, spaces, periods, apostrophes, or hyphens`);
           }
         });
       });
@@ -5894,7 +5913,6 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     if (Number(diagnostics.speechTagCommaNormalizedCount) > 0) {
       reasons.push(`SpeechPlan comma removed in ${Number(diagnostics.speechTagCommaNormalizedCount)} tag(s)`);
     }
-
     const visibleBlocks = blocks.map(block => getDeliveryBlockCleanText(block));
 
     for (let i = 1; i < visibleBlocks.length; i++) {
