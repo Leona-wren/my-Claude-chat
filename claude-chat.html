@@ -2734,6 +2734,242 @@ body.skin-wa #sendBtn::before{
 }
 
 
+/* ── USER IMAGE ATTACHMENTS (conversation content; skin-aware presentation) ── */
+.image-preview-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 2px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.image-preview-strip[hidden] { display: none !important; }
+#chatImageInput { display: none !important; }
+.chat-image-item img[hidden] { display: none !important; }
+.image-preview-card {
+  position: relative;
+  flex: 0 0 72px;
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+.image-preview-card img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.image-preview-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(24,24,24,.72);
+  color: #fff;
+  font: 15px/20px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,.22);
+}
+.image-attach-btn {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform .12s, opacity .15s, border-color .15s, background .15s, color .15s;
+}
+.image-attach-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.image-attach-btn:active:not(:disabled) { transform: scale(.93); }
+.image-attach-btn:disabled { opacity: .35; cursor: default; }
+.image-attach-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.user-image-grid {
+  width: min(300px, 70vw);
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.user-image-grid.single { grid-template-columns: 1fr; width: min(290px, 70vw); max-width: 100%; }
+.chat-image-item {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--input-bg);
+  cursor: pointer;
+  box-shadow: 0 2px 9px rgba(0,0,0,.09);
+}
+.user-image-grid.single .chat-image-item { aspect-ratio: auto; min-height: 120px; max-height: 360px; }
+.chat-image-item img {
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  max-height: inherit;
+  display: block;
+  object-fit: cover;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+}
+.user-image-grid.single .chat-image-item img { object-fit: contain; background: rgba(0,0,0,.025); }
+.chat-image-missing {
+  min-height: 96px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.chat-image-missing[hidden] { display: none !important; }
+.msg.user.has-images { max-width: min(72%, 340px); }
+.msg.user.has-images .bubble { max-width: 100%; }
+
+/* Natural-green skin: quiet paper-like media controls. */
+body.skin-warm .image-attach-btn {
+  background: rgba(255,255,255,.72);
+  border-color: rgba(92,122,78,.20);
+  color: #71816a;
+  box-shadow: 0 2px 7px rgba(54,72,46,.09);
+}
+body.skin-warm .image-attach-btn:hover:not(:disabled) {
+  background: #fff;
+  color: var(--accent);
+  border-color: rgba(92,122,78,.42);
+}
+body.skin-warm .image-preview-card,
+body.skin-warm .chat-image-item {
+  background: #fff;
+  border-color: rgba(92,122,78,.18);
+  box-shadow: 0 2px 10px rgba(54,72,46,.11);
+}
+
+/* Cocker skin: surrounding frame follows the soft leather/fabric language;
+   the image pixels themselves remain untouched and crisp. */
+body.skin-dark .image-attach-btn {
+  border-color: rgba(209,177,132,.20);
+  color: #c5aa88;
+  background:
+    repeating-linear-gradient(7deg,rgba(255,255,255,.018) 0 1px,transparent 1px 4px),
+    linear-gradient(180deg,#44362f 0%,#332822 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    inset 0 -2px 4px rgba(14,7,5,.28),
+    0 3px 8px rgba(0,0,0,.27);
+}
+body.skin-dark .image-attach-btn:hover:not(:disabled) {
+  color: #e0be91;
+  border-color: rgba(209,177,132,.38);
+  background: linear-gradient(180deg,#4b3b32 0%,#392c26 100%);
+}
+body.skin-dark .image-preview-card,
+body.skin-dark .chat-image-item {
+  border-color: rgba(215,182,137,.20);
+  background: #2d2420;
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,.14),
+    0 3px 10px rgba(0,0,0,.30);
+}
+
+/* Warm-glass skin: translucent control shell, clear image surface. */
+body.skin-wa .image-attach-btn {
+  border-color: rgba(255,244,229,.16);
+  color: rgba(255,238,218,.72);
+  background:
+    radial-gradient(120% 110% at 30% 22%,rgba(255,255,255,.13),transparent 52%),
+    linear-gradient(180deg,rgba(96,66,46,.18),rgba(51,32,23,.15));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.11), 0 4px 12px rgba(25,8,2,.07);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+  backdrop-filter: blur(12px) saturate(1.08);
+}
+body.skin-wa .image-attach-btn:hover:not(:disabled) {
+  color: #ffd19a;
+  border-color: rgba(255,193,119,.34);
+  background:
+    radial-gradient(120% 110% at 30% 22%,rgba(255,255,255,.18),transparent 52%),
+    linear-gradient(180deg,rgba(125,77,43,.22),rgba(64,37,24,.17));
+}
+body.skin-wa .image-preview-card,
+body.skin-wa .chat-image-item {
+  border-color: rgba(255,225,188,.20);
+  background: rgba(63,42,29,.20);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 6px 18px rgba(27,8,2,.09);
+  -webkit-backdrop-filter: blur(8px) saturate(1.06);
+  backdrop-filter: blur(8px) saturate(1.06);
+}
+
+.image-viewer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  padding: 26px;
+  background: rgba(0,0,0,.78);
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+.image-viewer-overlay.open { display: flex; }
+.image-viewer-overlay img {
+  max-width: min(94vw, 1400px);
+  max-height: 92vh;
+  display: block;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 16px 60px rgba(0,0,0,.42);
+  filter: none !important;
+}
+.image-viewer-close {
+  position: fixed;
+  top: 16px;
+  right: 18px;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 50%;
+  background: rgba(20,20,20,.48);
+  color: #fff;
+  font-size: 24px;
+  line-height: 34px;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+@media (max-width: 580px) {
+  .image-preview-card { flex-basis: 64px; width: 64px; height: 64px; }
+  .image-attach-btn { width: 32px; height: 32px; flex-basis: 32px; }
+  .user-image-grid { width: min(280px, 78vw); }
+  .user-image-grid.single { width: min(280px, 78vw); }
+  .image-viewer-overlay { padding: 12px; }
+}
+
+
 </style>
 </head>
 <body class="skin-warm">
@@ -2797,7 +3033,12 @@ body.skin-wa #sendBtn::before{
       有新回复 <span aria-hidden="true">↓</span>
     </button>
     <div class="status-bar" id="statusBar"></div>
+    <div class="image-preview-strip" id="imagePreviewStrip" hidden></div>
     <div class="input-row">
+      <input id="chatImageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden onchange="handleChatImageSelection(event)">
+      <button class="image-attach-btn" id="imageAttachBtn" type="button" aria-label="添加图片" title="添加图片" onclick="document.getElementById('chatImageInput').click()">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><circle cx="9" cy="10" r="1.5"></circle><path d="M5.5 17l4.5-4 3.2 2.8 2.6-2.3 2.7 3.5"></path></svg>
+      </button>
       <textarea id="input" rows="1" placeholder="说点什么…" onkeydown="handleKey(event)"></textarea>
       <button class="send-btn" id="sendBtn" onclick="send()" disabled>
         <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
@@ -2807,6 +3048,11 @@ body.skin-wa #sendBtn::before{
       </button>
     </div>
   </footer>
+</div>
+
+<div class="image-viewer-overlay" id="imageViewerOverlay" onclick="if(event.target===this) closeChatImageViewer()" aria-hidden="true">
+  <button class="image-viewer-close" type="button" onclick="closeChatImageViewer()" aria-label="关闭图片">×</button>
+  <img id="imageViewerImg" alt="查看图片">
 </div>
 
 <!-- SETTINGS: presentation/navigation only; existing feature functions remain unchanged. -->
@@ -3095,6 +3341,10 @@ body.skin-wa #sendBtn::before{
 
 <script>
   const API_URL = 'https://api.anthropic.com/v1/messages';
+  const FILES_URL = 'https://api.anthropic.com/v1/files';
+  const IMAGE_REMOTE_TTL_SECONDS = 30 * 24 * 60 * 60; // remote Anthropic copy only; local IndexedDB is authoritative
+  const MAX_IMAGES_PER_MESSAGE = 4;
+  const SUPPORTED_CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
   const MODELS_URL = 'https://api.anthropic.com/v1/models?limit=1000';
   const MODEL_CACHE_KEY = 'claude_model_registry_v1';
   const MODEL_PREFS_KEY = 'claude_model_prefs_v1';
@@ -3330,6 +3580,14 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     ? localStorage.getItem(REPLY_LANGUAGE_KEY)
     : 'en';
   let audioDB = null;
+  let imageDB = null;
+  let resolveImageDBReady;
+  const imageDBReady = new Promise(resolve => { resolveImageDBReady = resolve; });
+  let pendingImageItems = []; // transient File previews only; never persisted as draft/history
+  let imageSelectionEpoch = 0; // invalidates asynchronous metadata reads when the chat changes
+  let isPreparingImageSend = false; // covers IndexedDB awaits before the generation controller starts
+  let imageChatUrls = [];
+  let imageViewerUrl = null;
   let stickerDB = null;
   let resolveStickerDBReady;
   const stickerDBReady = new Promise(resolve => { resolveStickerDBReady = resolve; });
@@ -3421,6 +3679,72 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       retryPendingAudioCleanup();
     };
   })();
+
+
+  // ── USER IMAGE STORAGE ────────────────────────────────
+  // Authoritative local copy for user-sent conversational images.
+  // Messages keep stable assetId references; remote Anthropic file IDs are disposable cache metadata.
+  (function openImageDB() {
+    const req = indexedDB.open('claude_images', 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('images')) db.createObjectStore('images', { keyPath: 'id' });
+    };
+    req.onsuccess = e => { imageDB = e.target.result; resolveImageDBReady?.(imageDB); };
+    req.onerror = () => { resolveImageDBReady?.(null); };
+  })();
+
+  async function waitForImageDB() {
+    await imageDBReady;
+    return imageDB;
+  }
+
+  const ImageStorage = {
+    async get(id) {
+      await imageDBReady;
+      return new Promise(resolve => {
+        if (!imageDB || !id) return resolve(null);
+        try {
+          const req = imageDB.transaction('images').objectStore('images').get(id);
+          req.onsuccess = e => resolve(e.target.result || null);
+          req.onerror = () => resolve(null);
+        } catch (_) { resolve(null); }
+      });
+    },
+    async put(record) {
+      await imageDBReady;
+      return new Promise(resolve => {
+        if (!imageDB || !record?.id || !record?.blob) return resolve(false);
+        try {
+          const req = imageDB.transaction('images', 'readwrite').objectStore('images').put(record);
+          req.onsuccess = () => resolve(true);
+          req.onerror = () => resolve(false);
+        } catch (_) { resolve(false); }
+      });
+    },
+    async delete(id) {
+      await imageDBReady;
+      return new Promise(resolve => {
+        if (!imageDB || !id) return resolve(false);
+        try {
+          const req = imageDB.transaction('images', 'readwrite').objectStore('images').delete(id);
+          req.onsuccess = () => resolve(true);
+          req.onerror = () => resolve(false);
+        } catch (_) { resolve(false); }
+      });
+    },
+    async list() {
+      await imageDBReady;
+      return new Promise(resolve => {
+        if (!imageDB) return resolve([]);
+        try {
+          const req = imageDB.transaction('images').objectStore('images').getAll();
+          req.onsuccess = e => resolve(Array.isArray(e.target.result) ? e.target.result : []);
+          req.onerror = () => resolve([]);
+        } catch (_) { resolve([]); }
+      });
+    }
+  };
 
 
   // ── P2 STICKER STORAGE ────────────────────────────────
@@ -4666,14 +4990,16 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     const hasUsableModel = !!selectedModelId && !!getModelInfo(selectedModelId);
     const sendBtn = document.getElementById('sendBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const imageAttachBtn = document.getElementById('imageAttachBtn');
     if (sendBtn) {
-      sendBtn.disabled = !apiKey || isLoading || isAssistantRevealActive || !hasUsableModel;
+      sendBtn.disabled = !apiKey || isLoading || isAssistantRevealActive || isPreparingImageSend || !hasUsableModel;
       sendBtn.style.display = isLoading ? 'none' : 'flex';
     }
     if (stopBtn) {
       stopBtn.style.display = isLoading ? 'flex' : 'none';
       stopBtn.disabled = !isLoading || !activeRequestAbortController;
     }
+    if (imageAttachBtn) imageAttachBtn.disabled = isLoading || isAssistantRevealActive || isPreparingImageSend;
   }
 
   function stopGeneration() {
@@ -4792,6 +5118,8 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       saveScrollPositionForChat(currentId);
     }
     hideNewReplyNotice();
+    if (id !== currentId) clearPendingImages();
+    closeChatImageViewer();
     currentId = id;
     if (id && chats[id]) localStorage.setItem(CURRENT_CHAT_KEY, id);
     else localStorage.removeItem(CURRENT_CHAT_KEY);
@@ -4800,6 +5128,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     renderSidebar();
     const area = document.getElementById('chatArea');
     clearStickerChatUrls();
+    clearChatImageUrls();
     area.innerHTML = '';
     const chat = chats[id];
     if (!chat || chat.messages.length === 0) {
@@ -5281,6 +5610,152 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     }
   }
 
+  function getImageAttachments(message) {
+    return (Array.isArray(message?.attachments) ? message.attachments : [])
+      .filter(item => item?.type === 'image' && typeof item.assetId === 'string' && item.assetId);
+  }
+
+  function clearChatImageUrls() {
+    imageChatUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch (_) {} });
+    imageChatUrls = [];
+  }
+
+  function userImageMarkup(message) {
+    const images = getImageAttachments(message);
+    if (!images.length) return '';
+    const items = images.map((item, index) => `<button class="chat-image-item" type="button" data-image-asset-id="${escHtml(item.assetId)}" onclick="openChatImageViewer(this.dataset.imageAssetId)" aria-label="查看图片 ${index + 1}">
+      <img alt="用户图片 ${index + 1}" hidden>
+      <span class="chat-image-missing" hidden>图片不可用</span>
+    </button>`).join('');
+    return `<div class="user-image-grid${images.length === 1 ? ' single' : ''}">${items}</div>`;
+  }
+
+  async function hydrateChatImageAttachments(root) {
+    const nodes = [];
+    if (root?.matches?.('[data-image-asset-id]')) nodes.push(root);
+    nodes.push(...Array.from(root?.querySelectorAll?.('[data-image-asset-id]') || []));
+    for (const node of nodes) {
+      const id = node.dataset.imageAssetId;
+      const img = node.querySelector('img');
+      const missing = node.querySelector('.chat-image-missing');
+      const record = await ImageStorage.get(id);
+      if (!node.isConnected) continue;
+      if (!record?.blob || !img) {
+        if (img) img.hidden = true;
+        if (missing) missing.hidden = false;
+        node.disabled = true;
+        continue;
+      }
+      const url = URL.createObjectURL(record.blob);
+      imageChatUrls.push(url);
+      img.src = url;
+      img.hidden = false;
+      if (missing) missing.hidden = true;
+    }
+  }
+
+  async function openChatImageViewer(assetId) {
+    const openedInChat = currentId;
+    const record = await ImageStorage.get(assetId);
+    if (currentId !== openedInChat) return;
+    if (!record?.blob) { flashStatus('本地图片资源不可用', 'err', 2200); return; }
+    closeChatImageViewer();
+    imageViewerUrl = URL.createObjectURL(record.blob);
+    const overlay = document.getElementById('imageViewerOverlay');
+    const img = document.getElementById('imageViewerImg');
+    if (!overlay || !img) return;
+    img.src = imageViewerUrl;
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeChatImageViewer() {
+    const overlay = document.getElementById('imageViewerOverlay');
+    const img = document.getElementById('imageViewerImg');
+    if (overlay) {
+      overlay.classList.remove('open');
+      overlay.setAttribute('aria-hidden', 'true');
+    }
+    if (img) img.removeAttribute('src');
+    if (imageViewerUrl) {
+      try { URL.revokeObjectURL(imageViewerUrl); } catch (_) {}
+      imageViewerUrl = null;
+    }
+  }
+
+  function renderPendingImages() {
+    const strip = document.getElementById('imagePreviewStrip');
+    if (!strip) return;
+    if (!pendingImageItems.length) {
+      strip.innerHTML = '';
+      strip.hidden = true;
+      return;
+    }
+    strip.hidden = false;
+    strip.innerHTML = pendingImageItems.map((item, index) => `<div class="image-preview-card">
+      <img src="${escHtml(item.previewUrl)}" alt="待发送图片 ${index + 1}">
+      <button class="image-preview-remove" type="button" onclick="removePendingImage(${index})" aria-label="移除图片">×</button>
+    </div>`).join('');
+  }
+
+  function clearPendingImages() {
+    imageSelectionEpoch++;
+    pendingImageItems.forEach(item => { try { URL.revokeObjectURL(item.previewUrl); } catch (_) {} });
+    pendingImageItems = [];
+    const fileInput = document.getElementById('chatImageInput');
+    if (fileInput) fileInput.value = '';
+    renderPendingImages();
+  }
+
+  function removePendingImage(index) {
+    if (isPreparingImageSend) return;
+    const item = pendingImageItems[index];
+    if (!item) return;
+    try { URL.revokeObjectURL(item.previewUrl); } catch (_) {}
+    pendingImageItems.splice(index, 1);
+    renderPendingImages();
+  }
+
+  async function readImageDimensions(file) {
+    return new Promise(resolve => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      const done = value => {
+        try { URL.revokeObjectURL(url); } catch (_) {}
+        resolve(value);
+      };
+      img.onload = () => done({ width: img.naturalWidth || null, height: img.naturalHeight || null });
+      img.onerror = () => done({ width: null, height: null });
+      img.src = url;
+    });
+  }
+
+  async function handleChatImageSelection(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length || isPreparingImageSend || isLoading || isAssistantRevealActive) return;
+    const sourceChatId = currentId;
+    const epoch = imageSelectionEpoch;
+    const available = Math.max(0, MAX_IMAGES_PER_MESSAGE - pendingImageItems.length);
+    if (!available) { flashStatus(`每条消息最多 ${MAX_IMAGES_PER_MESSAGE} 张图片`, 'err', 2200); return; }
+    let skipped = 0;
+    for (const file of files.slice(0, available)) {
+      if (!SUPPORTED_CHAT_IMAGE_TYPES.has(file.type) || file.size > 10 * 1024 * 1024 || !file.size) { skipped++; continue; }
+      const dimensions = await readImageDimensions(file);
+      if (epoch !== imageSelectionEpoch || currentId !== sourceChatId) return;
+      if (pendingImageItems.length >= MAX_IMAGES_PER_MESSAGE) { skipped++; continue; }
+      pendingImageItems.push({
+        file,
+        previewUrl: URL.createObjectURL(file),
+        width: dimensions.width,
+        height: dimensions.height
+      });
+    }
+    if (files.length > available) skipped += files.length - available;
+    renderPendingImages();
+    if (skipped) flashStatus(`已忽略 ${skipped} 张图片（格式不支持、超过 10MB 或数量超限）`, 'err', 3000);
+  }
+
   function renderMsg(role, msgOrText, animate = true, msgIndex = -1) {
     const area = document.getElementById('chatArea');
     const hint = document.getElementById('emptyHint');
@@ -5344,13 +5819,16 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       }
     } else {
       const msgObj = typeof msgOrText === 'object' ? msgOrText : null;
-      const text = msgObj ? msgObj.content : msgOrText;
-      div.innerHTML = `<div class="bubble">${escHtml(text)}</div><div class="msg-time">${msgObj ? formatMessageTimestamp(msgObj) : '时间未知'}</div>`;
+      const text = msgObj ? String(msgObj.content || '') : String(msgOrText || '');
+      const imageHtml = msgObj ? userImageMarkup(msgObj) : '';
+      if (imageHtml) div.classList.add('has-images');
+      div.innerHTML = `${imageHtml}${text ? `<div class="bubble">${escHtml(text)}</div>` : ''}<div class="msg-time">${msgObj ? formatMessageTimestamp(msgObj) : '时间未知'}</div>`;
     }
 
     area.appendChild(div);
     hydrateVoiceBarCacheState(div);
     hydrateStickerBubbles(div);
+    hydrateChatImageAttachments(div);
     area.scrollTop = area.scrollHeight;
   }
 
@@ -6037,9 +6515,76 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     if (!res.ok) {
       let err = null;
       try { err = await res.json(); } catch (_) {}
-      return { ok: false, kind: 'api', error: err?.error?.message || `HTTP ${res.status}` };
+      return { ok: false, kind: 'api', status: res.status, error: err?.error?.message || `HTTP ${res.status}` };
     }
     return { ok: true, data: await res.json() };
+  }
+
+  function hasUsableRemoteImage(record) {
+    const remote = record?.remote;
+    if (!remote || remote.provider !== 'anthropic' || !remote.fileId) return false;
+    if (!remote.expiresAt) return true;
+    const expiresAtMs = Date.parse(remote.expiresAt);
+    return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now() + 60 * 1000;
+  }
+
+  async function uploadImageToAnthropic(record, signal = null) {
+    if (!record?.blob) throw new Error('本地图片资源缺失');
+    const form = new FormData();
+    const filename = String(record.fileName || `image-${record.id}`)
+      .replace(/[<>:"|?*\\/\x00-\x1F]/g, '_').slice(0, 200) || `image-${record.id}.png`;
+    form.append('file', record.blob, filename);
+    form.append('expires_in_seconds', String(IMAGE_REMOTE_TTL_SECONDS));
+    const res = await fetch(FILES_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: form,
+      signal
+    });
+    if (!res.ok) {
+      let err = null;
+      try { err = await res.json(); } catch (_) {}
+      throw new Error(err?.error?.message || `图片上传失败（HTTP ${res.status}）`);
+    }
+    const data = await res.json();
+    if (!data?.id) throw new Error('图片上传失败：Anthropic 未返回 file_id');
+    const updated = {
+      ...record,
+      remote: {
+        provider: 'anthropic',
+        fileId: data.id,
+        uploadedAt: data.created_at || new Date().toISOString(),
+        expiresAt: data.expires_at || new Date(Date.now() + IMAGE_REMOTE_TTL_SECONDS * 1000).toISOString()
+      }
+    };
+    const saved = await ImageStorage.put(updated);
+    if (!saved) throw new Error('图片远端引用未能写回本地存储');
+    return updated;
+  }
+
+  async function ensureRemoteImageFile(assetId, signal = null) {
+    let record = await ImageStorage.get(assetId);
+    if (!record?.blob) throw new Error(`本地图片资源缺失：${assetId}`);
+    if (!hasUsableRemoteImage(record)) record = await uploadImageToAnthropic(record, signal);
+    return record.remote.fileId;
+  }
+
+  async function invalidateImageRemoteRefs(assetIds) {
+    for (const assetId of new Set(assetIds || [])) {
+      const record = await ImageStorage.get(assetId);
+      if (!record?.blob || !record.remote) continue;
+      await ImageStorage.put({ ...record, remote: null });
+    }
+  }
+
+  function isLikelyStaleFileReferenceError(result) {
+    if (!result || result.ok || ![400, 404].includes(Number(result.status))) return false;
+    const text = String(result.error || '').toLowerCase();
+    return text.includes('file') && (text.includes('not found') || text.includes('expired') || text.includes('unavailable') || text.includes('invalid'));
   }
 
   // Sticker actions are real conversational history, but raw retrieval intents must not
@@ -6108,7 +6653,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
   // A significant inactivity gap is marked once, immediately before the user turn
   // that resumes the conversation, and remains visible in later requests because
   // it is re-derived from message timestamps each time.
-  function buildTemporalApiHistory(chat, recentStickerHistory = null, stickerHistoryDebugCollector = null) {
+  async function buildTemporalApiHistory(chat, recentStickerHistory = null, stickerHistoryDebugCollector = null, signal = null) {
     const sourceMessages = (Array.isArray(chat?.messages) ? chat.messages : [])
       .filter(message => message?.role !== 'thinking');
     const currentTimeZone = getCurrentTimeZone();
@@ -6118,53 +6663,70 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     let timestampCount = 0;
     let dateMarkerCount = 0;
     const gapMarkers = [];
+    const imageAssetIds = [];
+    const apiMessages = [];
 
-    const apiMessages = sourceMessages.map(message => {
+    for (const message of sourceMessages) {
       let content = buildApiHistoryContent(message, recentStickerHistory, stickerHistoryDebugCollector);
       const stamp = Number(message?.createdAt);
-      if (!isValidEpoch(stamp)) return { role: message.role, content };
+      if (isValidEpoch(stamp)) {
+        const timeZone = message.createdTimeZone || currentTimeZone;
+        const localMinute = formatLocalMinute(stamp, timeZone);
+        const splitAt = localMinute.lastIndexOf(' ');
+        const localDate = splitAt >= 0 ? localMinute.slice(0, splitAt) : localMinute;
+        const localTime = splitAt >= 0 ? localMinute.slice(splitAt + 1) : '';
+        const markers = [];
 
-      const timeZone = message.createdTimeZone || currentTimeZone;
-      const localMinute = formatLocalMinute(stamp, timeZone);
-      const splitAt = localMinute.lastIndexOf(' ');
-      const localDate = splitAt >= 0 ? localMinute.slice(0, splitAt) : localMinute;
-      const localTime = splitAt >= 0 ? localMinute.slice(splitAt + 1) : '';
-      const markers = [];
-
-      if (
-        message.role === 'user' &&
-        previousTimedMessage &&
-        stamp >= previousTimedMessage.createdAt
-      ) {
-        const gapMs = stamp - previousTimedMessage.createdAt;
-        if (gapMs >= TEMPORAL_GAP_MS) {
-          const gapText = formatCompactDuration(gapMs);
-          markers.push(`<gap d="${gapText}"/>`);
-          gapMarkers.push({
-            beforeMessageId: message.id || null,
-            afterRole: previousTimedMessage.role || null,
-            durationMs: gapMs,
-            durationText: gapText
-          });
+        if (
+          message.role === 'user' &&
+          previousTimedMessage &&
+          stamp >= previousTimedMessage.createdAt
+        ) {
+          const gapMs = stamp - previousTimedMessage.createdAt;
+          if (gapMs >= TEMPORAL_GAP_MS) {
+            const gapText = formatCompactDuration(gapMs);
+            markers.push(`<gap d="${gapText}"/>`);
+            gapMarkers.push({
+              beforeMessageId: message.id || null,
+              afterRole: previousTimedMessage.role || null,
+              durationMs: gapMs,
+              durationText: gapText
+            });
+          }
         }
+
+        if (localDate !== activeDate || timeZone !== activeTimeZone) {
+          markers.push(`<date v="${localDate}" z="${timeZone}"/>`);
+          activeDate = localDate;
+          activeTimeZone = timeZone;
+          dateMarkerCount++;
+        }
+
+        markers.push(`<t v="${localTime}"/>`);
+        timestampCount++;
+        content = `${markers.join('\n')}\n${content}`;
+        previousTimedMessage = { createdAt: stamp, role: message.role };
       }
 
-      if (localDate !== activeDate || timeZone !== activeTimeZone) {
-        markers.push(`<date v="${localDate}" z="${timeZone}"/>`);
-        activeDate = localDate;
-        activeTimeZone = timeZone;
-        dateMarkerCount++;
+      const images = message.role === 'user' ? getImageAttachments(message) : [];
+      if (!images.length) {
+        apiMessages.push({ role: message.role, content });
+        continue;
       }
 
-      markers.push(`<t v="${localTime}"/>`);
-      timestampCount++;
-      content = `${markers.join('\n')}\n${content}`;
-      previousTimedMessage = { createdAt: stamp, role: message.role };
-      return { role: message.role, content };
-    });
+      const blocks = [];
+      for (const image of images) {
+        const fileId = await ensureRemoteImageFile(image.assetId, signal);
+        imageAssetIds.push(image.assetId);
+        blocks.push({ type: 'image', source: { type: 'file', file_id: fileId } });
+      }
+      if (content) blocks.push({ type: 'text', text: content });
+      apiMessages.push({ role: message.role, content: blocks });
+    }
 
     return {
       apiMessages,
+      imageAssetIds: [...new Set(imageAssetIds)],
       trace: {
         timestampCount,
         dateMarkerCount,
@@ -6183,23 +6745,30 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
 
     const recentStickerHistory = buildRecentStickerHistoryWindow(chat, 3);
     const stickerHistoryDebugCollector = [];
-    const temporalHistory = buildTemporalApiHistory(chat, recentStickerHistory, stickerHistoryDebugCollector);
-    const apiMessages = temporalHistory.apiMessages;
-
     const temporalSnapshot = buildTemporalSnapshot(chat);
-    temporalSnapshot.trace.history = temporalHistory.trace;
     const temporalContext = temporalSnapshot.context;
-    const body = {
-      model: config.model,
-      max_tokens: getRequestMaxTokens(config),
-      system: buildSystemPrompt(config, temporalContext),
-      messages: apiMessages
-    };
-    applyResponseFormatToBody(body, config);
-    applyThinkingAndEffortToBody(body, config);
 
     try {
-      const apiResult = await postAnthropicRequestBody(body, signal);
+      let temporalHistory = await buildTemporalApiHistory(chat, recentStickerHistory, stickerHistoryDebugCollector, signal);
+      temporalSnapshot.trace.history = temporalHistory.trace;
+      const body = {
+        model: config.model,
+        max_tokens: getRequestMaxTokens(config),
+        system: buildSystemPrompt(config, temporalContext),
+        messages: temporalHistory.apiMessages
+      };
+      applyResponseFormatToBody(body, config);
+      applyThinkingAndEffortToBody(body, config);
+
+      let apiResult = await postAnthropicRequestBody(body, signal);
+      if (!apiResult.ok && temporalHistory.imageAssetIds.length && isLikelyStaleFileReferenceError(apiResult)) {
+        await invalidateImageRemoteRefs(temporalHistory.imageAssetIds);
+        stickerHistoryDebugCollector.length = 0;
+        temporalHistory = await buildTemporalApiHistory(chat, recentStickerHistory, stickerHistoryDebugCollector, signal);
+        temporalSnapshot.trace.history = temporalHistory.trace;
+        body.messages = temporalHistory.apiMessages;
+        apiResult = await postAnthropicRequestBody(body, signal);
+      }
       if (!apiResult.ok) return apiResult;
 
       const parsedResponse = parseAnthropicResponse(apiResult.data);
@@ -6473,12 +7042,18 @@ ScrollMemory.clear(chatId);
   // Normal send creates exactly one user message, then calls the shared
   // generation controller. Retry never passes through this creation path.
   async function send() {
-    if (!apiKey || isLoading || isAssistantRevealActive) return;
+    if (!apiKey || isLoading || isAssistantRevealActive || isPreparingImageSend) return;
     if (!getCurrentGenerationConfig()) { flashStatus('请选择可用模型', 'err', 2200); return; }
     const input = document.getElementById('input');
     const text = input.value.trim();
-    if (!text) return;
+    const stagedImages = pendingImageItems.slice();
+    if (!text && !stagedImages.length) return;
 
+    if (stagedImages.length) {
+      isPreparingImageSend = true;
+      updateSendAvailability();
+    }
+    try {
     const sourceDraftKey = getDraftKey(currentId);
     if (!currentId) newChat();
 
@@ -6486,12 +7061,60 @@ ScrollMemory.clear(chatId);
     const requestChatId = currentId;
     const chat = chats[requestChatId];
 
-    input.value = '';
-    input.style.height = 'auto';
+    const attachments = [];
+    const storedAssetIds = [];
+    if (stagedImages.length) {
+      const ready = await waitForImageDB();
+      if (!ready) { flashStatus('图片数据库尚未就绪', 'err', 2400); return; }
+      for (const item of stagedImages) {
+        const assetId = 'img_' + generateUuid();
+        const now = Date.now();
+        const record = {
+          id: assetId,
+          blob: item.file,
+          mimeType: item.file.type,
+          fileName: item.file.name || `image-${assetId}`,
+          size: Number(item.file.size || 0),
+          width: item.width || null,
+          height: item.height || null,
+          createdAt: now,
+          remote: null
+        };
+        const stored = await ImageStorage.put(record);
+        if (!stored) {
+          for (const storedId of storedAssetIds) await ImageStorage.delete(storedId);
+          flashStatus('图片本地保存失败，消息未发送', 'err', 2800);
+          return;
+        }
+        storedAssetIds.push(assetId);
+        attachments.push({
+          type: 'image',
+          assetId,
+          mimeType: record.mimeType,
+          fileName: record.fileName,
+          size: record.size,
+          width: record.width,
+          height: record.height
+        });
+      }
+    }
+
+    // A different chat may have been opened while IndexedDB was saving. Do not wipe its editor.
+    if (chats[requestChatId] !== chat) {
+      for (const storedId of storedAssetIds) await ImageStorage.delete(storedId);
+      flashStatus('原对话已关闭或删除，图片消息没有提交', 'err', 2800);
+      return;
+    }
+    if (currentId === requestChatId) {
+      input.value = '';
+      input.style.height = 'auto';
+      clearPendingImages();
+    }
 
     const userMsg = {
       role: 'user',
       content: text,
+      ...(attachments.length ? { attachments } : {}),
       id: makeMessageId(),
       chatId: requestChatId,
       clientSeq: chat.messages.length,
@@ -6499,7 +7122,9 @@ ScrollMemory.clear(chatId);
       createdTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
     };
     chat.messages.push(userMsg);
-    if (chat.title === '新对话') chat.title = text.slice(0, 24) + (text.length > 24 ? '…' : '');
+    if (chat.title === '新对话') {
+      chat.title = text ? text.slice(0, 24) + (text.length > 24 ? '…' : '') : '图片';
+    }
     chat.updatedAt = Date.now();
     save();
     // Once the user turn is durably stored as a message, the editor draft is no longer needed.
@@ -6514,12 +7139,18 @@ ScrollMemory.clear(chatId);
     renderSidebar();
 
     await generateAssistantReply(requestChatId);
+    } finally {
+      if (stagedImages.length) {
+        isPreparingImageSend = false;
+        updateSendAvailability();
+      }
+    }
   }
 
   // UI controller entry point. It reuses the existing latest user turn and
   // therefore never duplicates user content, ids, timestamps, clientSeq, or chatId.
   async function handleRetryLatestReply(chatId) {
-    if (!apiKey || isLoading || isAssistantRevealActive) return;
+    if (!apiKey || isLoading || isAssistantRevealActive || isPreparingImageSend) return;
     if (!getCurrentGenerationConfig()) { flashStatus('请选择可用模型', 'err', 2200); return; }
     const chat = chats[chatId];
     if (!getLatestUnresolvedUserTurn(chat)) {
@@ -7569,13 +8200,17 @@ ${topText}`;
   // Field-tagged serialization to avoid boundary collisions between fields.
   function messageTextHash(message) {
     const f = getMessageTextFields(message);
-    const serialized = [
+    const fields = [
       `content:${f.content}`,
       `en:${f.en}`,
       `zh:${f.zh}`,
       `text:${f.text}`
-    ].join(FIELD_SEP);
-    return hashString(serialized);
+    ];
+    const attachments = getImageAttachments(message);
+    if (attachments.length) {
+      fields.push(`attachments:${attachments.map(item => `image:${item.assetId}`).join('|')}`);
+    }
+    return hashString(fields.join(FIELD_SEP));
   }
 
   // Browser-compatible UUID generator. Falls back to a high-entropy string
@@ -7855,6 +8490,40 @@ ${topText}`;
     savePendingAudioCleanup(stillPending);
   }
 
+  function collectReferencedImageAssetIdsFromChats(chatsObj) {
+    const ids = new Set();
+    Object.values(chatsObj || {}).forEach(chat => {
+      (Array.isArray(chat?.messages) ? chat.messages : []).forEach(message => {
+        getImageAttachments(message).forEach(item => ids.add(item.assetId));
+      });
+    });
+    return ids;
+  }
+
+  function collectAllReferencedImageAssetIds() {
+    const ids = collectReferencedImageAssetIdsFromChats(chats);
+    const trash = loadTrash();
+    Object.values(trash || {}).forEach(item => {
+      const chat = item?.chat;
+      if (!chat) return;
+      collectReferencedImageAssetIdsFromChats({ trashChat: chat }).forEach(id => ids.add(id));
+    });
+    return ids;
+  }
+
+  async function cleanupUnreferencedImageAssets() {
+    // Cleanup can overlap a user send or import. Never delete an asset during the
+    // pre-commit interval, and recheck references before each destructive write.
+    if (isPreparingImageSend) return;
+    const records = await ImageStorage.list();
+    for (const record of records) {
+      if (isPreparingImageSend) return;
+      if (record?.id && !collectAllReferencedImageAssetIds().has(record.id)) {
+        await ImageStorage.delete(record.id);
+      }
+    }
+  }
+
   // ── CHAT LIFECYCLE DOMAIN (P0-2) ──────────────────────
   // No DOM/event access, no renderSidebar/modal calls. Returns structured
   // { ok, action/reason, ... } results; UI controllers decide what to render.
@@ -7902,6 +8571,7 @@ ${topText}`;
     // Text snapshot deletion above is already committed; audio cleanup failure
     // must not block or reverse it — deleteAudioWithFallback queues a retry instead.
     deleteAudioWithFallback(chatId);
+    cleanupUnreferencedImageAssets();
     return { ok: true, action: 'permanentlyDeleted', chatId };
   }
 
@@ -7923,6 +8593,7 @@ ${topText}`;
       ResponseFailedDebugStore.clearChat(chatId);
       deleteAudioWithFallback(chatId);
     });
+    if (purged.length) cleanupUnreferencedImageAssets();
     return { ok: true, action: 'purged', chatIds: purged };
   }
 
@@ -8267,9 +8938,38 @@ ${topText}`;
   }
 
   // ── EXPORT / IMPORT ──────────────────────────────────
-  function exportChats() {
-    // Export uses a normalized COPY only — global `chats` and localStorage are untouched.
-    const data = { chats: normalizeAllChats(chats), chatOrder, exportedAt: new Date().toISOString(), schemaVersion: 5 };
+  async function exportChats() {
+    // Export uses a normalized COPY only — global `chats`, localStorage and IndexedDB are untouched.
+    const normalizedChats = normalizeAllChats(chats);
+    const referencedIds = collectReferencedImageAssetIdsFromChats(normalizedChats);
+    const assets = {};
+    let missingAssets = 0;
+    for (const assetId of referencedIds) {
+      const record = await ImageStorage.get(assetId);
+      if (!record?.blob) { missingAssets++; continue; }
+      assets[assetId] = {
+        type: 'image',
+        id: assetId,
+        mimeType: record.mimeType || record.blob.type || '',
+        fileName: record.fileName || '',
+        size: Number(record.size || record.blob.size || 0),
+        width: Number.isFinite(Number(record.width)) ? Number(record.width) : null,
+        height: Number.isFinite(Number(record.height)) ? Number(record.height) : null,
+        createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : null,
+        imageDataUrl: await blobToDataUrl(record.blob)
+      };
+    }
+    if (missingAssets) {
+      flashStatus(`导出中止：有 ${missingAssets} 个聊天图片资源在 IndexedDB 中缺失`, 'err', 4200);
+      return;
+    }
+    const data = {
+      chats: normalizedChats,
+      chatOrder,
+      assets,
+      exportedAt: new Date().toISOString(),
+      schemaVersion: 6
+    };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -8279,12 +8979,46 @@ ${topText}`;
     URL.revokeObjectURL(url);
   }
 
+  async function blobsEqual(a, b) {
+    if (!a || !b || a.size !== b.size || a.type !== b.type) return false;
+    const [bufferA, bufferB] = await Promise.all([a.arrayBuffer(), b.arrayBuffer()]);
+    const x = new Uint8Array(bufferA), y = new Uint8Array(bufferB);
+    for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
+    return true;
+  }
+
+  function parseImportedImageAssets(data) {
+    const rawAssets = data?.assets && typeof data.assets === 'object' && !Array.isArray(data.assets)
+      ? data.assets
+      : {};
+    const records = [];
+    for (const [assetId, item] of Object.entries(rawAssets)) {
+      if (!item || item.type !== 'image' || !item.imageDataUrl) continue;
+      if (item.id && item.id !== assetId) return { ok: false, error: `图片资源 ${assetId} 的 ID 不一致`, records: [] };
+      let blob = null;
+      try { blob = dataUrlToBlob(item.imageDataUrl); } catch (_) {}
+      if (!blob || !SUPPORTED_CHAT_IMAGE_TYPES.has(blob.type)) return { ok: false, error: `图片资源 ${assetId} 无法解析或格式不支持`, records: [] };
+      records.push({
+        id: assetId,
+        blob,
+        mimeType: item.mimeType || blob.type || '',
+        fileName: item.fileName || '',
+        size: Number(item.size || blob.size || 0),
+        width: Number.isFinite(Number(item.width)) ? Number(item.width) : null,
+        height: Number.isFinite(Number(item.height)) ? Number(item.height) : null,
+        createdAt: Number.isFinite(Number(item.createdAt)) ? Number(item.createdAt) : Date.now(),
+        remote: null // imported files are local truth; remote file IDs are intentionally not portable
+      });
+    }
+    return { ok: true, records };
+  }
+
   function importChats(e) {
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = evt => {
+    reader.onload = async evt => {
       let data;
       try { data = JSON.parse(evt.target.result); } catch (_) {
         setStatus('导入失败：文件不是合法 JSON', 'err');
@@ -8299,6 +9033,12 @@ ${topText}`;
         Array.isArray(data.chats[id].messages));
       if (validIds.length === 0) {
         setStatus('导入失败：文件内没有有效对话', 'err');
+        return;
+      }
+
+      const parsedAssets = parseImportedImageAssets(data);
+      if (!parsedAssets.ok) {
+        setStatus(`导入失败：${parsedAssets.error}`, 'err');
         return;
       }
 
@@ -8347,12 +9087,51 @@ ${topText}`;
         `• 新增对话：${willAdd} 条\n` +
         `• 合并已有对话：${willMergeActive} 条（相同对话 ID，按消息合并）\n` +
         `• 回收站内更新：${willMergeTrash} 条（不会恢复，仅更新回收站快照）\n` +
-        `• 完全相同：${willSkip} 条，跳过\n\n` +
+        `• 完全相同：${willSkip} 条，跳过\n` +
+        `• 随聊天恢复图片：${parsedAssets.records.length} 张\n\n` +
         `本地现有 ${chatOrder.length} 条对话不会被删除。\n` +
         `本次导入会为本地历史消息补全内部标识字段（不改变消息内容和顺序）。\n` +
+        `旧版 schema 5 无 assets 字段时会按“0 张图片”兼容导入。\n` +
         `音频缓存不随 JSON 迁移，历史语音第一次播放时会重新生成。\n\n` +
         `确认继续？`
       )) return;
+
+      const newlyInsertedAssetIds = [];
+      // Validate the portable assets BEFORE modifying either chat history or IndexedDB.
+      const assetRecordsById = new Map(parsedAssets.records.map(record => [record.id, record]));
+      const referencedImportedIds = collectReferencedImageAssetIdsFromChats(normalizedImportedChats);
+      const assetsToCheck = new Set([...assetRecordsById.keys(), ...referencedImportedIds]);
+      if (assetsToCheck.size) {
+        const ready = await waitForImageDB();
+        if (!ready) { setStatus('导入失败：图片数据库尚未就绪', 'err'); return; }
+        for (const assetId of assetsToCheck) {
+          const incomingRecord = assetRecordsById.get(assetId);
+          const existing = await ImageStorage.get(assetId);
+          if (!incomingRecord && !existing?.blob) {
+            setStatus(`导入失败：历史消息引用的图片 ${assetId} 不在导出包或本地数据库中`, 'err');
+            return;
+          }
+          if (incomingRecord && existing?.blob && !(await blobsEqual(incomingRecord.blob, existing.blob))) {
+            setStatus(`导入中止：图片 ${assetId} 与本地已有图片内容冲突，未覆盖任何记录`, 'err');
+            return;
+          }
+        }
+      }
+      if (parsedAssets.records.length) {
+        const ready = await waitForImageDB();
+        if (!ready) { setStatus('导入失败：图片数据库尚未就绪', 'err'); return; }
+        for (const record of parsedAssets.records) {
+          const existing = await ImageStorage.get(record.id);
+          if (existing?.blob) continue;
+          const ok = await ImageStorage.put(record);
+          if (!ok) {
+            for (const assetId of newlyInsertedAssetIds) await ImageStorage.delete(assetId);
+            setStatus('导入失败：图片资源写入 IndexedDB 失败；聊天未合并', 'err');
+            return;
+          }
+          newlyInsertedAssetIds.push(record.id);
+        }
+      }
 
       let added = 0, skipped = 0, merged = 0, mergedIntoTrash = 0;
 
@@ -8393,7 +9172,7 @@ ${topText}`;
 
       save();
       renderSidebar();
-      flashStatus(`导入完成：新增 ${added}，合并 ${merged}，回收站更新 ${mergedIntoTrash}，跳过 ${skipped} ✓`, 'ok', 4000);
+      flashStatus(`导入完成：新增 ${added}，合并 ${merged}，回收站更新 ${mergedIntoTrash}，图片 ${parsedAssets.records.length}，跳过 ${skipped} ✓`, 'ok', 4000);
     };
     reader.readAsText(file);
   }
@@ -9382,9 +10161,15 @@ ${topText}`;
 
     const input = document.getElementById('input');
     input.addEventListener('input', handleDraftInput);
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && document.getElementById('imageViewerOverlay')?.classList.contains('open')) closeChatImageViewer();
+    });
     window.addEventListener('pagehide', () => {
       persistDraftNow(currentId);
       saveScrollPositionForChat(currentId);
+      clearPendingImages();
+      closeChatImageViewer();
+      clearChatImageUrls();
     });
 
     const chatArea = document.getElementById('chatArea');
