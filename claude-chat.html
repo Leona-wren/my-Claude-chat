@@ -3105,7 +3105,7 @@ body.skin-wa #sendBtn::before{
   const SCROLL_MEMORY_KEY = 'claude_scroll_memory_v1';
   const TRANSCRIPT_UI_STATE_KEY = 'claude_transcript_ui_v1';
   const SCROLL_MEMORY_TTL_MS = 60 * 60 * 1000; // 1 hour
-  const TEMPORAL_GAP_MS = 3 * 60 * 60 * 1000; // 3 hours; request-time context only
+  const TEMPORAL_GAP_MS = 4 * 60 * 60 * 1000; // 4 hours; request-time temporal boundary only
   const CHAT_BOTTOM_THRESHOLD_PX = 100;
   const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
   const REPLY_LANGUAGE_KEY = 'claude_reply_language_v1';
@@ -5459,65 +5459,13 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     const now = Date.now();
     const currentTimeZone = getCurrentTimeZone();
     const localMinute = formatLocalMinute(now, currentTimeZone).replace(' ', 'T');
-    const fields = [`nowLocal=${localMinute}${formatCurrentUtcOffset()}`];
-    const messages = Array.isArray(chat?.messages) ? chat.messages : [];
-
-    let currentTurnIndex = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.role === 'thinking') continue;
-      if (messages[i]?.role === 'user') currentTurnIndex = i;
-      break;
-    }
-
-    let currentTurn = null;
-    let previous = null;
-    let gapMs = null;
-    let awayIncluded = false;
-
-    if (currentTurnIndex >= 0) {
-      currentTurn = messages[currentTurnIndex];
-      for (let i = currentTurnIndex - 1; i >= 0; i--) {
-        if (messages[i]?.role === 'thinking') continue;
-        previous = messages[i];
-        break;
-      }
-
-      if (previous && Number.isFinite(currentTurn.createdAt) && Number.isFinite(previous.createdAt)) {
-        gapMs = currentTurn.createdAt - previous.createdAt;
-        if (gapMs >= TEMPORAL_GAP_MS) {
-          fields.push(`away=${formatCompactDuration(gapMs)}`);
-          awayIncluded = true;
-        }
-      }
-
-      const currentTurnZone = currentTurn.createdTimeZone || currentTimeZone;
-      const previousZone = previous?.createdTimeZone || null;
-      if (!previousZone) {
-        fields.push(`tz=${currentTurnZone}`);
-      } else if (previousZone !== currentTurnZone) {
-        fields.push(`tz=${previousZone}→${currentTurnZone}`);
-      }
-    }
-
-    const context = `[${fields.join('; ')}]`;
-    const localForMessage = message => {
-      if (!message || !Number.isFinite(Number(message.createdAt))) return null;
-      const zone = message.createdTimeZone || currentTimeZone;
-      return `${formatLocalMinute(Number(message.createdAt), zone)} · ${zone}`;
-    };
+    const context = `[nowLocal=${localMinute}${formatCurrentUtcOffset()}; tz=${currentTimeZone}]`;
 
     return {
       context,
       trace: {
         requestNowLocal: `${localMinute}${formatCurrentUtcOffset()} · ${currentTimeZone}`,
-        currentUserMessageLocal: localForMessage(currentTurn),
-        previousMessageLocal: localForMessage(previous),
-        previousMessageRole: previous?.role || null,
-        gapMs: Number.isFinite(gapMs) ? gapMs : null,
-        gapText: Number.isFinite(gapMs) ? formatCompactDuration(gapMs) : null,
         thresholdMs: TEMPORAL_GAP_MS,
-        thresholdPassed: Number.isFinite(gapMs) ? gapMs >= TEMPORAL_GAP_MS : null,
-        awayIncluded,
         sentTemporalContext: context
       }
     };
@@ -5528,12 +5476,9 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
   }
 
   function buildTimeAuthorityPrompt(temporalContext) {
-    const awayRule = String(temporalContext || '').includes('away=')
-      ? ' If away is present, it is the authoritative elapsed gap since the previous non-thinking message in this chat and must be used when judging conversational continuity.'
-      : '';
     return `RUNTIME TIME — AUTHORITATIVE
 ${temporalContext}
-Before every reply, silently reconcile the current turn and any time-sensitive conversation context with this runtime data. nowLocal is always the current date and local time.${awayRule} Interpret earlier relative-time references, day-specific plans, greetings, holidays, and events according to when they occurred rather than carrying them forward as automatically current. If no temporal judgment is relevant to the reply, do not mention runtime time or away.`;
+Runtime temporal metadata is authoritative. Conversation history may contain client-added <date>, <t>, and <gap> metadata: these are factual timing metadata, not user-authored message content. Use them silently to preserve temporal order and continuity, and do not override them with dates inferred from conversational wording. If no temporal judgment is relevant, do not mention the metadata or report the time merely because it is available.`;
   }
 
   function buildReplyLanguageControl(replyLanguage) {
@@ -6156,6 +6101,79 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return `${content}\n\n${annotation}`;
   }
 
+
+  // Request-only temporal serialization. Message storage/UI remain untouched.
+  // Every timed conversational message gets a low-salience local clock marker.
+  // Date/time-zone markers appear only when that local date/zone changes.
+  // A significant inactivity gap is marked once, immediately before the user turn
+  // that resumes the conversation, and remains visible in later requests because
+  // it is re-derived from message timestamps each time.
+  function buildTemporalApiHistory(chat, recentStickerHistory = null, stickerHistoryDebugCollector = null) {
+    const sourceMessages = (Array.isArray(chat?.messages) ? chat.messages : [])
+      .filter(message => message?.role !== 'thinking');
+    const currentTimeZone = getCurrentTimeZone();
+    let previousTimedMessage = null;
+    let activeDate = null;
+    let activeTimeZone = null;
+    let timestampCount = 0;
+    let dateMarkerCount = 0;
+    const gapMarkers = [];
+
+    const apiMessages = sourceMessages.map(message => {
+      let content = buildApiHistoryContent(message, recentStickerHistory, stickerHistoryDebugCollector);
+      const stamp = Number(message?.createdAt);
+      if (!isValidEpoch(stamp)) return { role: message.role, content };
+
+      const timeZone = message.createdTimeZone || currentTimeZone;
+      const localMinute = formatLocalMinute(stamp, timeZone);
+      const splitAt = localMinute.lastIndexOf(' ');
+      const localDate = splitAt >= 0 ? localMinute.slice(0, splitAt) : localMinute;
+      const localTime = splitAt >= 0 ? localMinute.slice(splitAt + 1) : '';
+      const markers = [];
+
+      if (
+        message.role === 'user' &&
+        previousTimedMessage &&
+        stamp >= previousTimedMessage.createdAt
+      ) {
+        const gapMs = stamp - previousTimedMessage.createdAt;
+        if (gapMs >= TEMPORAL_GAP_MS) {
+          const gapText = formatCompactDuration(gapMs);
+          markers.push(`<gap d="${gapText}"/>`);
+          gapMarkers.push({
+            beforeMessageId: message.id || null,
+            afterRole: previousTimedMessage.role || null,
+            durationMs: gapMs,
+            durationText: gapText
+          });
+        }
+      }
+
+      if (localDate !== activeDate || timeZone !== activeTimeZone) {
+        markers.push(`<date v="${localDate}" z="${timeZone}"/>`);
+        activeDate = localDate;
+        activeTimeZone = timeZone;
+        dateMarkerCount++;
+      }
+
+      markers.push(`<t v="${localTime}"/>`);
+      timestampCount++;
+      content = `${markers.join('\n')}\n${content}`;
+      previousTimedMessage = { createdAt: stamp, role: message.role };
+      return { role: message.role, content };
+    });
+
+    return {
+      apiMessages,
+      trace: {
+        timestampCount,
+        dateMarkerCount,
+        gapMarkerCount: gapMarkers.length,
+        gapMarkers
+      }
+    };
+  }
+
   // API service layer: builds/sends the request and returns structured data.
   // It does not render, mutate chat history, or decide how retry is presented.
   async function requestAssistantReply(chatId, config, signal = null) {
@@ -6165,11 +6183,11 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
 
     const recentStickerHistory = buildRecentStickerHistoryWindow(chat, 3);
     const stickerHistoryDebugCollector = [];
-    const apiMessages = chat.messages
-      .filter(m => m.role !== 'thinking')
-      .map(message => ({ role: message.role, content: buildApiHistoryContent(message, recentStickerHistory, stickerHistoryDebugCollector) }));
+    const temporalHistory = buildTemporalApiHistory(chat, recentStickerHistory, stickerHistoryDebugCollector);
+    const apiMessages = temporalHistory.apiMessages;
 
     const temporalSnapshot = buildTemporalSnapshot(chat);
+    temporalSnapshot.trace.history = temporalHistory.trace;
     const temporalContext = temporalSnapshot.context;
     const body = {
       model: config.model,
@@ -6585,13 +6603,17 @@ ${topText}`;
       .map(([key, value]) => `${key}: ${value}`)
       .join('\n') : '—';
     const temporal = msg.runtimeTemporalTrace && typeof msg.runtimeTemporalTrace === 'object' ? msg.runtimeTemporalTrace : null;
+    const historyTemporal = temporal?.history && typeof temporal.history === 'object' ? temporal.history : null;
+    const gapPreview = Array.isArray(historyTemporal?.gapMarkers) && historyTemporal.gapMarkers.length
+      ? historyTemporal.gapMarkers.map((gap, index) => `${index + 1}. ${gap.durationText || '—'} before ${gap.beforeMessageId || 'message'}`).join('\n')
+      : 'none';
     const temporalPreview = temporal ? [
       `request now: ${temporal.requestNowLocal || '—'}`,
-      `current user: ${temporal.currentUserMessageLocal || '—'}`,
-      `previous: ${temporal.previousMessageLocal || '—'}${temporal.previousMessageRole ? ` (${temporal.previousMessageRole})` : ''}`,
-      `computed gap: ${temporal.gapText || '—'}`,
-      `3h threshold: ${temporal.thresholdPassed === null ? 'n/a' : temporal.thresholdPassed ? 'passed' : 'not passed'}`,
-      `away sent: ${temporal.awayIncluded ? 'yes' : 'no'}`,
+      `4h gap threshold: ${Math.round((temporal.thresholdMs || TEMPORAL_GAP_MS) / 3600000)}h`,
+      `history timestamps: ${historyTemporal?.timestampCount ?? '—'}`,
+      `date markers: ${historyTemporal?.dateMarkerCount ?? '—'}`,
+      `gap markers: ${historyTemporal?.gapMarkerCount ?? '—'}`,
+      `gap detail: ${gapPreview}`,
       `temporalContext: ${temporal.sentTemporalContext || '—'}`
     ].join('\n') : '—';
 
