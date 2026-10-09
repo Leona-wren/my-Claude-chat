@@ -2999,6 +2999,39 @@ body.skin-wa .chat-image-item {
 }
 
 
+
+/* ── Composer edge: the input surface is the only visible footer surface. ──
+   Layout only. Leave all three skin materials and message functions unchanged. */
+body .main { position: relative; }
+body .main > footer {
+  position: absolute;
+  inset: auto 0 0;
+  width: 100%;
+  z-index: 6;
+  background: transparent !important;
+  pointer-events: none;
+}
+/* Previously the dark skin painted a full-width footer gradient over messages. */
+body.skin-dark .main > footer { background: transparent !important; }
+body .main > footer .input-row,
+body .main > footer .new-reply-notice,
+body .main > footer .status-bar { pointer-events: auto; }
+/* The chat extends behind the floating composer and can scroll fully clear of it. */
+body .main > .chat-area {
+  min-height: 0;
+  padding-bottom: var(--composer-clearance, 125px) !important;
+}
+/* Do not reserve a blank status lane above the actual top edge of the input. */
+body .main > footer .status-bar:empty { display: none; }
+body .main > footer .status-bar:not(:empty) {
+  min-height: 0;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 9px;
+  margin-bottom: 7px;
+  border-radius: 9px;
+  background: var(--input-bg);
+}
 </style>
 </head>
 <body class="skin-warm">
@@ -11224,5 +11257,35 @@ requestAnimationFrame(updateWarmGlass);
 })();
 </script>
 
+
+<script>
+/* Composer geometry only. No message/schema/storage/API/voice changes. */
+(() => {
+  const area = document.getElementById('chatArea');
+  const footer = document.querySelector('.main > footer');
+  if (!area || !footer) return;
+
+  let previousClearance = null;
+  const update = () => {
+    const clearance = Math.ceil(footer.getBoundingClientRect().height + 14);
+    if (clearance === previousClearance) return;
+
+    const bottomGap = area.scrollHeight - area.scrollTop - area.clientHeight;
+    const wasAtBottom = bottomGap <= 12;
+    previousClearance = clearance;
+    area.style.setProperty('--composer-clearance', clearance + 'px');
+    // When the composer grows for pending images, keep the latest message visible.
+    // Do not jump if the reader is browsing older messages.
+    if (wasAtBottom) {
+      requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
+    }
+  };
+
+  update();
+  const observer = new ResizeObserver(update);
+  observer.observe(footer);
+  window.addEventListener('resize', update, {passive: true});
+})();
+</script>
 </body>
 </html>
