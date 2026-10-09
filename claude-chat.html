@@ -242,8 +242,8 @@
   .skin-dot:hover { transform: scale(1.15); }
   .skin-dot.selected { border-color: var(--accent); }
   .skin-dot.dot-warm { background: #5C7A4E; box-shadow: inset 0 0 0 2px #3d5435; }
-  .skin-dot.dot-dark { background: #6f5038; box-shadow: inset 0 0 0 1px #bd9161; }
-  .skin-dot.dot-wa { background: #f3a15a; box-shadow: inset 0 0 0 1px rgba(255,241,218,.55), 0 0 7px rgba(244,157,79,.20); }
+  .skin-dot.dot-dark { background: #8A5A3B; box-shadow: inset 0 0 0 2px #5B3925; }
+  .skin-dot.dot-wa { background: #F28B34; box-shadow: inset 0 0 0 2px #B95A1D; }
 
   .skin-label {
     font-size: 11px;
@@ -688,7 +688,9 @@
 
   .input-row {
     display: flex;
-    gap: 10px;
+    flex-wrap: wrap;
+    column-gap: 10px;
+    row-gap: 8px;
     align-items: flex-end;
     background: var(--input-bg);
     border: 1px solid var(--border);
@@ -696,11 +698,13 @@
     padding: 10px 10px 10px 16px;
     transition: border-color 0.2s;
   }
+  .input-row.has-pending-images { row-gap: 10px; }
 
   .input-row:focus-within { border-color: var(--accent); }
 
   textarea {
-    flex: 1;
+    flex: 1 1 180px;
+    min-width: 0;
     background: transparent;
     border: none;
     outline: none;
@@ -2737,13 +2741,23 @@ body.skin-wa #sendBtn::before{
 /* ── USER IMAGE ATTACHMENTS (conversation content; skin-aware presentation) ── */
 .image-preview-strip {
   display: flex;
+  flex: 0 0 100%;
+  order: -1;
   gap: 8px;
+  align-items: flex-start;
   overflow-x: auto;
-  padding: 0 2px 8px;
+  overflow-y: hidden;
+  padding: 0 2px 2px;
+  margin: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
 .image-preview-strip[hidden] { display: none !important; }
+.image-preview-strip:not([hidden]) + .image-attach-btn,
+.image-preview-strip:not([hidden]) ~ textarea,
+.image-preview-strip:not([hidden]) ~ .send-btn {
+  align-self: flex-end;
+}
 #chatImageInput { display: none !important; }
 .chat-image-item img[hidden] { display: none !important; }
 .image-preview-card {
@@ -2901,6 +2915,7 @@ body.skin-dark .image-attach-btn:hover:not(:disabled) {
   border-color: rgba(209,177,132,.38);
   background: linear-gradient(180deg,#4b3b32 0%,#392c26 100%);
 }
+body.skin-dark .image-preview-strip{padding:0 2px 4px;}
 body.skin-dark .image-preview-card,
 body.skin-dark .chat-image-item {
   border-color: rgba(215,182,137,.20);
@@ -2928,6 +2943,7 @@ body.skin-wa .image-attach-btn:hover:not(:disabled) {
     radial-gradient(120% 110% at 30% 22%,rgba(255,255,255,.18),transparent 52%),
     linear-gradient(180deg,rgba(125,77,43,.22),rgba(64,37,24,.17));
 }
+body.skin-wa .image-preview-strip{padding:0 2px 4px;}
 body.skin-wa .image-preview-card,
 body.skin-wa .chat-image-item {
   border-color: rgba(255,225,188,.20);
@@ -3046,9 +3062,9 @@ body.skin-wa .chat-image-item {
       有新回复 <span aria-hidden="true">↓</span>
     </button>
     <div class="status-bar" id="statusBar"></div>
-    <div class="image-preview-strip" id="imagePreviewStrip" hidden></div>
-    <div class="input-row">
+    <div class="input-row" id="composerInputRow">
       <input id="chatImageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden onchange="handleChatImageSelection(event)">
+      <div class="image-preview-strip" id="imagePreviewStrip" hidden></div>
       <button class="image-attach-btn" id="imageAttachBtn" type="button" aria-label="添加图片" title="添加图片" onclick="document.getElementById('chatImageInput').click()">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><circle cx="9" cy="10" r="1.5"></circle><path d="M5.5 17l4.5-4 3.2 2.8 2.6-2.3 2.7 3.5"></path></svg>
       </button>
@@ -5712,13 +5728,16 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
 
   function renderPendingImages() {
     const strip = document.getElementById('imagePreviewStrip');
+    const row = document.getElementById('composerInputRow');
     if (!strip) return;
     if (!pendingImageItems.length) {
       strip.innerHTML = '';
       strip.hidden = true;
+      row?.classList.remove('has-pending-images');
       return;
     }
     strip.hidden = false;
+    row?.classList.add('has-pending-images');
     strip.innerHTML = pendingImageItems.map((item, index) => `<div class="image-preview-card">
       <button class="image-preview-open" type="button" onclick="openPendingImageViewer(${index})" aria-label="放大查看待发送图片 ${index + 1}" title="点击预览大图">
         <img src="${escHtml(item.previewUrl)}" alt="待发送图片 ${index + 1}">
@@ -9393,8 +9412,6 @@ ${topText}`;
     let scrollRaf = 0;
     let bodyObserver = null;
     let chatObserver = null;
-    let imageResizeObserver = null;
-    const imageObserved = new Set();
     let nextElementId = 1;
 
     const elementIds = new WeakMap();
@@ -9517,11 +9534,10 @@ ${topText}`;
     function collectCollisionBlockers(surfaceBoxes){
       const result=[...surfaceBoxes];
 
-      // Stickers and sent-image frames are collision-only: they stop another
-      // bubble's edge hairs without adding new background dents or changing layout.
-      // Measure each actual rendered frame, never assume a fixed image dimension.
-      area.querySelectorAll('.sticker-inline:not([hidden]), .msg.user .chat-image-item').forEach(el=>{
-        if(el.hidden) return;
+      // Stickers and user-sent image frames block bubble-edge overflow,
+      // but they do NOT participate in background denting. This keeps them
+      // visually floating on the fur while preventing edge hairs crossing in.
+      area.querySelectorAll('.sticker-inline:not([hidden]), .chat-image-item:not([hidden])').forEach(el=>{
         const r=layoutRect(el);
         if(r.w<4 || r.h<4) return;
         result.push({
@@ -9532,7 +9548,7 @@ ${topText}`;
           y:r.y,
           w:r.w,
           h:r.h,
-          r:Math.min(el.matches('.chat-image-item') ? 14 : 12,r.w/2,r.h/2)
+          r:Math.min(14,r.w/2,r.h/2)
         });
       });
       return result;
@@ -10161,32 +10177,6 @@ ${topText}`;
       ) || !!node.closest?.('.cocker-fur-stack,.cocker-edge-stack');
     }
 
-    // Only image-bearing user messages are observed. The observer is
-    // presentation-only and is reset when chats replace their DOM nodes.
-    function syncImageObservers(){
-      if(!active() || !area || !w.ResizeObserver) return;
-      if(!imageResizeObserver){
-        imageResizeObserver=new w.ResizeObserver(entries=>{
-          if(active() && entries.some(entry=>entry.target.isConnected)){
-            requestUpdate(false);
-          }
-        });
-      }
-      const wanted=new Set(area.querySelectorAll('.msg.user.has-images, .msg.user .chat-image-item'));
-      for(const el of imageObserved){
-        if(!wanted.has(el)){
-          imageResizeObserver.unobserve(el);
-          imageObserved.delete(el);
-        }
-      }
-      for(const el of wanted){
-        if(!imageObserved.has(el)){
-          imageObserved.add(el);
-          imageResizeObserver.observe(el);
-        }
-      }
-    }
-
     function start(){
       if(!ensure()) return;
 
@@ -10213,10 +10203,7 @@ ${topText}`;
           }
         }
 
-        if(relevant){
-          syncImageObservers();
-          requestUpdate(false);
-        }
+        if(relevant) requestUpdate(false);
       });
 
       chatObserver.observe(area,{
@@ -10230,25 +10217,22 @@ ${topText}`;
         area.__cockerStickerLoadBound=true;
         area.addEventListener('load',ev=>{
           const target=ev.target;
-          if(
-            active() &&
-            !target?.hidden &&
-            target?.matches?.('.sticker-inline, .chat-image-item img')
-          ){
-            // Image hydration changes real layout after initial insertion.
+          if(!active() || target?.hidden) return;
+          if(target?.matches?.('.sticker-inline')){
             requestUpdate(false);
+            return;
+          }
+          if(target?.matches?.('.chat-image-item img')){
+            w.requestAnimationFrame(()=>w.requestAnimationFrame(()=>requestUpdate(false)));
           }
         },true);
       }
 
       bodyObserver=new w.MutationObserver(()=>{
         if(active()){
-          syncImageObservers();
           requestUpdate(true);
         }else{
           idleToken++;
-          imageResizeObserver?.disconnect();
-          imageObserved.clear();
         }
       });
       bodyObserver.observe(d.body,{attributes:true,attributeFilter:['class']});
@@ -10263,7 +10247,6 @@ ${topText}`;
       });
 
       installBaseFur();
-      syncImageObservers();
       requestUpdate(true);
     }
 
