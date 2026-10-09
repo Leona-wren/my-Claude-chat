@@ -242,8 +242,8 @@
   .skin-dot:hover { transform: scale(1.15); }
   .skin-dot.selected { border-color: var(--accent); }
   .skin-dot.dot-warm { background: #5C7A4E; box-shadow: inset 0 0 0 2px #3d5435; }
-  .skin-dot.dot-dark { background: #1A1A1F; box-shadow: inset 0 0 0 1px #9E8FD4; }
-  .skin-dot.dot-wa { background: #25D366; box-shadow: inset 0 0 0 1px #128C7E; }
+  .skin-dot.dot-dark { background: #6f5038; box-shadow: inset 0 0 0 1px #bd9161; }
+  .skin-dot.dot-wa { background: #f3a15a; box-shadow: inset 0 0 0 1px rgba(255,241,218,.55), 0 0 7px rgba(244,157,79,.20); }
 
   .skin-label {
     font-size: 11px;
@@ -9393,6 +9393,8 @@ ${topText}`;
     let scrollRaf = 0;
     let bodyObserver = null;
     let chatObserver = null;
+    let imageResizeObserver = null;
+    const imageObserved = new Set();
     let nextElementId = 1;
 
     const elementIds = new WeakMap();
@@ -9515,20 +9517,22 @@ ${topText}`;
     function collectCollisionBlockers(surfaceBoxes){
       const result=[...surfaceBoxes];
 
-      // Stickers block bubble-edge overflow, but they do NOT participate in
-      // background denting. This keeps them visually floating on the fur.
-      area.querySelectorAll('.sticker-inline:not([hidden])').forEach(img=>{
-        const r=layoutRect(img);
+      // Stickers and sent-image frames are collision-only: they stop another
+      // bubble's edge hairs without adding new background dents or changing layout.
+      // Measure each actual rendered frame, never assume a fixed image dimension.
+      area.querySelectorAll('.sticker-inline:not([hidden]), .msg.user .chat-image-item').forEach(el=>{
+        if(el.hidden) return;
+        const r=layoutRect(el);
         if(r.w<4 || r.h<4) return;
         result.push({
-          id:getElementId(img),
-          el:img,
+          id:getElementId(el),
+          el,
           blockerOnly:true,
           x:r.x,
           y:r.y,
           w:r.w,
           h:r.h,
-          r:Math.min(12,r.w/2,r.h/2)
+          r:Math.min(el.matches('.chat-image-item') ? 14 : 12,r.w/2,r.h/2)
         });
       });
       return result;
@@ -10157,6 +10161,32 @@ ${topText}`;
       ) || !!node.closest?.('.cocker-fur-stack,.cocker-edge-stack');
     }
 
+    // Only image-bearing user messages are observed. The observer is
+    // presentation-only and is reset when chats replace their DOM nodes.
+    function syncImageObservers(){
+      if(!active() || !area || !w.ResizeObserver) return;
+      if(!imageResizeObserver){
+        imageResizeObserver=new w.ResizeObserver(entries=>{
+          if(active() && entries.some(entry=>entry.target.isConnected)){
+            requestUpdate(false);
+          }
+        });
+      }
+      const wanted=new Set(area.querySelectorAll('.msg.user.has-images, .msg.user .chat-image-item'));
+      for(const el of imageObserved){
+        if(!wanted.has(el)){
+          imageResizeObserver.unobserve(el);
+          imageObserved.delete(el);
+        }
+      }
+      for(const el of wanted){
+        if(!imageObserved.has(el)){
+          imageObserved.add(el);
+          imageResizeObserver.observe(el);
+        }
+      }
+    }
+
     function start(){
       if(!ensure()) return;
 
@@ -10183,7 +10213,10 @@ ${topText}`;
           }
         }
 
-        if(relevant) requestUpdate(false);
+        if(relevant){
+          syncImageObservers();
+          requestUpdate(false);
+        }
       });
 
       chatObserver.observe(area,{
@@ -10199,9 +10232,10 @@ ${topText}`;
           const target=ev.target;
           if(
             active() &&
-            target?.matches?.('.sticker-inline') &&
-            !target.hidden
+            !target?.hidden &&
+            target?.matches?.('.sticker-inline, .chat-image-item img')
           ){
+            // Image hydration changes real layout after initial insertion.
             requestUpdate(false);
           }
         },true);
@@ -10209,9 +10243,12 @@ ${topText}`;
 
       bodyObserver=new w.MutationObserver(()=>{
         if(active()){
+          syncImageObservers();
           requestUpdate(true);
         }else{
           idleToken++;
+          imageResizeObserver?.disconnect();
+          imageObserved.clear();
         }
       });
       bodyObserver.observe(d.body,{attributes:true,attributeFilter:['class']});
@@ -10226,6 +10263,7 @@ ${topText}`;
       });
 
       installBaseFur();
+      syncImageObservers();
       requestUpdate(true);
     }
 
