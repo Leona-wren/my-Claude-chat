@@ -3132,7 +3132,13 @@ body.skin-wa .main > footer .input-row:focus-within {
 }
 .history-image-picker h2 { font-size: 16px; font-weight: 600; color: var(--text); }
 .history-image-picker-desc { font-size: 12px; line-height: 1.55; color: var(--text-soft); }
-.history-image-picker-summary { font-size: 12px; color: var(--accent); line-height: 1.5; }
+.history-image-picker-summary { font-size: 12px; color: var(--accent); line-height: 1.5; font-variant-numeric: tabular-nums; }
+.history-image-picker-summary.over-limit { color: #e58a59; font-weight: 700; }
+.history-image-picker-foot .btn-save:disabled,
+.history-image-picker-foot .btn-save:disabled:hover {
+  cursor: not-allowed; opacity: .38; filter: grayscale(.7);
+  box-shadow: none; transform: none;
+}
 .history-image-picker-list { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px 3px 2px 0; }
 .history-image-picker-row {
   display: flex; align-items: center; gap: 10px; min-height: 66px;
@@ -3153,6 +3159,9 @@ body.skin-wa .main > footer .input-row:focus-within {
 .history-image-picker-info small {
   display: block; font-size: 11px; color: var(--text-soft);
   white-space: nowrap; text-overflow: ellipsis; overflow: hidden;
+}
+.history-image-picker-info .history-image-picker-file-meta {
+  opacity: .88; font-variant-numeric: tabular-nums;
 }
 .history-image-picker-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: flex-end; }
 .history-image-picker-foot .btn-cancel { padding: 7px 10px; }
@@ -7063,6 +7072,34 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return (bytes / (1024 * 1024)).toFixed(1);
   }
 
+  // What a single image contributes to the JSON request. The base64 payload
+  // grows by exactly 4 * ceil(binaryBytes / 3); do not equate raw file size
+  // with HTTP request size. Large originals follow getImageBase64Source's
+  // existing one-time request derivative policy, without encoding twice.
+  async function estimateHistoricalImageRequestBytes(record) {
+    if (!record?.blob) return null;
+    const original = record.blob;
+    let outgoing = original;
+    const largeSingleImage = 4 * Math.ceil(original.size / 3) > 10 * 1000 * 1000
+      || Math.max(record.width || 0, record.height || 0) > 8000;
+    if (largeSingleImage) {
+      if (original.type === 'image/gif') throw new Error('超出 GIF 单图限制');
+      outgoing = await prepareImageForApi(original, {maxEdge:3200, quality:.90});
+    }
+    const encodedLength = 4 * Math.ceil(outgoing.size / 3);
+    if (encodedLength > 10 * 1000 * 1000) throw new Error('超出单图编码限制');
+    const headerLength = JSON.stringify({
+      type:'image', source:{type:'base64', media_type:outgoing.type || record.mimeType || 'image/jpeg', data:''}
+    }).length;
+    return headerLength + encodedLength + 2;
+  }
+
+  function imageDimensionsLabel(record, attachment) {
+    const w = Number(record?.width || attachment?.width || 0);
+    const h = Number(record?.height || attachment?.height || 0);
+    return w > 0 && h > 0 ? `${w}×${h}px` : '像素尺寸未记录';
+  }
+
   function listHistoricalImageChoicesMeta(chat) {
     const latest = getLatestUnresolvedUserTurn(chat)?.message;
     const choices = [];
@@ -7076,6 +7113,9 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
           messageIndex,
           imageIndex,
           assetId: attachment.assetId,
+          rawSize: Number.isFinite(Number(attachment.size)) ? Number(attachment.size) : null,
+          width: attachment.width || null,
+          height: attachment.height || null,
           createdAt: message.createdAt || null,
           text: String(message.content || '').replace(/\s+/g, ' ').slice(0, 140)
         });
@@ -7158,7 +7198,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       mode: 'manual',
       initialSelected,
       title: '管理后续默认注入的旧图',
-      desc: '这里控制这个对话接下来默认继续发送给 Claude 的旧图。只影响后续请求，不会删除图片、消息或记忆；你可以随时改，或全部取消。'
+      desc: '这里管理该对话后续默认注入的旧图。显示每张图经必要尺寸处理后估算的 API 体积；总计只含勾选的旧图，不含未来的新消息和系统提示。超过 29 MiB 或体积尚未算完时不能保存。'
     }).catch(() => null);
     if (!result) return;
     setStoredHistoricalImageAssetIds(chatId, result.selectedAssetIds);
@@ -7260,24 +7300,52 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       confirmBtn.textContent = mode === 'manual' ? '保存选择' : '确认发送';
       list.innerHTML = choices.map(choice => {
         const date = choice.createdAt ? new Date(choice.createdAt).toLocaleString('zh-CN') : '时间未知';
+        const existingApiBytes = Number.isFinite(choice.byteSize) ? `API 约 ${imageRequestMiB(choice.byteSize)} MiB` : 'API 体积计算中…';
         return `<label class="history-image-picker-row">
           <input type="checkbox" data-choice-index="${choice.index}" ${selected.has(choice.index) ? 'checked' : ''}>
           <img class="history-image-picker-thumb" data-preview-index="${choice.index}" alt="历史图片" hidden>
           <span class="history-image-picker-info">
-            <strong>${escHtml(date)} · 图 ${choice.imageIndex + 1} · 约 ${imageRequestMiB(choice.byteSize)} MiB</strong>
+            <strong>${escHtml(date)} · 图 ${choice.imageIndex + 1} · <span data-choice-size-index="${choice.index}">${existingApiBytes}</span></strong>
             <small>${escHtml(choice.text || '（原消息仅包含图片）')}</small>
+            <small class="history-image-picker-file-meta" data-choice-detail-index="${choice.index}">原图信息读取中…</small>
           </span>
         </label>`;
       }).join('');
       function refreshUI() {
+        let exceeded = false;
+        let blocked = false;
         if (body) {
-          summary.textContent = `已选历史图片 ${selected.size}/${choices.length} 张 · 本轮请求预估 ${imageRequestMiB(estimateBytes())} / 29 MiB`;
-          warning.textContent = estimateBytes() >= IMAGE_REQUEST_SAFE_BYTES
-            ? '当前勾选内容可能超限。请减少旧图；确认时会再次精确校验。' : '';
+          // The full outgoing request is already built in overflow mode: test its
+          // *actual JSON byte length*, not a sum of approximate image estimates.
+          const actualBytes = imageRequestBytes(buildBodyWithChosenHistoryImages(body, choices, selected));
+          exceeded = actualBytes > IMAGE_REQUEST_SAFE_BYTES;
+          blocked = exceeded;
+          summary.textContent = `已选历史图片 ${selected.size}/${choices.length} 张 · 完整请求 ${imageRequestMiB(actualBytes)} / 29 MiB`;
+          warning.textContent = exceeded
+            ? '完整请求超过 29 MiB 安全上限；请减少旧图。确认发送已禁用。'
+            : '当前选择符合体积上限；这里显示的是包含文字、新图和历史内容的完整请求。';
         } else {
-          summary.textContent = `当前后续默认注入旧图 ${selected.size}/${choices.length} 张`;
-          warning.textContent = '';
+          const selectedItems = choices.filter(choice => selected.has(choice.index));
+          const measured = selectedItems.filter(choice => Number.isFinite(choice.byteSize));
+          const failed = selectedItems.filter(choice => choice.sizeError).length;
+          const pending = selectedItems.length - measured.length - failed;
+          const bytes = measured.reduce((sum, choice) => sum + choice.byteSize, 0);
+          exceeded = bytes >= IMAGE_REQUEST_SAFE_BYTES;
+          blocked = exceeded || failed > 0 || pending > 0;
+          summary.textContent = `已选旧图 ${selectedItems.length}/${choices.length} 张 · 预计 API 图片合计 ${imageRequestMiB(bytes)} / 29 MiB` +
+            (pending ? `（${pending} 张计算中）` : '') +
+            (failed ? `（${failed} 张体积无法计算）` : '');
+          warning.textContent = failed
+            ? '选中的图片存在缺失或体积计算失败；请取消这些图片后再保存。'
+            : pending
+              ? '图片体积尚未计算完毕，暂不能保存。'
+              : exceeded
+                ? '仅所选旧图就已达到 29 MiB，无法为文字及新图留出空间；请减少勾选。'
+                : '这里仅计算旧图，不含未来的文字、新图和系统提示；真正发送前仍会校验完整请求。';
         }
+        summary.classList.toggle('over-limit', exceeded);
+        confirmBtn.disabled = blocked;
+        confirmBtn.title = blocked ? (exceeded ? '超出体积上限，请减少旧图' : '等待尺寸计算完成或取消不可用的图片') : '';
       }
       let settled = false;
       function finish(value, error = null) {
@@ -7318,15 +7386,27 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       };
       cancelBtn.onclick = () => finish(null);
       confirmBtn.onclick = () => {
+        // Disabled-button state is visual feedback. Repeat the check here so
+        // programmatic calls cannot bypass incomplete/over-limit selections.
         const selectedAssetIds = chosenAssetIdsFromIndices(choices, selected);
         if (!body) {
+          const selectedItems = choices.filter(choice => selected.has(choice.index));
+          if (selectedItems.some(choice => !Number.isFinite(choice.byteSize))) {
+            warning.textContent = '有选中图片尚未完成体积计算，不能保存。';
+            refreshUI();
+            return;
+          }
+          if (selectedItems.reduce((sum, choice) => sum + choice.byteSize, 0) >= IMAGE_REQUEST_SAFE_BYTES) {
+            refreshUI();
+            return;
+          }
           finish({ selectedAssetIds, selectedIndices: new Set(selected), body: null });
           return;
         }
         const outgoing = buildBodyWithChosenHistoryImages(body, choices, selected);
         const actualBytes = imageRequestBytes(outgoing);
         if (actualBytes > IMAGE_REQUEST_SAFE_BYTES) {
-          warning.textContent = `精确计算 ${imageRequestMiB(actualBytes)} MiB，仍超限；请减少旧图。`;
+          refreshUI();
           return;
         }
         finish({ body: outgoing, selectedAssetIds, selectedIndices: new Set(selected) });
@@ -7335,16 +7415,62 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       overlay.setAttribute('aria-hidden', 'false');
       refreshUI();
       // Thumbnails come from original local blobs; never send or modify these previews.
-      choices.forEach(async choice => {
-        const record = await ImageStorage.get(choice.assetId);
-        if (settled || !record?.blob) return;
-        const img = list.querySelector(`img[data-preview-index="${choice.index}"]`);
-        if (!img) return;
-        const url = URL.createObjectURL(record.blob);
-        urls.push(url);
-        img.src = url;
-        img.hidden = false;
-      });
+      // Populate both previews and byte estimates from the same immutable local
+      // source. The manual view has no ready-made API body, unlike overflow mode.
+      // Read in a bounded sequential task to avoid decoding many large images at once.
+      (async () => {
+        for (const choice of choices) {
+          if (settled) break;
+          const label = list.querySelector(`[data-choice-size-index="${choice.index}"]`);
+          const detail = list.querySelector(`[data-choice-detail-index="${choice.index}"]`);
+          try {
+            const record = await ImageStorage.get(choice.assetId);
+            if (settled) return;
+            if (!record?.blob) {
+              if (label && !Number.isFinite(choice.byteSize)) label.textContent = 'API 体积不可用';
+              if (detail) detail.textContent = '本地原图缺失';
+              choice.sizeError = '本地原图缺失';
+              continue;
+            }
+            const img = list.querySelector(`img[data-preview-index="${choice.index}"]`);
+            if (img) {
+              const url = URL.createObjectURL(record.blob);
+              urls.push(url);
+              img.src = url;
+              img.hidden = false;
+            }
+            if (detail) {
+              const originalBytes = record.blob.size;
+              const needsDerivative = 4 * Math.ceil(originalBytes / 3) > 10 * 1000 * 1000
+                || Math.max(record.width || 0, record.height || 0) > 8000;
+              let processingNote = 'API 端原样编码（不降画质）';
+              if (needsDerivative) {
+                const w = Number(record.width || choice.width || 0);
+                const h = Number(record.height || choice.height || 0);
+                const scale = w > 0 && h > 0 ? Math.min(1, 3200 / Math.max(w, h)) : null;
+                const pixels = scale === null ? '最长边不超过 3200px' :
+                  `预计 ${Math.max(1, Math.round(w * scale))}×${Math.max(1, Math.round(h * scale))}px`;
+                const codec = record.blob.type === 'image/png' ? 'PNG 格式保留' : 'JPEG/WebP 编码质量参数 0.90';
+                processingNote = `API 发送副本：${pixels} · ${codec}`;
+              }
+              detail.textContent = `原图 ${imageRequestMiB(originalBytes)} MiB · ${imageDimensionsLabel(record, choice)} · ${processingNote}`;
+            }
+            if (!Number.isFinite(choice.byteSize)) {
+              const bytes = await estimateHistoricalImageRequestBytes(record);
+              if (settled) return;
+              choice.byteSize = bytes;
+              if (label) label.textContent = `API 约 ${imageRequestMiB(bytes)} MiB`;
+            }
+          } catch (error) {
+            if (settled) return;
+            choice.sizeError = error?.message || '无法计算发送体积';
+            if (label && !Number.isFinite(choice.byteSize)) label.textContent = 'API 体积不可计算';
+            if (detail) detail.textContent = `${detail.textContent || '原图信息未知'} · ${choice.sizeError}`;
+          } finally {
+            if (!settled && mode === 'manual') refreshUI();
+          }
+        }
+      })();
       if (signal?.aborted) onAbort();
     });
   }
@@ -7409,39 +7535,39 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       // Images do not compete for a shared shrinking quality budget. When the request
       // exceeds the endpoint limit, reserve the current turn first; ASK which older
       // visual blocks to retain. Text history and saved originals never change.
-      let outgoingBody = body;
-      let historicalChoices = temporalHistory.imageAssetIds.length ? listHistoricalImageBlocks(chat, outgoingBody) : [];
+      const historicalChoices = temporalHistory.imageAssetIds.length ? listHistoricalImageBlocks(chat, body) : [];
       const storedHistoricalAssetIds = getStoredHistoricalImageAssetIds(chatId);
-      if (historicalChoices.length && storedHistoricalAssetIds !== null) {
-        outgoingBody = buildBodyWithChosenHistoryImages(outgoingBody, historicalChoices, chosenIndicesFromAssetIds(historicalChoices, storedHistoricalAssetIds));
-      }
+      const effectiveIndices = storedHistoricalAssetIds !== null
+        ? chosenIndicesFromAssetIds(historicalChoices, storedHistoricalAssetIds)
+        : new Set(historicalChoices.map(choice => choice.index));
+      let fullCandidateBody = body;  // Preserve full image blocks so users can reselect excluded images.
+      let outgoingBody = buildBodyWithChosenHistoryImages(fullCandidateBody, historicalChoices, effectiveIndices);
       if (temporalHistory.imageAssetIds.length && imageRequestBytes(outgoingBody) > IMAGE_REQUEST_SAFE_BYTES) {
-        const choices = historicalChoices.length ? historicalChoices : listHistoricalImageBlocks(chat, outgoingBody);
-        const noneSelected = buildBodyWithChosenHistoryImages(outgoingBody, choices, new Set());
-        let newOnlyBody = noneSelected;
+        const choices = historicalChoices;
+        let newOnlyBody = buildBodyWithChosenHistoryImages(fullCandidateBody, choices, new Set());
         if (imageRequestBytes(newOnlyBody) > IMAGE_REQUEST_SAFE_BYTES) {
           newOnlyBody = await gentlyFitNewImagesWithinRequest(newOnlyBody, chat, signal);
-          // Keep the same gentle derivatives in the full-history candidate body.
+          // The current turn is always kept. Any gentle derivative must be the
+          // *same exact block* in the picker preview and in the final request.
           const latest = getLatestUnresolvedUserTurn(chat)?.message;
           const latestIndex = chat.messages.filter(m => m?.role !== 'thinking').indexOf(latest);
           if (latestIndex >= 0) {
-            const messages = outgoingBody.messages.slice();
+            const messages = fullCandidateBody.messages.slice();
             messages[latestIndex] = newOnlyBody.messages[latestIndex];
-            outgoingBody = { ...outgoingBody, messages };
+            fullCandidateBody = { ...fullCandidateBody, messages };
           }
         }
         if (imageRequestBytes(newOnlyBody) > IMAGE_REQUEST_SAFE_BYTES) {
           return { ok:false, kind:'api', error:'即使不发送任何历史图片，本轮新图与文字仍超出请求上限。请减少新图片或自行调整文件尺寸；未牺牲新图的最低画质。' };
         }
-        // If gentle treatment of new photos happened to make ALL history fit,
-        // no selector is necessary. Otherwise open a request-only chooser.
+        outgoingBody = buildBodyWithChosenHistoryImages(fullCandidateBody, choices, effectiveIndices);
         if (imageRequestBytes(outgoingBody) > IMAGE_REQUEST_SAFE_BYTES) {
           if (!choices.length) return { ok:false, kind:'api', error:'本轮请求超过图片体积限制，且没有可省略的历史图片。请减少本轮图片数量。' };
           if (currentId === chatId) removeTyping();
           const initialSelected = storedHistoricalAssetIds !== null
             ? chosenIndicesFromAssetIds(choices, storedHistoricalAssetIds)
-            : preferredRecentHistoryImages(outgoingBody, choices);
-          const selectedResult = await showHistoricalImageSelection(chatId, outgoingBody, choices, signal, { mode:'overflow', initialSelected });
+            : preferredRecentHistoryImages(fullCandidateBody, choices);
+          const selectedResult = await showHistoricalImageSelection(chatId, fullCandidateBody, choices, signal, { mode:'overflow', initialSelected });
           if (!selectedResult) return { ok:false, kind:'cancelled', error:'已取消本轮历史图片选择；消息仍保留，可点重试' };
           outgoingBody = selectedResult.body;
           setStoredHistoricalImageAssetIds(chatId, selectedResult.selectedAssetIds);
