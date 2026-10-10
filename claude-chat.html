@@ -1284,6 +1284,23 @@
   .sticker-inline { display: block; max-width: min(112px, 28vw); max-height: 112px; object-fit: contain; border-radius: 10px; }
   .sticker-bubble { padding: 2px 0; background: transparent; box-shadow: none; }
   .sticker-bubble img[hidden] { display: none; }
+  /* History sticker quotation: local reference affordance, independent of all skins. */
+  .sticker-bubble { position: relative; width: fit-content; max-width: 100%; }
+  .sticker-quote-action { position:absolute; top:2px; right:-25px; border:1px solid var(--border); color:var(--text-soft); background:var(--input-bg); border-radius:9px; width:23px; height:23px; display:flex; align-items:center; justify-content:center; font-size:13px; opacity:.54; cursor:pointer; z-index:5; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .sticker-quote-action:hover, .sticker-quote-action:focus-visible { opacity:1; color:var(--accent); }
+  .sticker-quote-action:disabled { opacity:.25; cursor:not-allowed; }
+  .sticker-quote-composer { width:100%; display:flex; align-items:center; gap:9px; background:color-mix(in srgb, var(--input-bg) 85%, var(--hover)); border:1px solid var(--border); border-radius:11px; padding:6px 8px; min-width:0; }
+  .sticker-quote-composer[hidden] { display:none !important; }
+  .sticker-quote-mini { width:40px; height:40px; object-fit:contain; flex-shrink:0; border-radius:7px; }
+  .sticker-quote-label { min-width:0; flex:1; display:flex; flex-direction:column; gap:2px; }
+  .sticker-quote-label strong { font-size:11px; font-weight:500; color:var(--text); }
+  .sticker-quote-label span { font-size:10px; color:var(--text-soft); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .sticker-quote-remove { background:transparent; border:0; color:var(--text-soft); cursor:pointer; padding:3px 6px; font-size:16px; }
+  .quoted-sticker-history { display:flex; align-items:center; gap:8px; border:1px solid var(--border); background:var(--input-bg); border-radius:10px; padding:6px 8px; max-width:100%; color:var(--text-soft); font-size:11px; }
+  .quoted-sticker-history img { width:44px; height:44px; object-fit:contain; flex-shrink:0; }
+  .quoted-sticker-history .quoted-sticker-desc { min-width:0; display:flex; flex-direction:column; gap:3px; }
+  .quoted-sticker-history .quoted-sticker-desc span { overflow-wrap:anywhere; }
+  .quoted-sticker-history .quoted-sticker-desc b { color:var(--text); font-weight:500; }
   .sticker-vector-state { font-size: 10px; color: var(--text-soft); }
   .sticker-test-panel { border: 1px solid var(--border); border-radius: 12px; padding: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; }
   .sticker-test-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
@@ -3254,6 +3271,11 @@ body.skin-wa .history-image-picker-info small { color: rgba(255,241,226,.71); }
     <div class="input-row" id="composerInputRow">
       <input id="chatImageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden onchange="handleChatImageSelection(event)">
       <div class="image-preview-strip" id="imagePreviewStrip" hidden></div>
+      <div class="sticker-quote-composer" id="stickerQuoteComposer" hidden>
+        <img class="sticker-quote-mini" id="stickerQuotePreview" alt="引用的历史表情包" hidden>
+        <div class="sticker-quote-label"><strong>引用 Claude 之前发送的表情包</strong><span id="stickerQuoteIntent"></span></div>
+        <button class="sticker-quote-remove" type="button" aria-label="取消引用" title="取消引用" onclick="clearPendingStickerQuote()">×</button>
+      </div>
       <button class="image-attach-btn" id="imageAttachBtn" type="button" aria-label="添加图片" title="添加图片" onclick="document.getElementById('chatImageInput').click()">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><circle cx="9" cy="10" r="1.5"></circle><path d="M5.5 17l4.5-4 3.2 2.8 2.6-2.3 2.7 3.5"></path></svg>
       </button>
@@ -3820,6 +3842,8 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
   let resolveImageDBReady;
   const imageDBReady = new Promise(resolve => { resolveImageDBReady = resolve; });
   let pendingImageItems = []; // transient File previews only; never persisted as draft/history
+  let pendingStickerQuote = null; // transient composer selection; persisted only on send() as references[]
+  let pendingStickerQuotePreviewUrl = null;
   let imageSelectionEpoch = 0; // invalidates asynchronous metadata reads when the chat changes
   let isPreparingImageSend = false; // covers IndexedDB awaits before the generation controller starts
   let imageChatUrls = [];
@@ -5354,7 +5378,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       saveScrollPositionForChat(currentId);
     }
     hideNewReplyNotice();
-    if (id !== currentId) clearPendingImages();
+    if (id !== currentId) { clearPendingImages(); clearPendingStickerQuote(); }
     closeChatImageViewer();
     currentId = id;
     if (id && chats[id]) localStorage.setItem(CURRENT_CHAT_KEY, id);
@@ -5692,6 +5716,109 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     }
   }
 
+  function resolveAssistantStickerReference(chat, reference) {
+    if (!chat || reference?.type !== 'assistant_sticker' || reference.chatId !== chat.id) return null;
+    const message = (chat.messages || []).find(item => item?.id === reference.messageId && item.role === 'assistant');
+    if (!message) return null;
+    const index = Number(reference.eventIndex);
+    if (!Number.isSafeInteger(index) || index < 0) return null;
+    const event = Array.isArray(message.stickerEvents) ? message.stickerEvents[index] : null;
+    if (!event?.stickerId || event.stickerId !== reference.stickerId) return null;
+    if (typeof reference.sourceCreatedAt === 'number' && Number.isFinite(reference.sourceCreatedAt) &&
+        reference.sourceCreatedAt !== Number(message.createdAt)) return null;
+    return { message, event, eventIndex:index };
+  }
+
+  function makeAssistantStickerReference(chatId, message, eventIndex) {
+    const event = message?.stickerEvents?.[eventIndex];
+    if (!event?.stickerId || !message?.id) return null;
+    return {
+      type:'assistant_sticker', chatId, messageId:message.id,
+      eventIndex, stickerId:event.stickerId,
+      sourceCreatedAt:Number(message.createdAt) || null
+    };
+  }
+
+  function stickerQuoteActionMarkup(msg, eventIndex) {
+    if (!msg?.id || !Number.isInteger(eventIndex) || eventIndex < 0) return '';
+    return `<button class="sticker-quote-action" type="button" title="引用这张表情包" aria-label="引用这张表情包" data-message-id="${escHtml(msg.id)}" data-event-index="${eventIndex}" onclick="quoteAssistantSticker(this)">↩</button>`;
+  }
+
+  function releasePendingStickerQuotePreview() {
+    if (pendingStickerQuotePreviewUrl) URL.revokeObjectURL(pendingStickerQuotePreviewUrl);
+    pendingStickerQuotePreviewUrl = null;
+  }
+
+  function clearPendingStickerQuote() {
+    pendingStickerQuote = null;
+    releasePendingStickerQuotePreview();
+    const wrap = document.getElementById('stickerQuoteComposer');
+    const img = document.getElementById('stickerQuotePreview');
+    if (wrap) wrap.hidden = true;
+    if (img) { img.removeAttribute('src'); img.hidden = true; }
+    const row = document.getElementById('composerInputRow');
+    if (row) row.classList.remove('has-sticker-quote');
+  }
+
+  async function quoteAssistantSticker(button) {
+    const chatId = currentId;
+    const chat = chats[chatId];
+    const messageId = button?.dataset?.messageId;
+    const eventIndex = Number(button?.dataset?.eventIndex);
+    const message = chat?.messages?.find(item => item?.id === messageId && item.role === 'assistant');
+    if (!message || !Number.isSafeInteger(eventIndex)) return;
+    const reference = makeAssistantStickerReference(chatId, message, eventIndex);
+    if (!reference) return;
+    pendingStickerQuote = reference;
+    releasePendingStickerQuotePreview();
+    const wrap = document.getElementById('stickerQuoteComposer');
+    const intent = document.getElementById('stickerQuoteIntent');
+    const img = document.getElementById('stickerQuotePreview');
+    if (wrap) wrap.hidden = false;
+    if (intent) intent.textContent = String(message.stickerEvents[eventIndex]?.intent || '已发送的表情包');
+    document.getElementById('composerInputRow')?.classList.add('has-sticker-quote');
+    const record = await StickerStorage.get(reference.stickerId);
+    if (pendingStickerQuote !== reference || currentId !== chatId) return;
+    if (record?.blob && img) {
+      pendingStickerQuotePreviewUrl = URL.createObjectURL(record.blob);
+      img.src = pendingStickerQuotePreviewUrl;
+      img.hidden = false;
+    }
+    document.getElementById('input')?.focus();
+  }
+
+  function quotedStickerHistoryMarkup(message) {
+    const references = (Array.isArray(message?.references) ? message.references : [])
+      .filter(ref => ref?.type === 'assistant_sticker');
+    if (!references.length) return '';
+    return references.map(ref => {
+      const chat = chats[message.chatId];
+      const source = resolveAssistantStickerReference({ id: message.chatId, messages:chat?.messages || [] }, ref);
+      const intent = source?.event?.intent || '原始意图不可用';
+      return `<div class="quoted-sticker-history" data-quoted-sticker-id="${escHtml(ref.stickerId || '')}">
+        <img alt="历史 Claude 表情包" hidden><div class="quoted-sticker-desc"><b>引用 Claude 之前发送的表情包</b><span>${escHtml(intent)}</span></div>
+      </div>`;
+    }).join('');
+  }
+
+  async function hydrateQuotedStickerHistory(root) {
+    const quotes = Array.from(root?.querySelectorAll?.('.quoted-sticker-history[data-quoted-sticker-id]') || []);
+    for (const node of quotes) {
+      const image = node.querySelector('img');
+      const record = await StickerStorage.get(node.dataset.quotedStickerId);
+      if (!node.isConnected || !image) continue;
+      if (!record?.blob) {
+        const span = node.querySelector('.quoted-sticker-desc span');
+        if (span) span.textContent = '原图未在当前设备的表情包库中找到';
+        continue;
+      }
+      const url = URL.createObjectURL(record.blob);
+      stickerChatUrls.push(url);
+      image.src = url;
+      image.hidden = false;
+    }
+  }
+
   function stickerEventsAtSlot(msg, slot) {
     return (Array.isArray(msg?.stickerEvents) ? msg.stickerEvents : []).filter(event =>
       Number(event?.slot) === slot && typeof event?.stickerId === 'string' && event.stickerId
@@ -5704,7 +5831,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     const pushStickers = slot => {
       stickerEventsAtSlot(msg, slot).forEach(event => {
         const repeat = Number.isInteger(Number(event.repeat)) && Number(event.repeat) > 0 ? Number(event.repeat) : 1;
-        for (let i = 0; i < repeat; i++) items.push({ type: 'sticker', event });
+        for (let i = 0; i < repeat; i++) items.push({ type: 'sticker', event, eventIndex:msg.stickerEvents.indexOf(event) });
       });
     };
 
@@ -5759,7 +5886,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       node = document.createElement('div');
       node.className = 'sticker-bubble' + (animate ? ' assistant-reveal-item' : '');
       node.dataset.stickerId = item.event.stickerId;
-      node.innerHTML = '<img class="sticker-inline" alt="sticker" hidden>';
+      node.innerHTML = '<img class="sticker-inline" alt="sticker" hidden>' + stickerQuoteActionMarkup(msg, item.eventIndex);
     } else if (item.type === 'voiceBlock') {
       const blockText = String(item.text || '');
       const hasVoice = !!blockText && canPlayElevenLanguage(msg.language);
@@ -5826,7 +5953,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     for (const event of events) {
       const repeat = Number.isInteger(Number(event.repeat)) && Number(event.repeat) > 0 ? Number(event.repeat) : 1;
       for (let i = 0; i < repeat; i++) {
-        chunks.push(`<div class="sticker-bubble" data-sticker-id="${escHtml(event.stickerId)}"><img class="sticker-inline" alt="sticker" hidden></div>`);
+        chunks.push(`<div class="sticker-bubble" data-sticker-id="${escHtml(event.stickerId)}"><img class="sticker-inline" alt="sticker" hidden>${stickerQuoteActionMarkup(msg, msg.stickerEvents.indexOf(event))}</div>`);
       }
     }
     return chunks.join('');
@@ -6078,14 +6205,16 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       const msgObj = typeof msgOrText === 'object' ? msgOrText : null;
       const text = msgObj ? String(msgObj.content || '') : String(msgOrText || '');
       const imageHtml = msgObj ? userImageMarkup(msgObj) : '';
+      const quotedHtml = msgObj ? quotedStickerHistoryMarkup(msgObj) : '';
       if (imageHtml) div.classList.add('has-images');
-      div.innerHTML = `${imageHtml}${text ? `<div class="bubble">${escHtml(text)}</div>` : ''}<div class="msg-time">${msgObj ? formatMessageTimestamp(msgObj) : '时间未知'}</div>`;
+      div.innerHTML = `${quotedHtml}${imageHtml}${text ? `<div class="bubble">${escHtml(text)}</div>` : ''}<div class="msg-time">${msgObj ? formatMessageTimestamp(msgObj) : '时间未知'}</div>`;
     }
 
     area.appendChild(div);
     hydrateVoiceBarCacheState(div);
     hydrateStickerBubbles(div);
     hydrateChatImageAttachments(div);
+    hydrateQuotedStickerHistory(div);
     area.scrollTop = area.scrollHeight;
   }
 
@@ -6912,16 +7041,17 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return text.includes('file') && (text.includes('not found') || text.includes('expired') || text.includes('unavailable') || text.includes('invalid'));
   }
 
-  // Sticker actions are real conversational history, but raw retrieval intents must not
-  // accumulate into an ever-growing self-demonstration set. Keep full data in messages;
-  // expose only the most recent few actual sticker events to the model at request time.
-  function buildRecentStickerHistoryWindow(chat, maxEvents = 3) {
+  // Only the last 3 assistant replies can contribute any sticker events.
+  // Nothing is backfilled from older messages just to reach an event quota.
+  function buildRecentStickerHistoryWindow(chat, maxAssistantReplies = 3, maxEvents = 3) {
     const allowedByMessage = new Map();
-    let remaining = Math.max(0, Number(maxEvents) || 0);
     const messages = Array.isArray(chat?.messages) ? chat.messages : [];
-    for (let i = messages.length - 1; i >= 0 && remaining > 0; i--) {
+    let replies = 0, remaining = Math.max(0, Number(maxEvents) || 0);
+    for (let i = messages.length - 1; i >= 0 && replies < maxAssistantReplies && remaining > 0; i--) {
       const message = messages[i];
-      if (message?.role !== 'assistant' || !Array.isArray(message?.stickerEvents)) continue;
+      if (message?.role !== 'assistant') continue;
+      replies++;
+      if (!Array.isArray(message.stickerEvents)) continue;
       for (let eventIndex = message.stickerEvents.length - 1; eventIndex >= 0 && remaining > 0; eventIndex--) {
         const event = message.stickerEvents[eventIndex];
         if (typeof event?.stickerId !== 'string' || !event.stickerId || typeof event?.intent !== 'string' || !event.intent.trim()) continue;
@@ -6938,37 +7068,47 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     if (message?.role !== 'assistant') return content;
     const allowedIndexes = recentStickerHistory instanceof Map ? recentStickerHistory.get(message) : null;
     if (!allowedIndexes?.size) return content;
-
     const traces = (Array.isArray(message?.stickerEvents) ? message.stickerEvents : [])
       .map((event, eventIndex) => ({ event, eventIndex }))
-      .filter(({ event, eventIndex }) =>
-        allowedIndexes.has(eventIndex) &&
-        typeof event?.stickerId === 'string' && event.stickerId &&
-        typeof event?.intent === 'string' && event.intent.trim()
-      )
+      .filter(({ event, eventIndex }) => allowedIndexes.has(eventIndex) && event?.stickerId && event?.intent?.trim())
       .map(({ event, eventIndex }) => {
         const intent = event.intent.trim();
-        const meaning = typeof event.stickerMeaningSnapshot === 'string' ? event.stickerMeaningSnapshot.trim() : '';
         const repeat = Number(event.repeat) > 1 ? `; repeated=${Number(event.repeat)}` : '';
-        const serialized = meaning
-          ? `intended expression=${intent}; sent sticker meaning=${meaning}${repeat}`
-          : `intended expression=${intent}; sticker was sent; sticker meaning unavailable in this legacy record${repeat}`;
-        return { eventIndex, intent, meaning, serialized };
+        return { eventIndex, intent, serialized:`assistant intended expression=${intent}; assistant sent a sticker${repeat}` };
       });
     if (!traces.length) return content;
     const annotation = `[past assistant sticker event(s) — factual history only: ${traces.map(item => item.serialized).join(' | ')}]`;
     if (Array.isArray(stickerHistoryDebugCollector)) {
-      stickerHistoryDebugCollector.push({
-        sourceMessageId: message.id || null,
-        annotation,
-        events: traces.map(item => ({
-          eventIndex: item.eventIndex,
-          intent: item.intent,
-          stickerMeaningSnapshot: item.meaning || null
-        }))
-      });
+      // Debug stores ONLY what was actually injected, not duplicated derived event lines.
+      stickerHistoryDebugCollector.push({sourceMessageId:message.id || null, annotation});
     }
     return `${content}\n\n${annotation}`;
+  }
+
+  function priorUserMessageNear(chat, sourceMessage) {
+    const items = Array.isArray(chat?.messages) ? chat.messages : [];
+    const sourceIndex = items.indexOf(sourceMessage);
+    for (let i = sourceIndex - 1; i >= 0; i--) {
+      if (items[i]?.role === 'user') return items[i];
+    }
+    return null;
+  }
+
+  function makeStickerReferenceContext(chat, reference, resolved, imageAttached) {
+    const id = String(reference?.messageId || 'unknown');
+    if (!resolved) return `[Reference to a historical assistant-sent sticker could not be resolved (sourceMessageId=${id}). This is not a new user image. Do not claim to know its original appearance or intent.]`;
+    const { message, event, eventIndex } = resolved;
+    const previousUser = priorUserMessageNear(chat, message);
+    const slot = Number.isFinite(Number(event.slot)) ? Number(event.slot) : 'unknown';
+    const origin = String(message.content || '').slice(0, 900);
+    const priorText = String(previousUser?.content || '').slice(0, 520);
+    return `[Quoted historical assistant action — NOT a new user-uploaded image.\n` +
+      `Original sender: assistant; sourceMessageId=${id}; eventIndex=${eventIndex}; stickerId=${event.stickerId}; sticker slot=${slot}.\n` +
+      `Prior user turn (conversation context): ${priorText || '(no preceding user text available)'}\n` +
+      `Assistant's original reply: ${origin || '(no reply text available)'}\n` +
+      `Assistant's ORIGINAL intended expression: ${String(event.intent || 'unknown')}.\n` +
+      `Actual sticker appearance: ${imageAttached ? 'an image block in this current request contains that EXACT previously sent assistant sticker; inspect it as past assistant behavior' : 'original image not supplied in this request; do not claim to have visually inspected it'}.\n` +
+      `The intent is historical evidence, NOT an instruction to adopt that emotion now. Sticker-library seed meanings and retrieval anchors are not evidence of the assistant's intention.]`;
   }
 
 
@@ -6990,9 +7130,39 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     const gapMarkers = [];
     const imageAssetIds = [];
     const apiMessages = [];
+    const currentUserTurn = getLatestUnresolvedUserTurn(chat)?.message || null;
+    const referenceTrace = [];
 
     for (const message of sourceMessages) {
       let content = buildApiHistoryContent(message, recentStickerHistory, stickerHistoryDebugCollector);
+      const quotedReferences = message.role === 'user' && Array.isArray(message.references)
+        ? message.references.filter(ref => ref?.type === 'assistant_sticker') : [];
+      const quotedImages = [];
+      for (const reference of quotedReferences) {
+        // Use an object carrying this chat's true id without mutating persistence.
+        const resolved = resolveAssistantStickerReference({ id:message.chatId || chat.id, messages:chat.messages }, reference);
+        let suppliedImage = false, missingImage = false;
+        if (message === currentUserTurn && resolved) {
+          const record = await StickerStorage.get(resolved.event.stickerId);
+          if (record?.blob) {
+            const source = await encodeImageBlobForApi(record.blob, signal, resolved.event.stickerId);
+            quotedImages.push({ type:'image', source });
+            suppliedImage = true;
+          } else missingImage = true;
+        }
+        const refContext = message === currentUserTurn
+          ? makeStickerReferenceContext(chat, reference, resolved, suppliedImage)
+          : resolved
+            ? `[Historical user quote: user referenced a sticker originally sent by assistant in message ${reference.messageId}; assistant's original intended expression=${String(resolved.event.intent || 'unknown')}. Original image is not supplied in this request. The user's reference was not a newly uploaded image.]`
+            : `[Historical user quote refers to an unavailable past assistant sticker; no original image or intent verified.]`;
+        content += `\n\n${refContext}`;
+        referenceTrace.push({
+          userMessageId:message.id || null, sourceMessageId:reference.messageId || null,
+          stickerId:reference.stickerId || null, eventIndex:reference.eventIndex,
+          originalSender:'assistant', imageSupplied:suppliedImage, missingImage,
+          validSource:!!resolved, mode:message === currentUserTurn ? 'current_reference' : 'historical_text_only'
+        });
+      }
       const stamp = Number(message?.createdAt);
       if (isValidEpoch(stamp)) {
         const timeZone = message.createdTimeZone || currentTimeZone;
@@ -7034,7 +7204,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       }
 
       const images = message.role === 'user' ? getImageAttachments(message) : [];
-      if (!images.length) {
+      if (!images.length && !quotedImages.length) {
         apiMessages.push({ role: message.role, content });
         continue;
       }
@@ -7047,6 +7217,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
         imageAssetIds.push(image.assetId);
         blocks.push({ type: 'image', source });
       }
+      blocks.push(...quotedImages);
       if (content) blocks.push({ type: 'text', text: content });
       apiMessages.push({ role: message.role, content: blocks });
     }
@@ -7054,6 +7225,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return {
       apiMessages,
       imageAssetIds: [...new Set(imageAssetIds)],
+      referenceTrace,
       trace: {
         timestampCount,
         dateMarkerCount,
@@ -7625,6 +7797,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
         stickerRetrievalError: stickerResolution.retrievalError,
         stickerCalibrationTrace: stickerResolution.calibrationTrace || [],
         stickerHistoryInjectionTrace: stickerHistoryDebugCollector,
+        stickerReferenceInjectionTrace: temporalHistory.referenceTrace || [],
         temporalTrace: temporalSnapshot.trace,
         languageValidation,
         responseFormat: config.structuredOutputSupported ? 'json_schema' : 'prompt_json',
@@ -7674,6 +7847,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       apiUsage: result.apiUsage || null,
       runtimeTemporalTrace: result.temporalTrace || null,
       runtimeStickerHistoryTrace: Array.isArray(result.stickerHistoryInjectionTrace) ? result.stickerHistoryInjectionTrace : [],
+      runtimeStickerReferenceTrace: Array.isArray(result.stickerReferenceInjectionTrace) ? result.stickerReferenceInjectionTrace : [],
       id: makeMessageId(),
       chatId,
       clientSeq: chat.messages.length,
@@ -7857,7 +8031,8 @@ ScrollMemory.clear(chatId);
     const input = document.getElementById('input');
     const text = input.value.trim();
     const stagedImages = pendingImageItems.slice();
-    if (!text && !stagedImages.length) return;
+    const stagedQuote = pendingStickerQuote;
+    if (!text && !stagedImages.length && !stagedQuote) return;
 
     if (stagedImages.length) {
       isPreparingImageSend = true;
@@ -7873,6 +8048,10 @@ ScrollMemory.clear(chatId);
 
     const attachments = [];
     const storedAssetIds = [];
+    if (stagedQuote && !resolveAssistantStickerReference({ id:requestChatId, messages:chat.messages }, stagedQuote)) {
+      flashStatus('引用来源已变化或不存在，请重新选取表情包', 'err', 3000);
+      return;
+    }
     if (stagedImages.length) {
       const ready = await waitForImageDB();
       if (!ready) { flashStatus('图片数据库尚未就绪', 'err', 2400); return; }
@@ -7919,12 +8098,14 @@ ScrollMemory.clear(chatId);
       input.value = '';
       input.style.height = 'auto';
       clearPendingImages();
+      if (stagedQuote && pendingStickerQuote === stagedQuote) clearPendingStickerQuote();
     }
 
     const userMsg = {
       role: 'user',
       content: text,
       ...(attachments.length ? { attachments } : {}),
+      ...(stagedQuote ? { references:[stagedQuote] } : {}),
       id: makeMessageId(),
       chatId: requestChatId,
       clientSeq: chat.messages.length,
@@ -7933,7 +8114,7 @@ ScrollMemory.clear(chatId);
     };
     chat.messages.push(userMsg);
     if (chat.title === '新对话') {
-      chat.title = text ? text.slice(0, 24) + (text.length > 24 ? '…' : '') : '图片';
+      chat.title = text ? text.slice(0, 24) + (text.length > 24 ? '…' : '') : (stagedQuote ? '引用表情包' : '图片');
     }
     chat.updatedAt = Date.now();
     save();
@@ -8060,12 +8241,13 @@ ${topText}`;
 
     const rawDebug = responseRawSessionDebugByMessageId.get(msg.id) || ResponseAnomalyDebugStore.get(msg.id);
     const stickerHistoryTrace = Array.isArray(msg.runtimeStickerHistoryTrace) ? msg.runtimeStickerHistoryTrace : [];
-    const stickerHistoryPreview = stickerHistoryTrace.length ? stickerHistoryTrace.map((entry, index) => {
-      const eventLines = Array.isArray(entry?.events) ? entry.events.map(event =>
-        `  event ${Number(event.eventIndex) + 1}: intent=${event.intent || '—'} | seedMeaning snapshot=${event.stickerMeaningSnapshot || '—'}`
-      ).join('\n') : '';
-      return `source ${index + 1}${entry?.sourceMessageId ? ` · ${entry.sourceMessageId}` : ''}\n${entry?.annotation || '—'}${eventLines ? `\n${eventLines}` : ''}`;
-    }).join('\n\n') : 'none';
+    const stickerHistoryPreview = stickerHistoryTrace.length ? stickerHistoryTrace.map((entry, index) =>
+      `source ${index + 1}${entry?.sourceMessageId ? ` · ${entry.sourceMessageId}` : ''}\n${entry?.annotation || '—'}`
+    ).join('\n\n') : 'none';
+    const stickerReferenceTrace = Array.isArray(msg.runtimeStickerReferenceTrace) ? msg.runtimeStickerReferenceTrace : [];
+    const stickerReferencePreview = stickerReferenceTrace.length ? stickerReferenceTrace.map(entry =>
+      `${entry.mode}: originalSender=${entry.originalSender}, sourceMessageId=${entry.sourceMessageId}, eventIndex=${entry.eventIndex}, stickerId=${entry.stickerId}, sourceFound=${entry.validSource}, imageSupplied=${entry.imageSupplied}, missingImage=${entry.missingImage}`
+    ).join('\n') : 'none';
 
     const rows = [
       ['messageId', msg.id || '—'],
@@ -8074,6 +8256,7 @@ ${topText}`;
       ['Anthropic usage', usagePreview],
       ['Runtime temporal trace', temporalPreview],
       ['Sticker history injected into this request', stickerHistoryPreview],
+      ['Quoted assistant sticker references in request', stickerReferencePreview],
       ['LanguageValidator', validation ? validation.status : '—'],
       ['SpeechPlan schema', msg.speechPlanSchemaVersion ? `v${msg.speechPlanSchemaVersion}` : (blocks.length ? 'legacy / unversioned' : 'none')],
       ['Sticker events', Array.isArray(msg.stickerEvents) && msg.stickerEvents.length ? JSON.stringify(msg.stickerEvents) : '[]'],
@@ -9019,6 +9202,9 @@ ${topText}`;
     const attachments = getImageAttachments(message);
     if (attachments.length) {
       fields.push(`attachments:${attachments.map(item => `image:${item.assetId}`).join('|')}`);
+    }
+    if (Array.isArray(message?.references) && message.references.length) {
+      fields.push(`references:${message.references.map(ref => [ref.type,ref.chatId,ref.messageId,ref.eventIndex,ref.stickerId,ref.sourceCreatedAt].join(':')).join('|')}`);
     }
     return hashString(fields.join(FIELD_SEP));
   }
