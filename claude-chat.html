@@ -3067,6 +3067,71 @@ body.skin-wa .main > footer .input-row {
 body.skin-wa .main > footer .input-row:focus-within {
   border-color: rgba(255,213,164,.34) !important;
 }
+
+
+/* Request-only historical-image chooser. No changes to existing skin controls. */
+.history-image-picker-overlay {
+  z-index: 1150;
+  background: rgba(18, 16, 15, .47);
+  padding: 12px;
+}
+.history-image-picker {
+  width: min(620px, 96vw);
+  max-width: 620px;
+  max-height: min(85dvh, 760px);
+  overflow: hidden;
+  padding: 18px;
+  gap: 11px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text);
+}
+.history-image-picker h2 { font-size: 16px; font-weight: 600; color: var(--text); }
+.history-image-picker-desc { font-size: 12px; line-height: 1.55; color: var(--text-soft); }
+.history-image-picker-summary { font-size: 12px; color: var(--accent); line-height: 1.5; }
+.history-image-picker-list { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px 3px 2px 0; }
+.history-image-picker-row {
+  display: flex; align-items: center; gap: 10px; min-height: 66px;
+  border: 1px solid var(--border); border-radius: 11px;
+  background: var(--bg); padding: 7px 9px; cursor: pointer;
+}
+.history-image-picker-row:has(input:checked) { border-color: var(--accent); }
+.history-image-picker-row input[type=checkbox] {
+  flex: 0 0 auto; width: 16px; height: 16px; margin: 0; padding: 0;
+  accent-color: var(--accent); cursor: pointer;
+}
+.history-image-picker-thumb {
+  width: 54px; height: 54px; flex: 0 0 54px; border-radius: 7px;
+  background: var(--input-bg); border: 1px solid var(--border); object-fit: cover;
+}
+.history-image-picker-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.history-image-picker-info strong { font-size: 11.5px; font-weight: 550; color: var(--text); }
+.history-image-picker-info small {
+  display: block; font-size: 11px; color: var(--text-soft);
+  white-space: nowrap; text-overflow: ellipsis; overflow: hidden;
+}
+.history-image-picker-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: flex-end; }
+.history-image-picker-foot .btn-cancel { padding: 7px 10px; }
+.history-image-picker-foot .btn-save { padding: 8px 13px; }
+.history-image-picker-warning { min-height: 17px; font-size: 11px; color: #bf6750; }
+body.skin-warm .history-image-picker { background: #fffdf9; border-color: #e2ddd5; box-shadow: 0 14px 45px rgba(40,36,28,.19); }
+body.skin-dark .history-image-picker { background: #302723; border-color: #67513e; box-shadow: 0 14px 45px rgba(0,0,0,.47); }
+body.skin-dark .history-image-picker-row { background: #392d27; }
+body.skin-wa .history-image-picker {
+  background: linear-gradient(155deg, rgba(92,65,48,.95), rgba(48,31,23,.95));
+  border-color: rgba(255,232,205,.26); color: #fff5e9;
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+}
+body.skin-wa .history-image-picker-row { background: rgba(255,242,229,.07); border-color: rgba(255,232,205,.20); }
+body.skin-wa .history-image-picker h2,
+body.skin-wa .history-image-picker-info strong { color: #fff7ee; }
+body.skin-wa .history-image-picker-desc,
+body.skin-wa .history-image-picker-info small { color: rgba(255,241,226,.71); }
+@media (max-width: 480px) {
+  .history-image-picker { padding: 14px; max-height: 90dvh; }
+  .history-image-picker-foot { justify-content: stretch; }
+}
+
 </style>
 </head>
 <body class="skin-warm">
@@ -3150,6 +3215,22 @@ body.skin-wa .main > footer .input-row:focus-within {
 <div class="image-viewer-overlay" id="imageViewerOverlay" onclick="if(event.target===this) closeChatImageViewer()" aria-hidden="true">
   <button class="image-viewer-close" type="button" onclick="closeChatImageViewer()" aria-label="关闭图片">×</button>
   <img id="imageViewerImg" alt="查看图片">
+</div>
+
+<div class="modal-overlay history-image-picker-overlay" id="historyImagePickerOverlay" aria-hidden="true">
+  <div class="modal history-image-picker" role="dialog" aria-modal="true" aria-labelledby="historyImagePickerTitle">
+    <h2 id="historyImagePickerTitle">选择本轮需要的历史图片</h2>
+    <div class="history-image-picker-desc" id="historyImagePickerDesc"></div>
+    <div class="history-image-picker-summary" id="historyImagePickerSummary"></div>
+    <div class="history-image-picker-list" id="historyImagePickerList"></div>
+    <div class="history-image-picker-warning" id="historyImagePickerWarning" aria-live="polite"></div>
+    <div class="history-image-picker-foot">
+      <button type="button" class="btn-cancel" id="historyImagePickerNone">不发送旧图</button>
+      <button type="button" class="btn-cancel" id="historyImagePickerRecent">优先保留最近</button>
+      <button type="button" class="btn-cancel" id="historyImagePickerCancel">取消本次请求</button>
+      <button type="button" class="btn-save" id="historyImagePickerConfirm">确认发送</button>
+    </div>
+  </div>
 </div>
 
 <!-- SETTINGS: presentation/navigation only; existing feature functions remain unchanged. -->
@@ -3441,6 +3522,8 @@ body.skin-wa .main > footer .input-row:focus-within {
   const FILES_URL = 'https://api.anthropic.com/v1/files';
   const IMAGE_REMOTE_TTL_SECONDS = 30 * 24 * 60 * 60; // remote Anthropic copy only; local IndexedDB is authoritative
   const MAX_IMAGES_PER_MESSAGE = 4;
+  // Transient request budget only; no persisted image quality or selection flags.
+  const IMAGE_REQUEST_SAFE_BYTES = 29 * 1024 * 1024;
   const SUPPORTED_CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
   const MODELS_URL = 'https://api.anthropic.com/v1/models?limit=1000';
   const MODEL_CACHE_KEY = 'claude_model_registry_v1';
@@ -6692,52 +6775,70 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
   // Browser-safe image request path. Multipart Files uploads may be blocked by CORS
   // in a static GitHub Pages frontend even while JSON Messages calls work.
   // Keep original Blob locally; send image bytes only in the request's transient content block.
-  async function getImageBase64Source(assetId, signal = null) {
+  // The original Blob in IndexedDB is immutable. API-only derivatives are discarded.
+  async function getImageBase64Source(assetId, signal = null, options = {}) {
     if (signal?.aborted) throw new DOMException('已停止生成', 'AbortError');
     const record = await ImageStorage.get(assetId);
     if (!record?.blob) throw new Error(`本地图片资源缺失：${assetId}`);
     let imageBlob = record.blob;
-    // API limit is 10 MB *after* base64 encoding; 7 MiB raw is already near that limit.
-    // Prepare a smaller request-only derivative when needed; never replace the stored original.
-    if (imageBlob.size > 7 * 1024 * 1024 || Math.max(record.width || 0, record.height || 0) > 8000) {
-      imageBlob = await prepareImageForApi(imageBlob);
+    const largeSingleImage = 4 * Math.ceil(imageBlob.size / 3) > 10 * 1000 * 1000 || Math.max(record.width || 0, record.height || 0) > 8000;
+    // Never flatten an animated GIF into a JPEG, or remove PNG transparency/typography.
+    const gentleResize = !!options.forceGentle && (imageBlob.type === 'image/jpeg' || imageBlob.type === 'image/webp');
+    if (largeSingleImage || gentleResize) {
+      if (imageBlob.type === 'image/gif') {
+        throw new Error('GIF 原图超过接口单图容量或尺寸限制；请手动调整 GIF，前端不会擅自截成静态图');
+      }
+      const derivative = await prepareImageForApi(imageBlob, {
+        maxEdge: options.maxEdge || 3200,
+        quality: options.quality || 0.90
+      });
+      // If reducing bytes failed, prefer original if its encoded size/dimensions are safe.
+      if (!largeSingleImage && derivative.size >= imageBlob.size) return encodeImageBlobForApi(imageBlob, signal, assetId);
+      imageBlob = derivative;
     }
+    return encodeImageBlobForApi(imageBlob, signal, assetId);
+  }
+
+  async function encodeImageBlobForApi(blob, signal, assetId) {
     if (signal?.aborted) throw new DOMException('已停止生成', 'AbortError');
-    const dataUrl = await blobToDataUrl(imageBlob);
+    const dataUrl = await blobToDataUrl(blob);
+    if (signal?.aborted) throw new DOMException('已停止生成', 'AbortError');
     const match = /^data:(image\/(?:jpeg|png|gif|webp));base64,(.+)$/is.exec(dataUrl);
-    if (!match) throw new Error(`图片格式不可发送给 Claude：${record.fileName || assetId}`);
-    if (match[2].length > 10 * 1000 * 1000) throw new Error('图片超过 Claude 单图 10MB 编码上限，请换一张较小的图片');
+    if (!match) throw new Error(`图片格式不可发送给 Claude：${assetId}`);
+    if (match[2].length > 10 * 1000 * 1000) throw new Error('单张图片超过 Claude 的编码体积上限；请手动缩小该图片');
     return { type: 'base64', media_type: match[1].toLowerCase(), data: match[2] };
   }
 
-  async function prepareImageForApi(blob) {
-    // Large images are converted ONLY for the API call, preserving the user's local original.
-    // Use 2400px long edge so screenshots remain legible while staying below request limits.
+  async function prepareImageForApi(blob, options = {}) {
+    // Respect the source format: PNG stays PNG (including alpha), WebP stays WebP.
+    // No 576px fallback, no repeated cascading compression.
+    if (blob.type === 'image/gif') throw new Error('不能自动压缩动态 GIF，否则会丢失动画');
     const objectUrl = URL.createObjectURL(blob);
     try {
       const img = await new Promise((resolve, reject) => {
         const element = new Image();
         element.onload = () => resolve(element);
-        element.onerror = () => reject(new Error('图片解码失败，无法为 API 缩小尺寸'));
+        element.onerror = () => reject(new Error('图片解码失败，无法准备发送副本'));
         element.src = objectUrl;
       });
       const w = img.naturalWidth, h = img.naturalHeight;
       if (!w || !h) throw new Error('图片尺寸不可用');
-      const factor = Math.min(1, 2400 / Math.max(w, h));
+      const maxEdge = Math.max(2400, Number(options.maxEdge) || 3200);
+      const factor = Math.min(1, maxEdge / Math.max(w, h));
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(w * factor));
       canvas.height = Math.max(1, Math.round(h * factor));
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('浏览器无法处理图片尺寸');
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const output = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
-      if (!output) throw new Error('图片压缩失败');
+      const outType = blob.type === 'image/png' ? 'image/png' : blob.type === 'image/webp' ? 'image/webp' : 'image/jpeg';
+      const output = await new Promise(resolve => canvas.toBlob(resolve, outType, options.quality || 0.90));
+      if (!output) throw new Error('图片处理失败');
       return output;
     } finally {
       URL.revokeObjectURL(objectUrl);
     }
   }
-
 
   async function invalidateImageRemoteRefs(assetIds) {
     for (const assetId of new Set(assetIds || [])) {
@@ -6904,6 +7005,205 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     };
   }
 
+  // Selection is request-local and never becomes message, cache, or memory policy.
+  function imageRequestBytes(body) {
+    return new TextEncoder().encode(JSON.stringify(body)).byteLength;
+  }
+
+  function imageRequestMiB(bytes) {
+    return (bytes / (1024 * 1024)).toFixed(1);
+  }
+
+  function listHistoricalImageBlocks(chat, body) {
+    const sourceMessages = chat.messages.filter(message => message?.role !== 'thinking');
+    const latest = getLatestUnresolvedUserTurn(chat)?.message;
+    const choices = [];
+    sourceMessages.forEach((message, messageIndex) => {
+      if (message.role !== 'user' || message === latest) return;
+      const attachments = getImageAttachments(message);
+      if (!attachments.length) return;
+      const apiImageBlocks = Array.isArray(body.messages[messageIndex]?.content)
+        ? body.messages[messageIndex].content.filter(block => block?.type === 'image') : [];
+      attachments.forEach((attachment, imageIndex) => {
+        const block = apiImageBlocks[imageIndex];
+        if (!block) return;
+        choices.push({
+          index: choices.length, messageIndex, imageIndex, block,
+          assetId: attachment.assetId,
+          createdAt: message.createdAt || null,
+          text: String(message.content || '').replace(/\s+/g, ' ').slice(0, 140),
+          byteSize: JSON.stringify(block).length + 2
+        });
+      });
+    });
+    return choices;
+  }
+
+  function buildBodyWithChosenHistoryImages(body, choices, chosenIndices) {
+    if (!choices.length) return body;
+    const omitted = new Map();
+    for (const choice of choices) {
+      if (chosenIndices.has(choice.index)) continue;
+      if (!omitted.has(choice.messageIndex)) omitted.set(choice.messageIndex, new Set());
+      omitted.get(choice.messageIndex).add(choice.block);
+    }
+    if (!omitted.size) return body;
+    const messages = body.messages.slice();
+    omitted.forEach((omittedBlocks, messageIndex) => {
+      const previous = body.messages[messageIndex];
+      const blocks = previous.content.filter(block => !omittedBlocks.has(block));
+      const notice = `[本轮未提供此条历史消息的 ${omittedBlocks.size} 张图片；不能据此声称已看到这些图片]`;
+      const textIndex = blocks.findIndex(block => block?.type === 'text');
+      if (textIndex >= 0) {
+        blocks[textIndex] = { ...blocks[textIndex], text: blocks[textIndex].text + '\n' + notice };
+      } else {
+        blocks.push({ type: 'text', text: notice });
+      }
+      messages[messageIndex] = { ...previous, content: blocks };
+    });
+    return { ...body, messages };
+  }
+
+  function preferredRecentHistoryImages(body, choices) {
+    const selection = new Set();
+    const baseline = buildBodyWithChosenHistoryImages(body, choices, selection);
+    let estimate = imageRequestBytes(baseline);
+    // Leave ~0.5MiB headroom for text markers/encoding overhead.
+    for (let i = choices.length - 1; i >= 0; i--) {
+      if (estimate + choices[i].byteSize + 512 * 1024 >= IMAGE_REQUEST_SAFE_BYTES) continue;
+      estimate += choices[i].byteSize;
+      selection.add(choices[i].index);
+    }
+    return selection;
+  }
+
+  function showHistoricalImageSelection(chatId, body, choices, signal) {
+    return new Promise((resolve, reject) => {
+      const overlay = document.getElementById('historyImagePickerOverlay');
+      const list = document.getElementById('historyImagePickerList');
+      if (!overlay || !list) return reject(new Error('历史图片选择面板不可用'));
+      const urls = [];
+      const selected = preferredRecentHistoryImages(body, choices);
+      const baselineBytes = imageRequestBytes(buildBodyWithChosenHistoryImages(body, choices, new Set()));
+      const estimateBytes = () => baselineBytes + choices.reduce((sum, c) => sum + (selected.has(c.index) ? c.byteSize : 0), 0);
+      const summary = document.getElementById('historyImagePickerSummary');
+      const warning = document.getElementById('historyImagePickerWarning');
+      const newCount = getImageAttachments(getLatestUnresolvedUserTurn(chats[chatId])?.message).length;
+      document.getElementById('historyImagePickerDesc').textContent =
+        `本轮新图 ${newCount} 张始终保留。以下 ${choices.length} 张旧图仅选择本轮仍需给 Claude 看的部分；取消勾选不会删除图片、消息或记忆。`;
+      list.innerHTML = choices.map(choice => {
+        const date = choice.createdAt ? new Date(choice.createdAt).toLocaleString('zh-CN') : '时间未知';
+        return `<label class="history-image-picker-row">
+          <input type="checkbox" data-choice-index="${choice.index}" ${selected.has(choice.index) ? 'checked' : ''}>
+          <img class="history-image-picker-thumb" data-preview-index="${choice.index}" alt="历史图片" hidden>
+          <span class="history-image-picker-info">
+            <strong>${escHtml(date)} · 图 ${choice.imageIndex + 1} · 约 ${imageRequestMiB(choice.byteSize)} MiB</strong>
+            <small>${escHtml(choice.text || '（原消息仅包含图片）')}</small>
+          </span>
+        </label>`;
+      }).join('');
+      function refreshUI() {
+        summary.textContent = `已选历史图片 ${selected.size}/${choices.length} 张 · 本轮请求预估 ${imageRequestMiB(estimateBytes())} / 29 MiB`;
+        warning.textContent = estimateBytes() >= IMAGE_REQUEST_SAFE_BYTES
+          ? '当前勾选内容可能超限。请减少旧图；确认时会再次精确校验。' : '';
+      }
+      let settled = false;
+      function finish(value, error = null) {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', onAbort);
+        overlay.classList.remove('open');
+        overlay.setAttribute('aria-hidden', 'true');
+        for (const url of urls) URL.revokeObjectURL(url);
+        list.innerHTML = '';
+        list.onchange = null;
+        for (const id of ['historyImagePickerNone','historyImagePickerRecent','historyImagePickerCancel','historyImagePickerConfirm']) {
+          document.getElementById(id).onclick = null;
+        }
+        if (error) reject(error); else resolve(value);
+      }
+      function onAbort() { finish(null, new DOMException('已停止生成', 'AbortError')); }
+      signal?.addEventListener('abort', onAbort, { once: true });
+      list.onchange = event => {
+        const input = event.target.closest('input[data-choice-index]');
+        if (!input) return;
+        const index = Number(input.dataset.choiceIndex);
+        if (input.checked) selected.add(index); else selected.delete(index);
+        refreshUI();
+      };
+      function refreshChecks() {
+        list.querySelectorAll('input[data-choice-index]').forEach(input => {
+          input.checked = selected.has(Number(input.dataset.choiceIndex));
+        });
+        refreshUI();
+      }
+      document.getElementById('historyImagePickerNone').onclick = () => { selected.clear(); refreshChecks(); };
+      document.getElementById('historyImagePickerRecent').onclick = () => {
+        selected.clear();
+        for (const index of preferredRecentHistoryImages(body, choices)) selected.add(index);
+        refreshChecks();
+      };
+      document.getElementById('historyImagePickerCancel').onclick = () => finish(null);
+      document.getElementById('historyImagePickerConfirm').onclick = () => {
+        const outgoing = buildBodyWithChosenHistoryImages(body, choices, selected);
+        const actualBytes = imageRequestBytes(outgoing);
+        if (actualBytes > IMAGE_REQUEST_SAFE_BYTES) {
+          warning.textContent = `精确计算 ${imageRequestMiB(actualBytes)} MiB，仍超限；请减少旧图。`;
+          return;
+        }
+        finish(outgoing);
+      };
+      overlay.classList.add('open');
+      overlay.setAttribute('aria-hidden', 'false');
+      refreshUI();
+      // Thumbnails come from original local blobs; never send or modify these previews.
+      choices.forEach(async choice => {
+        const record = await ImageStorage.get(choice.assetId);
+        if (settled || !record?.blob) return;
+        const img = list.querySelector(`img[data-preview-index="${choice.index}"]`);
+        if (!img) return;
+        const url = URL.createObjectURL(record.blob);
+        urls.push(url);
+        img.src = url;
+        img.hidden = false;
+      });
+      if (signal?.aborted) onAbort();
+    });
+  }
+
+  async function gentlyFitNewImagesWithinRequest(body, chat, signal) {
+    // Only reached when omitting ALL historical images is still insufficient.
+    // Do not apply any global per-image budget; only touched images are the current user turn.
+    let next = body;
+    const latest = getLatestUnresolvedUserTurn(chat)?.message;
+    const attachments = getImageAttachments(latest);
+    if (!attachments.length) return next;
+    const latestIndex = chat.messages.filter(msg => msg?.role !== 'thinking').indexOf(latest);
+    if (latestIndex < 0) return next;
+    const originalBlocks = next.messages[latestIndex].content;
+    if (!Array.isArray(originalBlocks)) return next;
+    let sourceIndex = 0;
+    for (const blockIndex of originalBlocks.map((block,i) => block?.type === 'image' ? i : -1).filter(i => i >= 0)) {
+      if (imageRequestBytes(next) <= IMAGE_REQUEST_SAFE_BYTES) break;
+      const attachment = attachments[sourceIndex++];
+      if (!attachment) continue;
+      const record = await ImageStorage.get(attachment.assetId);
+      if (!['image/jpeg', 'image/webp'].includes(record?.blob?.type)) continue;
+      // Gentle quality floor: maxEdge >= 2800; JPEG/WebP quality >= 0.88.
+      for (const options of [{maxEdge:3200,quality:.90},{maxEdge:2800,quality:.88}]) {
+        const source = await getImageBase64Source(attachment.assetId, signal, { forceGentle:true, ...options });
+        if (source.data.length >= next.messages[latestIndex].content[blockIndex].source.data.length) continue;
+        const candidateMessages = next.messages.slice();
+        const newBlocks = candidateMessages[latestIndex].content.slice();
+        newBlocks[blockIndex] = { type:'image', source };
+        candidateMessages[latestIndex] = { ...candidateMessages[latestIndex], content:newBlocks };
+        next = { ...next, messages: candidateMessages };
+        if (imageRequestBytes(next) <= IMAGE_REQUEST_SAFE_BYTES) break;
+      }
+    }
+    return next;
+  }
+
   // API service layer: builds/sends the request and returns structured data.
   // It does not render, mutate chat history, or decide how retry is presented.
   async function requestAssistantReply(chatId, config, signal = null) {
@@ -6928,15 +7228,42 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       applyResponseFormatToBody(body, config);
       applyThinkingAndEffortToBody(body, config);
 
-      // Standard Messages endpoints have a 32 MB payload limit. Catch oversized
-      // multi-image history locally rather than producing an opaque network failure.
-      // Only touch the image path: old text-only requests retain their exact behavior.
-      if (temporalHistory.imageAssetIds.length && JSON.stringify(body).length > 30 * 1024 * 1024) {
-        return { ok: false, kind: 'api', error: '历史图片过多或体积太大，本轮请求超过约 30MB；请在新对话发送较少图片。原图片仍安全保存在本地。' };
+      // Images do not compete for a shared shrinking quality budget. When the request
+      // exceeds the endpoint limit, reserve the current turn first; ASK which older
+      // visual blocks to retain. Text history and saved originals never change.
+      let outgoingBody = body;
+      if (temporalHistory.imageAssetIds.length && imageRequestBytes(outgoingBody) > IMAGE_REQUEST_SAFE_BYTES) {
+        const choices = listHistoricalImageBlocks(chat, outgoingBody);
+        const noneSelected = buildBodyWithChosenHistoryImages(outgoingBody, choices, new Set());
+        let newOnlyBody = noneSelected;
+        if (imageRequestBytes(newOnlyBody) > IMAGE_REQUEST_SAFE_BYTES) {
+          newOnlyBody = await gentlyFitNewImagesWithinRequest(newOnlyBody, chat, signal);
+          // Keep the same gentle derivatives in the full-history candidate body.
+          const latest = getLatestUnresolvedUserTurn(chat)?.message;
+          const latestIndex = chat.messages.filter(m => m?.role !== 'thinking').indexOf(latest);
+          if (latestIndex >= 0) {
+            const messages = outgoingBody.messages.slice();
+            messages[latestIndex] = newOnlyBody.messages[latestIndex];
+            outgoingBody = { ...outgoingBody, messages };
+          }
+        }
+        if (imageRequestBytes(newOnlyBody) > IMAGE_REQUEST_SAFE_BYTES) {
+          return { ok:false, kind:'api', error:'即使不发送任何历史图片，本轮新图与文字仍超出请求上限。请减少新图片或自行调整文件尺寸；未牺牲新图的最低画质。' };
+        }
+        // If gentle treatment of new photos happened to make ALL history fit,
+        // no selector is necessary. Otherwise open a request-only chooser.
+        if (imageRequestBytes(outgoingBody) > IMAGE_REQUEST_SAFE_BYTES) {
+          if (!choices.length) return { ok:false, kind:'api', error:'本轮请求超过图片体积限制，且没有可省略的历史图片。请减少本轮图片数量。' };
+          if (currentId === chatId) removeTyping();
+          const selectedBody = await showHistoricalImageSelection(chatId, outgoingBody, choices, signal);
+          if (!selectedBody) return { ok:false, kind:'cancelled', error:'已取消本轮历史图片选择；消息仍保留，可点重试' };
+          outgoingBody = selectedBody;
+          if (currentId === chatId) addTyping();
+        }
       }
-      // Base64 images use the same browser-supported /v1/messages fetch as text.
-      // Avoid retrying a failed generation automatically (it could duplicate charges).
-      const apiResult = await postAnthropicRequestBody(body, signal);
+      if (signal?.aborted) throw new DOMException('已停止生成','AbortError');
+      // Use the exact bytes selected in the preflight; no second recompression.
+      const apiResult = await postAnthropicRequestBody(outgoingBody, signal);
       if (!apiResult.ok) return apiResult;
 
       const parsedResponse = parseAnthropicResponse(apiResult.data);
@@ -7156,6 +7483,8 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       if (currentId === chatId) {
         if (result.kind === 'aborted') {
           showRequestFailure('已停止生成', chatId);
+        } else if (result.kind === 'cancelled') {
+          showRequestFailure(result.error || '已取消本轮图片发送，消息保留可重试', chatId);
         } else {
           const prefix = result.kind === 'network' ? '网络错误：' : '出错了：';
           showRequestFailure(prefix + result.error, chatId);
