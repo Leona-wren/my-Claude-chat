@@ -2753,6 +2753,32 @@ body.skin-wa #sendBtn::before{
   scrollbar-color: var(--border) transparent;
 }
 .image-preview-strip[hidden] { display: none !important; }
+.history-image-context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 2px 6px;
+}
+.history-image-context-bar[hidden] { display: none !important; }
+.history-image-context-btn {
+  min-height: 28px;
+  max-width: 100%;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s, opacity .15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-image-context-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.history-image-context-btn:disabled { opacity: .45; cursor: default; }
 .image-preview-strip:not([hidden]) + .image-attach-btn,
 .image-preview-strip:not([hidden]) ~ textarea,
 .image-preview-strip:not([hidden]) ~ .send-btn {
@@ -2944,6 +2970,21 @@ body.skin-wa .image-attach-btn:hover:not(:disabled) {
     linear-gradient(180deg,rgba(125,77,43,.22),rgba(64,37,24,.17));
 }
 body.skin-wa .image-preview-strip{padding:0 2px 4px;}
+body.skin-warm .history-image-context-btn {
+  background: rgba(255,253,248,.7);
+  border-color: rgba(187,173,145,.34);
+}
+body.skin-dark .history-image-context-btn {
+  background: rgba(73,58,49,.72);
+  border-color: rgba(156,127,95,.34);
+  color: #e7d8cf;
+}
+body.skin-wa .history-image-context-btn {
+  background: rgba(255,241,228,.09);
+  border-color: rgba(255,230,201,.2);
+  color: rgba(255,244,232,.92);
+  backdrop-filter: blur(12px);
+}
 body.skin-wa .image-preview-card,
 body.skin-wa .chat-image-item {
   border-color: rgba(255,225,188,.20);
@@ -2993,6 +3034,7 @@ body.skin-wa .chat-image-item {
 @media (max-width: 580px) {
   .image-preview-card { flex-basis: 64px; width: 64px; height: 64px; }
   .image-attach-btn { width: 32px; height: 32px; flex-basis: 32px; }
+  .history-image-context-btn { font-size: 11px; padding: 5px 9px; }
   .user-image-grid { width: min(280px, 78vw); }
   .user-image-grid.single { width: min(280px, 78vw); }
   .image-viewer-overlay { padding: 12px; }
@@ -3195,6 +3237,9 @@ body.skin-wa .history-image-picker-info small { color: rgba(255,241,226,.71); }
       有新回复 <span aria-hidden="true">↓</span>
     </button>
     <div class="status-bar" id="statusBar"></div>
+    <div class="history-image-context-bar" id="historyImageContextBar" hidden>
+      <button class="history-image-context-btn" id="historyImageContextBtn" type="button" onclick="openHistoryImageContextPicker()">旧图上下文</button>
+    </div>
     <div class="input-row" id="composerInputRow">
       <input id="chatImageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden onchange="handleChatImageSelection(event)">
       <div class="image-preview-strip" id="imagePreviewStrip" hidden></div>
@@ -5315,6 +5360,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       area.innerHTML = `<div class="empty-hint"><div class="icon">✦</div><div>开始一段新对话</div></div>`;
       ScrollMemory.clear(id);
       syncRequestStatusForChat(id);
+      updateHistoryImageContextBar(id);
       return;
     }
     chat.messages.forEach((m, i) => {
@@ -5323,6 +5369,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     });
     restoreScrollPositionForChat(id);
     syncRequestStatusForChat(id);
+    updateHistoryImageContextBar(id);
   }
 
   // ── PER-CHAT ACTIONS (UI controller layer) ──
@@ -7014,6 +7061,109 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return (bytes / (1024 * 1024)).toFixed(1);
   }
 
+  function listHistoricalImageChoicesMeta(chat) {
+    const latest = getLatestUnresolvedUserTurn(chat)?.message;
+    const choices = [];
+    (chat?.messages || []).forEach((message, messageIndex) => {
+      if (message?.role !== 'user' || message === latest) return;
+      const attachments = getImageAttachments(message);
+      if (!attachments.length) return;
+      attachments.forEach((attachment, imageIndex) => {
+        choices.push({
+          index: choices.length,
+          messageIndex,
+          imageIndex,
+          assetId: attachment.assetId,
+          createdAt: message.createdAt || null,
+          text: String(message.content || '').replace(/\s+/g, ' ').slice(0, 140)
+        });
+      });
+    });
+    return choices;
+  }
+
+  function getStoredHistoricalImageAssetIds(chatId = currentId) {
+    const chat = chatId ? chats[chatId] : null;
+    if (!chat || !Object.prototype.hasOwnProperty.call(chat, 'historicalImageContextAssetIds')) return null;
+    return Array.isArray(chat.historicalImageContextAssetIds)
+      ? chat.historicalImageContextAssetIds.filter(id => typeof id === 'string' && id)
+      : [];
+  }
+
+  function chosenIndicesFromAssetIds(choices, assetIds) {
+    const set = assetIds instanceof Set ? assetIds : new Set(Array.isArray(assetIds) ? assetIds : []);
+    const indices = new Set();
+    choices.forEach(choice => { if (set.has(choice.assetId)) indices.add(choice.index); });
+    return indices;
+  }
+
+  function chosenAssetIdsFromIndices(choices, chosenIndices) {
+    return choices.filter(choice => chosenIndices.has(choice.index)).map(choice => choice.assetId);
+  }
+
+  function getDefaultHistoricalImageSelection(chatId, choices, { preferStored = true } = {}) {
+    const stored = preferStored ? getStoredHistoricalImageAssetIds(chatId) : null;
+    if (stored !== null) return chosenIndicesFromAssetIds(choices, stored);
+    return new Set(choices.map(choice => choice.index));
+  }
+
+  function setStoredHistoricalImageAssetIds(chatId, assetIds) {
+    const chat = chatId ? chats[chatId] : null;
+    if (!chat) return;
+    chat.historicalImageContextAssetIds = Array.from(new Set((assetIds || []).filter(id => typeof id === 'string' && id)));
+    chat.updatedAt = Date.now();
+    save();
+    if (currentId === chatId) updateHistoryImageContextBar();
+  }
+
+  function updateHistoryImageContextBar(chatId = currentId) {
+    const bar = document.getElementById('historyImageContextBar');
+    const btn = document.getElementById('historyImageContextBtn');
+    if (!bar || !btn) return;
+    const chat = chatId ? chats[chatId] : null;
+    const choices = listHistoricalImageChoicesMeta(chat);
+    if (!chat || !choices.length) {
+      bar.hidden = true;
+      btn.textContent = '旧图上下文';
+      btn.disabled = true;
+      return;
+    }
+    const stored = getStoredHistoricalImageAssetIds(chatId);
+    const selected = getDefaultHistoricalImageSelection(chatId, choices);
+    const selectedCount = selected.size;
+    btn.textContent = stored === null
+      ? `旧图上下文：默认全部 ${choices.length} 张`
+      : `旧图上下文：${selectedCount}/${choices.length} 张`;
+    btn.title = stored === null
+      ? `当前若未超限，将默认携带全部 ${choices.length} 张旧图。点击可改。`
+      : `当前后续请求默认携带 ${selectedCount}/${choices.length} 张旧图。点击可改或全部取消。`;
+    btn.disabled = false;
+    bar.hidden = false;
+  }
+
+  async function openHistoryImageContextPicker() {
+    const chatId = currentId;
+    const chat = chatId ? chats[chatId] : null;
+    if (!chat) return;
+    const choices = listHistoricalImageChoicesMeta(chat);
+    if (!choices.length) {
+      flashStatus('当前没有可管理的旧图', '', 1600);
+      updateHistoryImageContextBar(chatId);
+      return;
+    }
+    const initialSelected = getDefaultHistoricalImageSelection(chatId, choices);
+    const result = await showHistoricalImageSelection(chatId, null, choices, null, {
+      mode: 'manual',
+      initialSelected,
+      title: '管理后续默认注入的旧图',
+      desc: '这里控制这个对话接下来默认继续发送给 Claude 的旧图。只影响后续请求，不会删除图片、消息或记忆；你可以随时改，或全部取消。'
+    }).catch(() => null);
+    if (!result) return;
+    setStoredHistoricalImageAssetIds(chatId, result.selectedAssetIds);
+    const count = result.selectedAssetIds.length;
+    flashStatus(count ? `已更新旧图默认注入：${count} 张` : '已取消后续默认注入旧图', '', 1800);
+  }
+
   function listHistoricalImageBlocks(chat, body) {
     const sourceMessages = chat.messages.filter(message => message?.role !== 'thinking');
     const latest = getLatestUnresolvedUserTurn(chat)?.message;
@@ -7077,20 +7227,35 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return selection;
   }
 
-  function showHistoricalImageSelection(chatId, body, choices, signal) {
+  function showHistoricalImageSelection(chatId, body, choices, signal, options = {}) {
     return new Promise((resolve, reject) => {
       const overlay = document.getElementById('historyImagePickerOverlay');
       const list = document.getElementById('historyImagePickerList');
       if (!overlay || !list) return reject(new Error('历史图片选择面板不可用'));
       const urls = [];
-      const selected = preferredRecentHistoryImages(body, choices);
-      const baselineBytes = imageRequestBytes(buildBodyWithChosenHistoryImages(body, choices, new Set()));
-      const estimateBytes = () => baselineBytes + choices.reduce((sum, c) => sum + (selected.has(c.index) ? c.byteSize : 0), 0);
+      const mode = options.mode || 'overflow';
+      const titleEl = document.getElementById('historyImagePickerTitle');
+      const descEl = document.getElementById('historyImagePickerDesc');
       const summary = document.getElementById('historyImagePickerSummary');
       const warning = document.getElementById('historyImagePickerWarning');
+      const confirmBtn = document.getElementById('historyImagePickerConfirm');
+      const noneBtn = document.getElementById('historyImagePickerNone');
+      const recentBtn = document.getElementById('historyImagePickerRecent');
+      const cancelBtn = document.getElementById('historyImagePickerCancel');
+      const selected = options.initialSelected
+        ? new Set(options.initialSelected)
+        : (body ? preferredRecentHistoryImages(body, choices) : new Set(choices.map(choice => choice.index)));
+      const baselineBytes = body ? imageRequestBytes(buildBodyWithChosenHistoryImages(body, choices, new Set())) : 0;
+      const estimateBytes = () => baselineBytes + choices.reduce((sum, c) => sum + (selected.has(c.index) ? (c.byteSize || 0) : 0), 0);
       const newCount = getImageAttachments(getLatestUnresolvedUserTurn(chats[chatId])?.message).length;
-      document.getElementById('historyImagePickerDesc').textContent =
-        `本轮新图 ${newCount} 张始终保留。以下 ${choices.length} 张旧图仅选择本轮仍需给 Claude 看的部分；取消勾选不会删除图片、消息或记忆。`;
+      titleEl.textContent = options.title || (mode === 'manual' ? '管理后续默认注入的旧图' : '选择本轮需要的历史图片');
+      descEl.textContent = options.desc || (mode === 'manual'
+        ? '这里控制这个对话接下来默认继续发送给 Claude 的旧图。只影响后续请求，不会删除图片、消息或记忆；你可以随时改，或全部取消。'
+        : `本轮新图 ${newCount} 张始终保留。以下 ${choices.length} 张旧图仅选择本轮仍需给 Claude 看的部分；取消勾选不会删除图片、消息或记忆。`);
+      noneBtn.textContent = '不发送旧图';
+      recentBtn.textContent = mode === 'manual' ? '恢复默认全部' : '优先保留最近';
+      cancelBtn.textContent = mode === 'manual' ? '关闭' : '取消本次请求';
+      confirmBtn.textContent = mode === 'manual' ? '保存选择' : '确认发送';
       list.innerHTML = choices.map(choice => {
         const date = choice.createdAt ? new Date(choice.createdAt).toLocaleString('zh-CN') : '时间未知';
         return `<label class="history-image-picker-row">
@@ -7103,9 +7268,14 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
         </label>`;
       }).join('');
       function refreshUI() {
-        summary.textContent = `已选历史图片 ${selected.size}/${choices.length} 张 · 本轮请求预估 ${imageRequestMiB(estimateBytes())} / 29 MiB`;
-        warning.textContent = estimateBytes() >= IMAGE_REQUEST_SAFE_BYTES
-          ? '当前勾选内容可能超限。请减少旧图；确认时会再次精确校验。' : '';
+        if (body) {
+          summary.textContent = `已选历史图片 ${selected.size}/${choices.length} 张 · 本轮请求预估 ${imageRequestMiB(estimateBytes())} / 29 MiB`;
+          warning.textContent = estimateBytes() >= IMAGE_REQUEST_SAFE_BYTES
+            ? '当前勾选内容可能超限。请减少旧图；确认时会再次精确校验。' : '';
+        } else {
+          summary.textContent = `当前后续默认注入旧图 ${selected.size}/${choices.length} 张`;
+          warning.textContent = '';
+        }
       }
       let settled = false;
       function finish(value, error = null) {
@@ -7137,21 +7307,27 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
         });
         refreshUI();
       }
-      document.getElementById('historyImagePickerNone').onclick = () => { selected.clear(); refreshChecks(); };
-      document.getElementById('historyImagePickerRecent').onclick = () => {
+      noneBtn.onclick = () => { selected.clear(); refreshChecks(); };
+      recentBtn.onclick = () => {
         selected.clear();
-        for (const index of preferredRecentHistoryImages(body, choices)) selected.add(index);
+        const seed = mode === 'manual' ? new Set(choices.map(choice => choice.index)) : preferredRecentHistoryImages(body, choices);
+        for (const index of seed) selected.add(index);
         refreshChecks();
       };
-      document.getElementById('historyImagePickerCancel').onclick = () => finish(null);
-      document.getElementById('historyImagePickerConfirm').onclick = () => {
+      cancelBtn.onclick = () => finish(null);
+      confirmBtn.onclick = () => {
+        const selectedAssetIds = chosenAssetIdsFromIndices(choices, selected);
+        if (!body) {
+          finish({ selectedAssetIds, selectedIndices: new Set(selected), body: null });
+          return;
+        }
         const outgoing = buildBodyWithChosenHistoryImages(body, choices, selected);
         const actualBytes = imageRequestBytes(outgoing);
         if (actualBytes > IMAGE_REQUEST_SAFE_BYTES) {
           warning.textContent = `精确计算 ${imageRequestMiB(actualBytes)} MiB，仍超限；请减少旧图。`;
           return;
         }
-        finish(outgoing);
+        finish({ body: outgoing, selectedAssetIds, selectedIndices: new Set(selected) });
       };
       overlay.classList.add('open');
       overlay.setAttribute('aria-hidden', 'false');
@@ -7232,8 +7408,13 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       // exceeds the endpoint limit, reserve the current turn first; ASK which older
       // visual blocks to retain. Text history and saved originals never change.
       let outgoingBody = body;
+      let historicalChoices = temporalHistory.imageAssetIds.length ? listHistoricalImageBlocks(chat, outgoingBody) : [];
+      const storedHistoricalAssetIds = getStoredHistoricalImageAssetIds(chatId);
+      if (historicalChoices.length && storedHistoricalAssetIds !== null) {
+        outgoingBody = buildBodyWithChosenHistoryImages(outgoingBody, historicalChoices, chosenIndicesFromAssetIds(historicalChoices, storedHistoricalAssetIds));
+      }
       if (temporalHistory.imageAssetIds.length && imageRequestBytes(outgoingBody) > IMAGE_REQUEST_SAFE_BYTES) {
-        const choices = listHistoricalImageBlocks(chat, outgoingBody);
+        const choices = historicalChoices.length ? historicalChoices : listHistoricalImageBlocks(chat, outgoingBody);
         const noneSelected = buildBodyWithChosenHistoryImages(outgoingBody, choices, new Set());
         let newOnlyBody = noneSelected;
         if (imageRequestBytes(newOnlyBody) > IMAGE_REQUEST_SAFE_BYTES) {
@@ -7255,9 +7436,13 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
         if (imageRequestBytes(outgoingBody) > IMAGE_REQUEST_SAFE_BYTES) {
           if (!choices.length) return { ok:false, kind:'api', error:'本轮请求超过图片体积限制，且没有可省略的历史图片。请减少本轮图片数量。' };
           if (currentId === chatId) removeTyping();
-          const selectedBody = await showHistoricalImageSelection(chatId, outgoingBody, choices, signal);
-          if (!selectedBody) return { ok:false, kind:'cancelled', error:'已取消本轮历史图片选择；消息仍保留，可点重试' };
-          outgoingBody = selectedBody;
+          const initialSelected = storedHistoricalAssetIds !== null
+            ? chosenIndicesFromAssetIds(choices, storedHistoricalAssetIds)
+            : preferredRecentHistoryImages(outgoingBody, choices);
+          const selectedResult = await showHistoricalImageSelection(chatId, outgoingBody, choices, signal, { mode:'overflow', initialSelected });
+          if (!selectedResult) return { ok:false, kind:'cancelled', error:'已取消本轮历史图片选择；消息仍保留，可点重试' };
+          outgoingBody = selectedResult.body;
+          setStoredHistoricalImageAssetIds(chatId, selectedResult.selectedAssetIds);
           if (currentId === chatId) addTyping();
         }
       }
@@ -9678,6 +9863,7 @@ ${topText}`;
   function save() {
     localStorage.setItem('claude_chats', JSON.stringify(chats));
     localStorage.setItem('claude_order', JSON.stringify(chatOrder));
+    updateHistoryImageContextBar(currentId);
   }
 
   function setStatus(msg, type = '') {
