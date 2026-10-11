@@ -1153,10 +1153,36 @@
   }
   #responseDebugContent {
     min-height: 0;
+    min-width: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
     padding-right: 4px;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  /* Response Debug must never force a horizontal viewport wider than its modal. */
+  .response-debug-modal { width: min(94vw, 820px); max-width: 820px; }
+  .response-debug-modal .response-debug-grid { grid-template-columns: minmax(100px, 150px) minmax(0, 1fr); }
+  .response-debug-modal .response-debug-grid > * { min-width: 0; }
+  .response-debug-modal .response-debug-grid .v,
+  .response-debug-modal .debug-row pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-width: 100%;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .response-debug-modal .debug-row { min-width: 0; margin-bottom: 12px; }
+  .response-debug-modal .debug-row .debug-label { font-size: 11px; color: var(--text-soft); margin-bottom: 4px; }
+  .response-debug-modal .debug-row pre { margin: 0; font: 11.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .response-debug-modal .modal-btns { flex-wrap: wrap; }
+  @media (max-width: 580px) {
+    .response-debug-modal { width: 96vw; padding: 14px; }
+    .response-debug-modal .response-debug-grid { grid-template-columns: minmax(0, 1fr); }
+    .response-debug-modal .response-debug-grid .k { font-weight: 600; margin-top: 8px; }
   }
   .response-debug-grid {
     display: grid;
@@ -3378,7 +3404,10 @@ body.skin-wa .history-image-picker-info small { color: rgba(255,241,226,.71); }
     <p>Response Core 观察：SpeechPlan 与 Sticker events。</p>
     <div id="responseDebugContent"></div>
     <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal('responseDebugModal')">关闭</button>
+      <button class="btn-cancel" type="button" id="responseDebugCopyRaw" onclick="copyResponseDebug('raw')">复制原始响应</button>
+      <button class="btn-cancel" type="button" id="responseDebugCopyAll" onclick="copyResponseDebug('all')">复制完整诊断</button>
+      <button class="btn-cancel" type="button" id="responseDebugDeleteFailed" onclick="deleteDisplayedFailedResponseDebug()" hidden style="color:#C47A6A">删除失败记录</button>
+      <button class="btn-cancel" type="button" onclick="closeModal('responseDebugModal')">关闭</button>
     </div>
   </div>
 </div>
@@ -3892,39 +3921,57 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     }
   };
 
+  // Short-lived diagnostic convenience, not conversation history or backup data.
+  // Exactly ONE failed attempt is kept globally. New failures replace the old one.
   const ResponseFailedDebugStore = {
     loadAll() {
+      let entries = {};
       try {
         const parsed = JSON.parse(localStorage.getItem(RESPONSE_FAILED_DEBUG_KEY) || '{}');
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-      } catch (_) {
-        return {};
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) entries = parsed;
+      } catch (_) { return {}; }
+      const valid = Object.entries(entries).filter(([attemptId, entry]) =>
+        attemptId && entry && typeof entry === 'object' && typeof entry.rawResponseText === 'string'
+      );
+      if (!valid.length) return {};
+      valid.sort((a, b) => Number(b[1].createdAt || 0) - Number(a[1].createdAt || 0));
+      const [attemptId, entry] = valid[0];
+      const latest = { [attemptId]: entry };
+      // Upgrade any previous multi-attempt localStorage data in place.
+      if (valid.length !== 1 || Object.keys(entries).length !== 1) {
+        try { localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify(latest)); } catch (_) {}
       }
+      return latest;
     },
     set(attemptId, entry) {
-      if (!attemptId || !entry) return;
-      const all = this.loadAll();
-      all[attemptId] = entry;
-      localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify(all));
+      if (!attemptId || !entry) return false;
+      try {
+        // Overwrite rather than merge; never let diagnostic quota errors break Retry.
+        localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify({ [attemptId]: entry }));
+        return true;
+      } catch (_) { return false; }
+    },
+    getForUserTurn(chatId, userMessageId) {
+      if (!chatId || !userMessageId) return [];
+      return Object.values(this.loadAll()).filter(entry =>
+        entry.chatId === chatId && entry.userMessageId === userMessageId
+      );
     },
     getLatestForChat(chatId) {
       if (!chatId) return null;
-      const entries = Object.values(this.loadAll())
-        .filter(entry => entry?.chatId === chatId)
-        .sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
-      return entries[0] || null;
+      return Object.values(this.loadAll()).find(entry => entry.chatId === chatId) || null;
+    },
+    removeAttempt(attemptId) {
+      if (!attemptId) return false;
+      const all = this.loadAll();
+      if (!Object.prototype.hasOwnProperty.call(all, attemptId)) return false;
+      try { localStorage.removeItem(RESPONSE_FAILED_DEBUG_KEY); return true; }
+      catch (_) { return false; }
     },
     clearChat(chatId) {
       if (!chatId) return;
-      const all = this.loadAll();
-      let changed = false;
-      Object.keys(all).forEach(attemptId => {
-        if (all[attemptId]?.chatId === chatId) {
-          delete all[attemptId];
-          changed = true;
-        }
-      });
-      if (changed) localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify(all));
+      const entry = this.getLatestForChat(chatId);
+      if (entry?.attemptId) this.removeAttempt(entry.attemptId);
     }
   };
 
@@ -8223,8 +8270,93 @@ ScrollMemory.clear(chatId);
   }
 
   // ── RESPONSE DEBUG ─────────────────────────────────────
-  function openLatestFailedResponseDebug(chatId) {
-    const entry = ResponseFailedDebugStore.getLatestForChat(chatId);
+  let responseDebugCopyAllText = '';
+  let responseDebugCopyRawText = '';
+  let responseDebugVisibleFailedAttemptId = null;
+
+  function setResponseDebugFailedDeletionContext(attemptId = null) {
+    responseDebugVisibleFailedAttemptId = attemptId;
+    const button = document.getElementById('responseDebugDeleteFailed');
+    if (button) button.hidden = !attemptId;
+  }
+
+  function setResponseDebugCopyData(rows, raw) {
+    responseDebugCopyAllText = rows.map(([key, value]) => `${key}:\n${String(value)}`).join('\n\n');
+    responseDebugCopyRawText = typeof raw === 'string' ? raw : '';
+    const rawButton = document.getElementById('responseDebugCopyRaw');
+    if (rawButton) rawButton.disabled = !responseDebugCopyRawText;
+  }
+
+  async function copyResponseDebug(which) {
+    const content = which === 'raw' ? responseDebugCopyRawText : responseDebugCopyAllText;
+    if (!content) return;
+    const button = document.getElementById(which === 'raw' ? 'responseDebugCopyRaw' : 'responseDebugCopyAll');
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(content);
+        copied = true;
+      }
+    } catch (_) { /* In local-file / non-secure origins, try selection fallback. */ }
+    if (!copied) {
+      const field = document.createElement('textarea');
+      field.value = content;
+      field.readOnly = true;
+      field.style.cssText = 'position:fixed;left:8px;top:8px;width:1px;height:1px;opacity:0;z-index:99999';
+      document.body.appendChild(field);
+      try {
+        field.focus(); field.select();
+        copied = document.execCommand('copy');
+      } catch (_) { /* Clipboard permission may have been denied. */ }
+      field.remove();
+    }
+    if (button) {
+      const defaultLabel = which === 'raw' ? '复制原始响应' : '复制完整诊断';
+      button.textContent = copied ? '已复制 ✓' : '复制失败，请检查浏览器权限';
+      setTimeout(() => { if (button.isConnected) button.textContent = defaultLabel; }, 1800);
+    }
+  }
+
+  function deleteDisplayedFailedResponseDebug() {
+    const attemptId = responseDebugVisibleFailedAttemptId;
+    if (!attemptId) return;
+    if (!confirm('删除这条失败 Debug 记录？不会影响聊天消息或重试功能。')) return;
+    const removed = ResponseFailedDebugStore.removeAttempt(attemptId);
+    if (!removed) {
+      flashStatus('该失败记录已被新的记录替换，或删除失败', 'err', 2200);
+      return;
+    }
+    setResponseDebugFailedDeletionContext(null);
+    responseDebugCopyAllText = '';
+    responseDebugCopyRawText = '';
+    closeModal('responseDebugModal');
+    // Keep the retry affordance if the latest user turn remains unresolved.
+    if (currentId) syncRequestStatusForChat(currentId);
+  }
+
+  function extractFailedTagValues(entry) {
+    try {
+      let raw = String(entry?.rawResponseText || '').trim();
+      if (raw.startsWith('```')) raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      const payload = JSON.parse(raw);
+      const seen = new Set();
+      const lines = [];
+      for (const violation of (entry?.violations || [])) {
+        const match = String(violation).match(/deliveryBlocks\[(\d+)\]\.parts\[(\d+)\]\.tags\[(\d+)\]/);
+        if (!match || seen.has(match[0])) continue;
+        seen.add(match[0]);
+        const tag = payload?.deliveryBlocks?.[Number(match[1])]?.parts?.[Number(match[2])]?.tags?.[Number(match[3])];
+        lines.push(`${match[0]} = ${JSON.stringify(tag)} (type: ${typeof tag})`);
+      }
+      return lines.length ? lines.join('\n') : '无 tag 路径；查看 violations 与 Raw response';
+    } catch (_) { return '原始响应无法作为 JSON 解析；查看 Raw response'; }
+  }
+
+  function openLatestFailedResponseDebug(chatId, userMessageId = null) {
+    const entry = userMessageId
+      ? ResponseFailedDebugStore.getForUserTurn(chatId, userMessageId)[0]
+      : ResponseFailedDebugStore.getLatestForChat(chatId);
+    // A requested user turn must never fall back to an unrelated failure.
     if (!entry) return;
 
     const rows = [
@@ -8234,6 +8366,7 @@ ScrollMemory.clear(chatId);
       ['error kind', entry.errorKind || '—'],
       ['validation error', entry.error || '—'],
       ['violations', Array.isArray(entry.violations) && entry.violations.length ? entry.violations.join('\n') : '—'],
+      ['实际出错的 tag 原值', extractFailedTagValues(entry)],
       ['Anthropic stop reason', entry.stopReason ?? '—'],
       ['Anthropic stop sequence', entry.stopSequence ?? '—'],
       ['Anthropic response id', entry.apiResponseId || '—'],
@@ -8241,8 +8374,10 @@ ScrollMemory.clear(chatId);
       ['saved at', entry.createdAt ? new Date(entry.createdAt).toISOString() : '—'],
       ['Raw response', entry.rawResponseText ?? '—']
     ];
-
-    document.getElementById('responseDebugContent').innerHTML = rows.map(([label, value]) =>
+    setResponseDebugCopyData(rows, entry.rawResponseText);
+    setResponseDebugFailedDeletionContext(entry.attemptId);
+    const content = document.getElementById('responseDebugContent');
+    content.innerHTML = rows.map(([label, value]) =>
       `<div class="debug-row"><div class="debug-label">${escHtml(label)}</div><pre>${escHtml(String(value))}</pre></div>`
     ).join('');
     document.getElementById('responseDebugModal').classList.add('open');
@@ -8320,6 +8455,11 @@ ${topText}`;
       `${entry.mode}: originalSender=${entry.originalSender}, sourceMessageId=${entry.sourceMessageId}, eventIndex=${entry.eventIndex}, stickerId=${entry.stickerId}, sourceFound=${entry.validSource}, imageInFinalRequest=${entry.imageSupplied}, textInFinalRequest=${entry.contextIncluded}, missingImage=${entry.missingImage}, imageBase64Characters=${entry.imageSupplied ? entry.imageDataBase64Length : 0}, fullRequestMiB=${entry.finalRequestMiB || 'unknown'}\n${entry.mode === 'current_reference' ? 'Actual source/intent/context annotation: ' + (entry.contextText || 'none') : ''}`
     ).join('\n\n') : 'none';
 
+    const messageIndex = messages.indexOf(msg);
+    const sourceUserMessage = messages.slice(0, messageIndex).reverse().find(message => message?.role === 'user');
+    const priorFailedAttempts = sourceUserMessage
+      ? ResponseFailedDebugStore.getForUserTurn(currentId, sourceUserMessage.id)
+      : [];
     const rows = [
       ['messageId', msg.id || '—'],
       ['model', msg.model || '—'],
@@ -8364,10 +8504,17 @@ ${topText}`;
       </div>`;
     }).join('')}</div>` : '';
 
+    setResponseDebugCopyData(rows, rawDebug?.rawResponseText ?? '');
+    setResponseDebugFailedDeletionContext(null);
+    const failedAttemptButton = priorFailedAttempts.length
+      ? `<div style="margin-bottom:12px"><button class="btn-cancel" type="button" id="viewPreviousFailedResponse">查看这条回复的最近一次失败 Debug</button></div>`
+      : '';
     document.getElementById('responseDebugContent').innerHTML =
-      `<div class="response-debug-grid">${rows.map(([key, value]) =>
+      `${failedAttemptButton}<div class="response-debug-grid">${rows.map(([key, value]) =>
         `<div class="k">${escHtml(key)}</div><div class="v">${escHtml(String(value)).replace(/\n/g, '<br>')}</div>`
       ).join('')}</div>${verdictButtons}`;
+    document.getElementById('viewPreviousFailedResponse')?.addEventListener('click', () =>
+      openLatestFailedResponseDebug(currentId, sourceUserMessage.id));
     document.getElementById('responseDebugModal').classList.add('open');
   }
 
@@ -9233,7 +9380,12 @@ ${topText}`;
   }
 
   document.querySelectorAll('.modal-overlay').forEach(el => {
-    el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+    el.addEventListener('click', e => {
+      // Debug contains long selectable response text. A drag ending on the
+      // backdrop must not close the dialog and discard the user's selection.
+      if (el.id === 'responseDebugModal') return; // explicit Close button only
+      if (e.target === el) el.classList.remove('open');
+    });
   });
 
   // ── MESSAGE IDENTITY UTILS (P0 merge/import fix) ─────
@@ -10297,13 +10449,16 @@ ${topText}`;
     retry.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66"></path><path d="M20 4v7h-7"></path></svg>';
     retry.addEventListener('click', () => handleRetryLatestReply(chatId));
 
-    const failedDebug = ResponseFailedDebugStore.getLatestForChat(chatId);
+    const unresolvedUserId = getLatestUnresolvedUserTurn(chats[chatId])?.message?.id;
+    const failedDebug = unresolvedUserId
+      ? ResponseFailedDebugStore.getForUserTurn(chatId, unresolvedUserId)[0]
+      : null;
     if (failedDebug) {
       const debug = document.createElement('button');
       debug.type = 'button';
       debug.className = 'debug-btn';
       debug.textContent = 'Debug';
-      debug.addEventListener('click', () => openLatestFailedResponseDebug(chatId));
+      debug.addEventListener('click', () => openLatestFailedResponseDebug(chatId, unresolvedUserId));
       el.append(text, debug, retry);
     } else {
       el.append(text, retry);
