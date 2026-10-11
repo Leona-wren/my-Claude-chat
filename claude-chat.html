@@ -7138,29 +7138,42 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       const quotedReferences = message.role === 'user' && Array.isArray(message.references)
         ? message.references.filter(ref => ref?.type === 'assistant_sticker') : [];
       const quotedImages = [];
-      for (const reference of quotedReferences) {
-        // Use an object carrying this chat's true id without mutating persistence.
+      for (const [referenceIndex, reference] of quotedReferences.entries()) {
+        // A reference is historical assistant behavior, never a newly uploaded user attachment.
         const resolved = resolveAssistantStickerReference({ id:message.chatId || chat.id, messages:chat.messages }, reference);
-        let suppliedImage = false, missingImage = false;
-        if (message === currentUserTurn && resolved) {
+        const currentReference = message === currentUserTurn;
+        const quoteAssetId = historicalStickerQuoteAssetId(message, reference, referenceIndex);
+        let suppliedImage = false, missingImage = false, imageByteLength = 0;
+        if (resolved) {
           const record = await StickerStorage.get(resolved.event.stickerId);
           if (record?.blob) {
+            // Match the established image path: direct JSON image content block.
+            // Current quotes are required; historical quotes are selectable below.
             const source = await encodeImageBlobForApi(record.blob, signal, resolved.event.stickerId);
             quotedImages.push({ type:'image', source });
             suppliedImage = true;
-          } else missingImage = true;
+            imageByteLength = source.data.length;
+          } else {
+            missingImage = true;
+            if (currentReference) throw new Error(`当前引用的 Claude 表情包原图缺失（${resolved.event.stickerId}）；已阻止发送未附图的请求`);
+          }
+        } else if (currentReference) {
+          throw new Error('引用来源消息无法验证，已阻止本次请求，请重新引用表情包');
         }
-        const refContext = message === currentUserTurn
+        const refContext = currentReference
           ? makeStickerReferenceContext(chat, reference, resolved, suppliedImage)
           : resolved
-            ? `[Historical user quote: user referenced a sticker originally sent by assistant in message ${reference.messageId}; assistant's original intended expression=${String(resolved.event.intent || 'unknown')}. Original image is not supplied in this request. The user's reference was not a newly uploaded image.]`
+            ? `[Historical user quote: user referenced a sticker originally sent by assistant in message ${reference.messageId}; assistant's original intended expression=${String(resolved.event.intent || 'unknown')}. This is assistant historical behavior, not a new image uploaded by the user. Historical image may be supplied or omitted by the current old-image selection; never claim to have seen it unless the image block is present.]`
             : `[Historical user quote refers to an unavailable past assistant sticker; no original image or intent verified.]`;
         content += `\n\n${refContext}`;
         referenceTrace.push({
           userMessageId:message.id || null, sourceMessageId:reference.messageId || null,
           stickerId:reference.stickerId || null, eventIndex:reference.eventIndex,
-          originalSender:'assistant', imageSupplied:suppliedImage, missingImage,
-          validSource:!!resolved, mode:message === currentUserTurn ? 'current_reference' : 'historical_text_only'
+          quoteAssetId, referenceIndex, messageIndex:apiMessages.length,
+          originalSender:'assistant', imageAssembled:suppliedImage, imageSupplied:suppliedImage,
+          imageDataBase64Length:imageByteLength, missingImage,
+          validSource:!!resolved, mode:currentReference ? 'current_reference' : 'historical_reference',
+          contextText:refContext
         });
       }
       const stamp = Number(message?.createdAt);
@@ -7272,24 +7285,38 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return w > 0 && h > 0 ? `${w}×${h}px` : '像素尺寸未记录';
   }
 
+  // One image may be referenced many times in different conversational contexts.
+  // The selection key must identify the reference occurrence, NOT just its stickerId.
+  function historicalStickerQuoteAssetId(message, reference, referenceIndex) {
+    return `sticker_quote:${message.id || 'unknown'}:${referenceIndex}:${reference.messageId}:${reference.eventIndex}`;
+  }
+
   function listHistoricalImageChoicesMeta(chat) {
     const latest = getLatestUnresolvedUserTurn(chat)?.message;
     const choices = [];
     (chat?.messages || []).forEach((message, messageIndex) => {
       if (message?.role !== 'user' || message === latest) return;
       const attachments = getImageAttachments(message);
-      if (!attachments.length) return;
       attachments.forEach((attachment, imageIndex) => {
         choices.push({
-          index: choices.length,
-          messageIndex,
-          imageIndex,
+          index: choices.length, kind:'user_image', messageIndex, imageIndex,
           assetId: attachment.assetId,
           rawSize: Number.isFinite(Number(attachment.size)) ? Number(attachment.size) : null,
           width: attachment.width || null,
           height: attachment.height || null,
           createdAt: message.createdAt || null,
           text: String(message.content || '').replace(/\s+/g, ' ').slice(0, 140)
+        });
+      });
+      (Array.isArray(message.references) ? message.references : [])
+        .filter(reference => reference?.type === 'assistant_sticker')
+        .forEach((reference, referenceIndex) => {
+        const source = resolveAssistantStickerReference({ id:message.chatId || chat?.id, messages:chat?.messages || [] }, reference);
+        choices.push({
+          index: choices.length, kind:'assistant_sticker_quote', messageIndex, imageIndex:referenceIndex,
+          assetId:historicalStickerQuoteAssetId(message, reference, referenceIndex), stickerId:reference.stickerId,
+          createdAt:message.createdAt || null,
+          text:`引用 Claude 之前发的表情包 · 原始 intent：${source?.event?.intent || '来源不可用'} · ${String(message.content || '').replace(/\s+/g, ' ').slice(0, 100)}`
         });
       });
     });
@@ -7384,19 +7411,31 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     const choices = [];
     sourceMessages.forEach((message, messageIndex) => {
       if (message.role !== 'user' || message === latest) return;
-      const attachments = getImageAttachments(message);
-      if (!attachments.length) return;
       const apiImageBlocks = Array.isArray(body.messages[messageIndex]?.content)
         ? body.messages[messageIndex].content.filter(block => block?.type === 'image') : [];
+      const attachments = getImageAttachments(message);
       attachments.forEach((attachment, imageIndex) => {
         const block = apiImageBlocks[imageIndex];
         if (!block) return;
         choices.push({
-          index: choices.length, messageIndex, imageIndex, block,
-          assetId: attachment.assetId,
-          createdAt: message.createdAt || null,
-          text: String(message.content || '').replace(/\s+/g, ' ').slice(0, 140),
-          byteSize: JSON.stringify(block).length + 2
+          index: choices.length, kind:'user_image', messageIndex, imageIndex, block,
+          assetId:attachment.assetId, createdAt:message.createdAt || null,
+          text:String(message.content || '').replace(/\s+/g, ' ').slice(0, 140),
+          byteSize:JSON.stringify(block).length + 2
+        });
+      });
+      // Quoted image blocks follow user-uploaded image blocks in this message.
+      const quotes = (Array.isArray(message.references) ? message.references : []).filter(ref => ref?.type === 'assistant_sticker');
+      quotes.forEach((reference, referenceIndex) => {
+        const block = apiImageBlocks[attachments.length + referenceIndex];
+        if (!block) return;
+        choices.push({
+          index:choices.length, kind:'assistant_sticker_quote', messageIndex,
+          imageIndex:referenceIndex, block,
+          assetId:historicalStickerQuoteAssetId(message, reference, referenceIndex),
+          stickerId:reference.stickerId, createdAt:message.createdAt || null,
+          text:`引用 Claude 之前发的表情包 · ${String(message.content || '').replace(/\s+/g, ' ').slice(0, 140)}`,
+          byteSize:JSON.stringify(block).length + 2
         });
       });
     });
@@ -7473,11 +7512,12 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       list.innerHTML = choices.map(choice => {
         const date = choice.createdAt ? new Date(choice.createdAt).toLocaleString('zh-CN') : '时间未知';
         const existingApiBytes = Number.isFinite(choice.byteSize) ? `API 约 ${imageRequestMiB(choice.byteSize)} MiB` : 'API 体积计算中…';
+        const typeLabel = choice.kind === 'assistant_sticker_quote' ? '引用的 Claude 表情包' : `图 ${choice.imageIndex + 1}`;
         return `<label class="history-image-picker-row">
           <input type="checkbox" data-choice-index="${choice.index}" ${selected.has(choice.index) ? 'checked' : ''}>
           <img class="history-image-picker-thumb" data-preview-index="${choice.index}" alt="历史图片" hidden>
           <span class="history-image-picker-info">
-            <strong>${escHtml(date)} · 图 ${choice.imageIndex + 1} · <span data-choice-size-index="${choice.index}">${existingApiBytes}</span></strong>
+            <strong>${escHtml(date)} · ${escHtml(typeLabel)} · <span data-choice-size-index="${choice.index}">${existingApiBytes}</span></strong>
             <small>${escHtml(choice.text || '（原消息仅包含图片）')}</small>
             <small class="history-image-picker-file-meta" data-choice-detail-index="${choice.index}">原图信息读取中…</small>
           </span>
@@ -7596,7 +7636,9 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
           const label = list.querySelector(`[data-choice-size-index="${choice.index}"]`);
           const detail = list.querySelector(`[data-choice-detail-index="${choice.index}"]`);
           try {
-            const record = await ImageStorage.get(choice.assetId);
+            const record = choice.kind === 'assistant_sticker_quote'
+              ? await StickerStorage.get(choice.stickerId)
+              : await ImageStorage.get(choice.assetId);
             if (settled) return;
             if (!record?.blob) {
               if (label && !Number.isFinite(choice.byteSize)) label.textContent = 'API 体积不可用';
@@ -7707,14 +7749,14 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       // Images do not compete for a shared shrinking quality budget. When the request
       // exceeds the endpoint limit, reserve the current turn first; ASK which older
       // visual blocks to retain. Text history and saved originals never change.
-      const historicalChoices = temporalHistory.imageAssetIds.length ? listHistoricalImageBlocks(chat, body) : [];
+      const historicalChoices = listHistoricalImageBlocks(chat, body);
       const storedHistoricalAssetIds = getStoredHistoricalImageAssetIds(chatId);
       const effectiveIndices = storedHistoricalAssetIds !== null
         ? chosenIndicesFromAssetIds(historicalChoices, storedHistoricalAssetIds)
         : new Set(historicalChoices.map(choice => choice.index));
       let fullCandidateBody = body;  // Preserve full image blocks so users can reselect excluded images.
       let outgoingBody = buildBodyWithChosenHistoryImages(fullCandidateBody, historicalChoices, effectiveIndices);
-      if (temporalHistory.imageAssetIds.length && imageRequestBytes(outgoingBody) > IMAGE_REQUEST_SAFE_BYTES) {
+      if (imageRequestBytes(outgoingBody) > IMAGE_REQUEST_SAFE_BYTES) {
         const choices = historicalChoices;
         let newOnlyBody = buildBodyWithChosenHistoryImages(fullCandidateBody, choices, new Set());
         if (imageRequestBytes(newOnlyBody) > IMAGE_REQUEST_SAFE_BYTES) {
@@ -7745,6 +7787,29 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
           setStoredHistoricalImageAssetIds(chatId, selectedResult.selectedAssetIds);
           if (currentId === chatId) addTyping();
         }
+      }
+      // Verify final outgoing request, after old-image selection and size preflight.
+      // This is local evidence about the JSON sent, not a claim about model vision.
+      const finalRequestBytes = imageRequestBytes(outgoingBody);
+      for (const trace of temporalHistory.referenceTrace || []) {
+        trace.finalRequestMiB = imageRequestMiB(finalRequestBytes);
+        const apiMsg = outgoingBody.messages[trace.messageIndex];
+        const content = apiMsg?.content;
+        const images = Array.isArray(content) ? content.filter(block => block?.type === 'image') : [];
+        const originalMsg = chat.messages.filter(msg => msg?.role !== 'thinking')[trace.messageIndex];
+        const ownImageCount = getImageAttachments(originalMsg).length;
+        // Order is: user-uploaded images, then quoted-sticker images that survived selection.
+        // Prefer explicit original block identity from preflight's quote choice.
+        const choice = historicalChoices.find(item => item.assetId === trace.quoteAssetId);
+        const finalIncluded = trace.mode === 'current_reference'
+          ? images.length >= ownImageCount + 1 && !!trace.imageAssembled
+          : !!choice && images.some(block => block === choice.block);
+        trace.imageSupplied = finalIncluded;
+        trace.actualRequestBytes = finalIncluded ? (choice?.byteSize || trace.imageDataBase64Length) : 0;
+        trace.contextIncluded = Array.isArray(content)
+          ? content.some(block => block?.type === 'text' && block.text.includes(`sourceMessageId=${trace.sourceMessageId}`)) ||
+            content.some(block => block?.type === 'text' && block.text.includes(`message ${trace.sourceMessageId}`))
+          : typeof content === 'string' && (content.includes(`sourceMessageId=${trace.sourceMessageId}`) || content.includes(`message ${trace.sourceMessageId}`));
       }
       if (signal?.aborted) throw new DOMException('已停止生成','AbortError');
       // Use the exact bytes selected in the preflight; no second recompression.
@@ -8113,6 +8178,12 @@ ScrollMemory.clear(chatId);
       createdTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
     };
     chat.messages.push(userMsg);
+    // An explicitly new quote is selected for later historical image requests by default,
+    // even if this chat previously stored a narrower selection of old images.
+    if (stagedQuote && Array.isArray(chat.historicalImageContextAssetIds)) {
+      const newId = historicalStickerQuoteAssetId(userMsg, stagedQuote, 0);
+      chat.historicalImageContextAssetIds = Array.from(new Set([...chat.historicalImageContextAssetIds, newId]));
+    }
     if (chat.title === '新对话') {
       chat.title = text ? text.slice(0, 24) + (text.length > 24 ? '…' : '') : (stagedQuote ? '引用表情包' : '图片');
     }
@@ -8246,8 +8317,8 @@ ${topText}`;
     ).join('\n\n') : 'none';
     const stickerReferenceTrace = Array.isArray(msg.runtimeStickerReferenceTrace) ? msg.runtimeStickerReferenceTrace : [];
     const stickerReferencePreview = stickerReferenceTrace.length ? stickerReferenceTrace.map(entry =>
-      `${entry.mode}: originalSender=${entry.originalSender}, sourceMessageId=${entry.sourceMessageId}, eventIndex=${entry.eventIndex}, stickerId=${entry.stickerId}, sourceFound=${entry.validSource}, imageSupplied=${entry.imageSupplied}, missingImage=${entry.missingImage}`
-    ).join('\n') : 'none';
+      `${entry.mode}: originalSender=${entry.originalSender}, sourceMessageId=${entry.sourceMessageId}, eventIndex=${entry.eventIndex}, stickerId=${entry.stickerId}, sourceFound=${entry.validSource}, imageInFinalRequest=${entry.imageSupplied}, textInFinalRequest=${entry.contextIncluded}, missingImage=${entry.missingImage}, imageBase64Characters=${entry.imageSupplied ? entry.imageDataBase64Length : 0}, fullRequestMiB=${entry.finalRequestMiB || 'unknown'}\n${entry.mode === 'current_reference' ? 'Actual source/intent/context annotation: ' + (entry.contextText || 'none') : ''}`
+    ).join('\n\n') : 'none';
 
     const rows = [
       ['messageId', msg.id || '—'],
