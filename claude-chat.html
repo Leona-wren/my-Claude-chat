@@ -3673,10 +3673,14 @@ body.skin-wa .history-image-picker-info small { color: rgba(255,241,226,.71); }
   const STICKER_DOMINANT_VISUAL_PROMPT_MIGRATION_KEY = 'claude_sticker_dominant_visual_prompt_v3';
   const STICKER_HISTORY_MEANING_SNAPSHOT_MIGRATION_KEY = 'claude_sticker_history_meaning_snapshot_v4';
   const ELEVEN_V4_SPEECH_PROMPT_MIGRATION_KEY = 'claude_eleven_v4_speech_prompt_v1';
+  const STICKER_REPEAT_PROMPT_MIGRATION_KEY = 'claude_sticker_repeat_prompt_v1';
+  const STICKER_REPEAT_MAX = 3;
+  const STICKER_REPEAT_OLD_RULE = 'repeat controls consecutive repetition of the same sticker. Use repeat>1 only when repetition itself is part of the expression; otherwise use 1.';
+  const STICKER_REPEAT_GUIDANCE = 'repeat controls consecutive copies of the exact same selected sticker within one slot. Decide repeat as part of expressive delivery, independently of sticker retrieval intent. Use repeat=1 for an ordinary single reaction. Use repeat=2 or 3 when repeating the same reaction adds natural expressive rhythm or emphasis, such as excited celebration, playful insistence, affectionate pleading, exaggerated disbelief, or deliberately emphatic reaction. These examples are not exhaustive; do not repeat merely for decoration. To repeat one image, use one stickerEvent with repeat>1 rather than multiple identical stickerEvents. Each event repeat must be an integer from 1 through 3.';
   const REPLY_LANGUAGE_CONTROL_MIGRATION_KEY = 'claude_reply_language_control_v1';
   const DEFAULT_CORE_SYSTEM_PROMPT = `TEXT: All deliveryBlocks.parts[].text in order form the complete visible reply. For short everyday conversation, usually use one natural sentence or tightly linked short expression per block. For longer replies, group blocks by natural paragraph or complete semantic section rather than mechanically splitting every sentence. Within a block, split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
 
-SPEECH: Compose Eleven v4 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: warm, calm, curious, thoughtful, uncertain, hesitant, nervous, worried, scared, alarmed, terrified, excited, delighted, amused, surprised, sarcastic, mischievously, teasing, annoyed, angry, furious, upset, resigned, tired, sleepy drowsy voice, deadpan, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, building, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, nervous laugh, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, yawning, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.\n\n${CORE_PROMPT_FIELD_ROLE_LINE}\n\nSTICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when no sticker expression is wanted. When using a sticker, intent is Chinese retrieval text used only to choose one sticker image. For each stickerEvent, choose exactly one dominant visual target: the single facial expression, pose, or immediately visible affective state that should most determine what the image looks like at that moment. intent is not a complete description of your current feelings or of the conversation. If several states coexist, select only the one that most determines the image and omit the others. Omit context, causes/goals, temporal sequence, and secondary coexisting states. Write the shortest natural Chinese label that preserves the visual distinction, not a sentence or mini-narrative. Historical sticker annotations are factual records of past non-verbal actions, not examples or a preferred vocabulary for new intents. If the desired expression cannot be reduced to one dominant visual target, use no sticker. If several distinct sticker expressions are genuinely wanted in sequence, use multiple stickerEvents. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. repeat controls consecutive repetition of the same sticker. Use repeat>1 only when repetition itself is part of the expression; otherwise use 1.`;
+SPEECH: Compose Eleven v4 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: warm, calm, curious, thoughtful, uncertain, hesitant, nervous, worried, scared, alarmed, terrified, excited, delighted, amused, surprised, sarcastic, mischievously, teasing, annoyed, angry, furious, upset, resigned, tired, sleepy drowsy voice, deadpan, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, building, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, nervous laugh, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, yawning, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.\n\n${CORE_PROMPT_FIELD_ROLE_LINE}\n\nSTICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when no sticker expression is wanted. When using a sticker, intent is Chinese retrieval text used only to choose one sticker image. For each stickerEvent, choose exactly one dominant visual target: the single facial expression, pose, or immediately visible affective state that should most determine what the image looks like at that moment. intent is not a complete description of your current feelings or of the conversation. If several states coexist, select only the one that most determines the image and omit the others. Omit context, causes/goals, temporal sequence, and secondary coexisting states. Write the shortest natural Chinese label that preserves the visual distinction, not a sentence or mini-narrative. Historical sticker annotations are factual records of past non-verbal actions, not examples or a preferred vocabulary for new intents. If the desired expression cannot be reduced to one dominant visual target, use no sticker. If several distinct sticker expressions are genuinely wanted in sequence, use multiple stickerEvents. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. ${STICKER_REPEAT_GUIDANCE}`;
   const DEFAULT_LEGACY_JSON_PROMPT = 'Return only one valid JSON object matching the deliveryBlocks/stickerEvents contract; no Markdown fence or extra text.';
   const SPEECH_PLAN_SCHEMA_VERSION = 2;
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
@@ -3851,6 +3855,19 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
         merged = merged.replace(oldElevenSpeechPrompt, newElevenSpeechPrompt);
       }
       localStorage.setItem(ELEVEN_V4_SPEECH_PROMPT_MIGRATION_KEY, '1');
+    }
+
+    // Upgrade only the old repeat sentence inside an existing saved prompt. Keep
+    // all other user-authored prompt content (including language and voice) intact.
+    if (localStorage.getItem(STICKER_REPEAT_PROMPT_MIGRATION_KEY) !== '1') {
+      if (merged.includes(STICKER_REPEAT_OLD_RULE)) {
+        merged = merged.replace(STICKER_REPEAT_OLD_RULE, STICKER_REPEAT_GUIDANCE);
+      } else if (!merged.includes(STICKER_REPEAT_GUIDANCE)) {
+        // If the STICKER paragraph has been customized, append the current repeat
+        // contract rather than replacing the entire custom section.
+        merged = `${merged.trimEnd()}\n\nSTICKER REPEAT: ${STICKER_REPEAT_GUIDANCE}`;
+      }
+      localStorage.setItem(STICKER_REPEAT_PROMPT_MIGRATION_KEY, '1');
     }
 
     localStorage.setItem(CORE_SYSTEM_PROMPT_KEY, merged);
@@ -4170,6 +4187,12 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       intent: trace.intent || '',
       verdict: previous?.verdict || null,
       selectedStickerId: trace.selectedStickerId || null,
+      originalTopStickerId: trace.originalTopStickerId || null,
+      originalTopSimilarity: Number.isFinite(trace.originalTopSimilarity) ? trace.originalTopSimilarity : null,
+      selectedRank: Number.isInteger(trace.selectedRank) ? trace.selectedRank : null,
+      selectionReason: trace.selectionReason || null,
+      tieEpsilon: Number.isFinite(trace.tieEpsilon) ? trace.tieEpsilon : null,
+      tieCandidateIds: Array.isArray(trace.tieCandidateIds) ? trace.tieCandidateIds : [],
       selectedScore: Number.isFinite(Number(trace.selectedSimilarity)) ? Number(trace.selectedSimilarity) : null,
       matchedUsageExampleId: trace.matchedUsageExampleId || null,
       matchedUsageExampleText: trace.matchedUsageExampleText || null,
@@ -4232,7 +4255,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
   }
 
   function labelStickerCalibrationBetter(messageId, eventIndex, rank) {
-    if (!messageId || !Number.isInteger(Number(eventIndex)) || !Number.isInteger(Number(rank)) || Number(rank) <= 1) return;
+    if (!messageId || !Number.isInteger(Number(eventIndex)) || !Number.isInteger(Number(rank)) || Number(rank) < 1) return;
     const id = `${messageId}:${Number(eventIndex)}`;
     const samples = loadStickerCalibrationSamples();
     const index = samples.findIndex(item => item.id === id);
@@ -4240,7 +4263,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     const sample = samples[index];
     const candidate = (Array.isArray(sample.topCandidates) ? sample.topCandidates : [])
       .find(item => Number(item?.rank) === Number(rank));
-    if (!candidate?.stickerId) return;
+    if (!candidate?.stickerId || candidate.stickerId === sample.selectedStickerId) return;
     samples[index] = {
       ...sample,
       verdict: 'better_match',
@@ -4595,7 +4618,63 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     return normalized.length > 72 ? `${normalized.slice(0, 72)}…` : normalized;
   }
 
-  async function resolveStickerEvents(events, signal = null) {
+  // Near-tie diversification is strictly a post-retrieval choice, not a new
+  // embedding rule. Keep ordinary best-score matches untouched.
+  const STICKER_NEAR_TIE_EPSILON = 0.0001;
+  const STICKER_ROTATION_RECENT_ASSISTANT_TURNS = 30;
+
+  function recentStickerUsageForChat(chatId) {
+    const messages = Array.isArray(chats?.[chatId]?.messages) ? chats[chatId].messages : [];
+    const usage = new Map();
+    let assistantTurns = 0;
+    let distance = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message?.role !== 'assistant') continue;
+      assistantTurns++;
+      const sent = Array.isArray(message.stickerEvents) ? message.stickerEvents : [];
+      for (let j = sent.length - 1; j >= 0; j--) {
+        const event = sent[j];
+        if (typeof event?.stickerId !== 'string' || !event.stickerId) continue;
+        const previous = usage.get(event.stickerId) || { count: 0, distance: Infinity };
+        usage.set(event.stickerId, {
+          count: previous.count + 1,  // repeat > 1 is one selection event
+          distance: Math.min(previous.distance, distance)
+        });
+        distance++;
+      }
+      if (assistantTurns >= STICKER_ROTATION_RECENT_ASSISTANT_TURNS) break;
+    }
+    return usage;
+  }
+
+  function selectNearTieSticker(ranked, usage) {
+    const originalTop = ranked[0] || null;
+    if (!originalTop) return { selected: null, originalTop: null, pool: [], reason: 'no_match' };
+    const pool = ranked.filter(item =>
+      Number.isFinite(item.similarity) &&
+      originalTop.similarity - item.similarity <= STICKER_NEAR_TIE_EPSILON
+    );
+    if (pool.length <= 1) {
+      usage.set(originalTop.stickerId, { count: (usage.get(originalTop.stickerId)?.count || 0) + 1, distance: -1 });
+      return { selected: originalTop, originalTop, pool, reason: 'highest_similarity' };
+    }
+    const minUse = Math.min(...pool.map(item => usage.get(item.stickerId)?.count || 0));
+    const fewestUsed = pool.filter(item => (usage.get(item.stickerId)?.count || 0) === minUse);
+    // When counts tie, prefer the least recently sent; only randomize never-used
+    // candidates (no prior history can distinguish them).
+    const farthest = Math.max(...fewestUsed.map(item => usage.get(item.stickerId)?.distance ?? Infinity));
+    const oldest = fewestUsed.filter(item => (usage.get(item.stickerId)?.distance ?? Infinity) === farthest);
+    const selected = oldest.length > 1 ? oldest[Math.floor(Math.random() * oldest.length)] : oldest[0];
+    // Provisional counts also prevent duplicate selection in the same API reply.
+    for (const record of usage.values()) {
+      if (record.distance < 0) record.distance--;
+    }
+    usage.set(selected.stickerId, { count: (usage.get(selected.stickerId)?.count || 0) + 1, distance: -1 });
+    return { selected, originalTop, pool, reason: 'near_tie_rotation' };
+  }
+
+  async function resolveStickerEvents(events, signal = null, chatId = null) {
     if (!Array.isArray(events) || !events.length) return { events: [], retrievalError: null, calibrationTrace: [] };
     if (!voyageApiKey) return { events: events.map(event => ({ ...event })), retrievalError: 'Voyage API Key 未设置', calibrationTrace: [] };
     await waitForStickerDB();
@@ -4605,6 +4684,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     try {
       const queryEmbeddings = await postVoyageText(events.map(event => event.intent), 'query', signal, { retryOn429: false });
       const calibrationTrace = [];
+      const recentUsage = recentStickerUsageForChat(chatId);
       const resolved = events.map((event, index) => {
         const query = queryEmbeddings[index];
         const ranked = library.map(record => {
@@ -4618,10 +4698,17 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
           } : null;
         }).filter(Boolean).sort((a, b) => b.similarity - a.similarity);
 
-        const best = ranked[0] || null;
+        const selection = selectNearTieSticker(ranked, recentUsage);
+        const best = selection.selected;
         calibrationTrace.push({
           eventIndex: index,
           intent: event.intent,
+          originalTopStickerId: selection.originalTop?.stickerId || null,
+          originalTopSimilarity: selection.originalTop ? Number(selection.originalTop.similarity.toFixed(6)) : null,
+          selectedRank: best ? ranked.findIndex(candidate => candidate.stickerId === best.stickerId) + 1 : null,
+          selectionReason: selection.reason,
+          tieEpsilon: STICKER_NEAR_TIE_EPSILON,
+          tieCandidateIds: selection.pool.map(candidate => candidate.stickerId),
           selectedStickerId: best?.stickerId || null,
           selectedSimilarity: best ? Number(best.similarity.toFixed(6)) : null,
           matchedUsageExampleId: best?.matchedUsageExampleId || null,
@@ -5877,7 +5964,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     const blocks = Array.isArray(msg?.deliveryBlocks) && msg.deliveryBlocks.length ? msg.deliveryBlocks : null;
     const pushStickers = slot => {
       stickerEventsAtSlot(msg, slot).forEach(event => {
-        const repeat = Number.isInteger(Number(event.repeat)) && Number(event.repeat) > 0 ? Number(event.repeat) : 1;
+        const repeat = boundedStickerRepeat(event.repeat);
         for (let i = 0; i < repeat; i++) items.push({ type: 'sticker', event, eventIndex:msg.stickerEvents.indexOf(event) });
       });
     };
@@ -5998,7 +6085,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     const events = stickerEventsAtSlot(msg, slot);
     const chunks = [];
     for (const event of events) {
-      const repeat = Number.isInteger(Number(event.repeat)) && Number(event.repeat) > 0 ? Number(event.repeat) : 1;
+      const repeat = boundedStickerRepeat(event.repeat);
       for (let i = 0; i < repeat; i++) {
         chunks.push(`<div class="sticker-bubble" data-sticker-id="${escHtml(event.stickerId)}"><img class="sticker-inline" alt="sticker" hidden>${stickerQuoteActionMarkup(msg, msg.stickerEvents.indexOf(event))}</div>`);
       }
@@ -6478,7 +6565,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
                 type: 'string',
                 description: 'Chinese retrieval text used only to choose one sticker image: the shortest natural label for exactly one dominant visual target that most determines what the image should look like. Omit context, causes/goals, temporal sequence, and secondary coexisting states.'
               },
-              repeat: { type: 'integer' }
+              repeat: { type: 'integer', enum: [1, 2, 3], description: 'Number of consecutive copies of the same sticker in this slot: 1, 2, or 3.' }
             }
           }
         }
@@ -6613,10 +6700,10 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       payload.stickerEvents.forEach((event, eventIndex) => {
         const slot = Number(event?.slot);
         const intent = typeof event?.intent === 'string' ? event.intent.trim() : '';
-        const repeat = Number(event?.repeat);
+        const repeat = event?.repeat;
         if (!Number.isInteger(slot) || slot < 0) violations.push(`stickerEvents[${eventIndex}].slot must be a non-negative integer`);
         if (!intent) violations.push(`stickerEvents[${eventIndex}].intent must be non-empty`);
-        if (!Number.isInteger(repeat) || repeat < 1) violations.push(`stickerEvents[${eventIndex}].repeat must be a positive integer`);
+        if (!Number.isInteger(repeat) || repeat < 1 || repeat > STICKER_REPEAT_MAX) violations.push(`stickerEvents[${eventIndex}].repeat must be an integer from 1 through ${STICKER_REPEAT_MAX}`);
       });
     }
 
@@ -6711,6 +6798,11 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
   }
 
 
+  function boundedStickerRepeat(value) {
+    const repeat = Number(value);
+    return Number.isInteger(repeat) && repeat >= 1 ? Math.min(repeat, STICKER_REPEAT_MAX) : 1;
+  }
+
   function normalizeStickerEvents(events, blockCount) {
     if (!Array.isArray(events) || !Number.isInteger(blockCount) || blockCount < 0) return [];
     const normalized = [];
@@ -6718,9 +6810,10 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     for (const raw of events) {
       const slot = Number(raw?.slot);
       const intent = typeof raw?.intent === 'string' ? raw.intent.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
-      const requestedRepeat = Number(raw?.repeat);
       if (!Number.isInteger(slot) || slot < 0 || slot > blockCount || !intent) continue;
-      const repeat = Number.isInteger(requestedRepeat) && requestedRepeat >= 1 ? requestedRepeat : 1;
+      // Defensive bound for imported/legacy payloads; generated responses are
+      // also constrained by schema and semantic validation before this point.
+      const repeat = boundedStickerRepeat(raw?.repeat);
       normalized.push({ slot, intent, repeat });
     }
     return normalized;
@@ -7897,7 +7990,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
         };
       }
 
-      const stickerResolution = await resolveStickerEvents(responseCore.stickerEvents, signal);
+      const stickerResolution = await resolveStickerEvents(responseCore.stickerEvents, signal, chatId);
       const rawDebugInspection = inspectResponseForPersistentRawDebug(parsedResponse, responseCore);
 
       return {
@@ -8403,6 +8496,12 @@ ScrollMemory.clear(chatId);
       eventIndex: sample.eventIndex,
       intent: sample.intent,
       selectedStickerId: sample.selectedStickerId,
+      originalTopStickerId: sample.originalTopStickerId,
+      originalTopSimilarity: sample.originalTopSimilarity,
+      selectedRank: sample.selectedRank,
+      selectionReason: sample.selectionReason,
+      tieEpsilon: sample.tieEpsilon,
+      tieCandidateIds: sample.tieCandidateIds,
       selectedSimilarity: sample.selectedScore,
       matchedUsageExampleId: sample.matchedUsageExampleId,
       matchedUsageExampleText: sample.matchedUsageExampleText,
@@ -8418,7 +8517,9 @@ ScrollMemory.clear(chatId);
       const verdictLabel = stickerCalibrationVerdictLabel(sample?.verdict, sample?.preferredRank);
       return `event ${Number(trace.eventIndex) + 1}
 intent: ${trace.intent || '—'}
-selected: ${trace.selectedStickerId || '—'}${Number.isFinite(Number(trace.selectedSimilarity)) ? ` · ${Number(trace.selectedSimilarity).toFixed(4)}` : ''}
+selected: ${trace.selectedStickerId || '—'}${Number.isFinite(Number(trace.selectedSimilarity)) ? ` · ${Number(trace.selectedSimilarity).toFixed(6)}` : ''}${trace.selectedRank ? ` · original rank #${trace.selectedRank}` : ''}
+original Top-1: ${trace.originalTopStickerId || '—'}${Number.isFinite(trace.originalTopSimilarity) ? ` · ${trace.originalTopSimilarity.toFixed(6)}` : ''}
+selection reason: ${trace.selectionReason || 'legacy / not recorded'}${Array.isArray(trace.tieCandidateIds) && trace.tieCandidateIds.length > 1 ? ` · near-tie pool (${trace.tieCandidateIds.length}; Δ≤${trace.tieEpsilon}): ${trace.tieCandidateIds.join(', ')}` : ''}
 matched usage: ${trace.matchedUsageExampleText || '—'}
 verdict: ${verdictLabel}
 Top candidates:
@@ -8487,7 +8588,7 @@ ${topText}`;
       const sample = persistedStickerSamples.find(item => Number(item.eventIndex) === eventIndex);
       const current = sample?.verdict || '';
       const betterCandidates = (Array.isArray(trace.topCandidates) ? trace.topCandidates : [])
-        .filter(candidate => Number(candidate?.rank) > 1 && candidate?.stickerId);
+        .filter(candidate => Number(candidate?.rank) >= 1 && candidate?.stickerId && candidate.stickerId !== trace.selectedStickerId);
       const betterButtons = betterCandidates.map(candidate => {
         const rank = Number(candidate.rank);
         const usage = String(candidate.matchedUsageExampleText || '').trim();
@@ -9255,6 +9356,7 @@ ${topText}`;
     localStorage.setItem(STICKER_VISUAL_STATE_PROMPT_V2_MIGRATION_KEY, '1');
     localStorage.setItem(STICKER_DOMINANT_VISUAL_PROMPT_MIGRATION_KEY, '1');
     localStorage.setItem(ELEVEN_V4_SPEECH_PROMPT_MIGRATION_KEY, '1');
+    localStorage.setItem(STICKER_REPEAT_PROMPT_MIGRATION_KEY, '1');
     localStorage.removeItem(LEGACY_JSON_PROMPT_KEY);
     document.getElementById('systemPromptInput').value = coreSystemPrompt;
     document.getElementById('legacyJsonPromptInput').value = legacyJsonPrompt;
