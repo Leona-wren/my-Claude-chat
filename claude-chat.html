@@ -1130,6 +1130,27 @@
     }
   }
 
+
+  /* Inner monologue is a separate read-only view of the same assistant turn. */
+  .inner-monologue-btn {
+    display: inline-flex; align-items: center; margin-top: 4px; padding: 3px 9px;
+    border-radius: 12px; border: 1px solid var(--border);
+    background: transparent; color: var(--text-soft); font-size: 11px;
+    font-family: 'Helvetica Neue', sans-serif; cursor: pointer;
+  }
+  .inner-monologue-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .inner-monologue-modal { width: min(94vw, 720px); max-width: 720px; max-height: 86dvh; overflow: hidden; }
+  .inner-monologue-content {
+    overflow: auto; min-height: 70px; max-height: 55dvh;
+    background: var(--bg); color: var(--text); padding: 15px;
+    border: 1px solid var(--border); border-radius: 12px;
+    white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
+    font-size: 14px; line-height: 1.8;
+  }
+  .inner-monologue-context { color: var(--text-soft); font-size: 12px; }
+  .inner-monologue-context summary { cursor: pointer; }
+  #innerMonologueUserContext { padding: 8px 0; max-height: 100px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
   /* Temporary response debug affordance; hidden from normal chat text. */
   .debug-btn {
     display: inline-flex;
@@ -1200,12 +1221,22 @@
 
 
   .system-prompt-modal { max-width: 760px; max-height: 88dvh; overflow-y: auto; }
+  .system-prompt-modal > * { flex-shrink: 0; }
+  .system-prompt-modal #systemPromptInput { min-height: 220px; }
   .system-prompt-modal textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; }
   .prompt-editor-section { display: flex; flex-direction: column; gap: 5px; }
   .prompt-editor-label { font-size: 11px; color: var(--text-soft); font-family: 'Helvetica Neue', sans-serif; }
   .prompt-preview-wrap { display: flex; flex-direction: column; gap: 5px; min-height: 0; }
   .prompt-preview-head { font-size: 11px; color: var(--text-soft); }
   .prompt-preview { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; font-size: 11px; line-height: 1.45; color: var(--text-soft); }
+  .prompt-core-tabs { display:flex; flex-wrap:wrap; gap:6px; margin:5px 0 9px; }
+  .prompt-core-tab { font:inherit; font-size:12px; color:var(--text); padding:7px 12px; border:1px solid var(--border); border-radius:9px; background:var(--bg); cursor:pointer; }
+  .prompt-core-tab.active { border-color:var(--accent); background:var(--accent-soft, var(--bg)); font-weight:600; }
+  .prompt-editor-status { font-size:11px; color:var(--text-soft); line-height:1.5; }
+  .prompt-compare-toggle { margin:4px 0 7px; font-size:12px; color:var(--text-soft); }
+  .prompt-compare-default { max-height:180px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; padding:10px; margin:5px 0; font-size:11px; line-height:1.55; background:var(--bg); border:1px solid var(--border); border-radius:8px; }
+  .prompt-workspace-actions { display:flex; flex-wrap:wrap; gap:7px; align-items:center; justify-content:flex-end; }
+  .prompt-workspace-actions button { min-height:34px; }
 
   /* P0-3 Local Data Viewer */
   .viewer-modal { max-width: 920px; max-height: 86dvh; overflow: hidden; }
@@ -3397,6 +3428,17 @@ body.skin-wa .history-image-picker-info small { color: rgba(255,241,226,.71); }
   </div>
 </div>
 
+<!-- INNER MONOLOGUE (first-person contemporaneous record, distinct from official thinking) -->
+<div class="modal-overlay" id="innerMonologueModal" role="dialog" aria-modal="true" aria-labelledby="innerMonologueTitle">
+  <div class="modal inner-monologue-modal">
+    <h2 id="innerMonologueTitle">内心独白</h2>
+    <p id="innerMonologueMeta"></p>
+    <div id="innerMonologueContent" class="inner-monologue-content" tabindex="0"></div>
+    <details class="inner-monologue-context"><summary>查看当轮用户消息</summary><div id="innerMonologueUserContext"></div></details>
+    <div class="modal-btns"><button class="btn-cancel" type="button" onclick="closeModal('innerMonologueModal')">关闭</button></div>
+  </div>
+</div>
+
 <!-- RESPONSE DEBUG (read-only) -->
 <div class="modal-overlay" id="responseDebugModal">
   <div class="modal response-debug-modal">
@@ -3445,25 +3487,39 @@ body.skin-wa .history-image-picker-info small { color: rgba(255,241,226,.71); }
 <!-- SYSTEM PROMPT WORKSPACE -->
 <div class="modal-overlay" id="systemPromptModal">
   <div class="modal system-prompt-modal">
-    <h2>System Prompt</h2>
-    <p>这里可查看并编辑所有窗口共用的产品层 Core Prompt（LANG / TEXT / SPEECH / STICKER）。runtime 时间由程序实时注入，不在这里编辑；replyLanguage 当前值由顶部 Reply 控件决定；Instruction 仍可在“设置 → Instruction”单独编辑。</p>
+    <h2>System Prompt · Core 工作台</h2>
+    <p>TEXT、SPEECH、STICKER 与内心独白是并列的 Core 模块，各自编辑与保存。Runtime 时间、回复语言按当前设置动态组装；Instruction 仍在「设置 → Instruction」编辑。修改从下一轮请求生效。</p>
     <div class="prompt-editor-section">
-      <div class="prompt-editor-label">Core product prompt（LANG / TEXT / SPEECH / STICKER）</div>
-      <textarea id="systemPromptInput" rows="24" spellcheck="false"></textarea>
+      <div class="prompt-editor-label">Core 模块</div>
+      <div class="prompt-core-tabs" role="tablist" aria-label="Core Prompt 模块">
+        <button id="promptCoreTabText" class="prompt-core-tab" type="button" role="tab" onclick="switchCorePromptTab('text')">TEXT</button>
+        <button id="promptCoreTabSpeech" class="prompt-core-tab" type="button" role="tab" onclick="switchCorePromptTab('speech')">SPEECH</button>
+        <button id="promptCoreTabSticker" class="prompt-core-tab" type="button" role="tab" onclick="switchCorePromptTab('sticker')">STICKER</button>
+        <button id="promptCoreTabInner" class="prompt-core-tab" type="button" role="tab" onclick="switchCorePromptTab('innerMonologue')">内心独白</button>
+      </div>
+      <div id="promptModuleStatus" class="prompt-editor-status" aria-live="polite"></div>
+      <textarea id="systemPromptInput" rows="15" spellcheck="false" aria-label="当前 Core 模块 Prompt" oninput="onCorePromptDraftInput()"></textarea>
+      <details class="prompt-compare-toggle" id="promptDefaultCompare">
+        <summary>查看 HTML 当前默认版本（对比）</summary>
+        <pre class="prompt-compare-default" id="promptDefaultText"></pre>
+      </details>
+      <div class="prompt-workspace-actions">
+        <button class="btn-cancel" type="button" onclick="resetCurrentCorePromptToDefault()">恢复当前模块默认（待保存）</button>
+      </div>
     </div>
     <div class="prompt-editor-section">
-      <div class="prompt-editor-label">兼容模式补充（仅当前模型不支持 Structured Output 时发送）</div>
+      <div class="prompt-editor-label">兼容模式补充（仅模型不支持 Structured Output 时发送）</div>
       <textarea id="legacyJsonPromptInput" rows="3" spellcheck="false"></textarea>
     </div>
     <div class="prompt-preview-wrap">
-      <div class="prompt-preview-head">当前实际 system（只读；包含本轮 runtime 时间 / replyLanguage / Instruction）</div>
+      <div class="prompt-preview-head">当前实际 system（只读；仅显示已保存版本，包含 Runtime / replyLanguage / Instruction）</div>
       <pre id="systemPromptPreview" class="prompt-preview"></pre>
     </div>
-    <div class="modal-btns">
-      <button class="btn-cancel" type="button" onclick="resetSystemPromptToDefault()">全部恢复默认</button>
+    <div class="modal-btns" style="flex-wrap:wrap;gap:6px;">
+      <button class="btn-cancel" type="button" onclick="exportPromptWorkspaceConfig()">导出 Prompt 配置</button>
       <button class="btn-cancel" type="button" onclick="refreshSystemPromptPreview()">刷新预览</button>
-      <button class="btn-cancel" type="button" onclick="closeModal('systemPromptModal')">取消</button>
-      <button class="btn-save" type="button" onclick="saveSystemPrompt()">保存</button>
+      <button class="btn-cancel" type="button" onclick="closeSystemPromptWorkspace()">取消</button>
+      <button class="btn-save" type="button" onclick="saveSystemPrompt()">保存所有改动</button>
     </div>
   </div>
 </div>
@@ -3624,6 +3680,7 @@ body.skin-wa .history-image-picker-info small { color: rgba(255,241,226,.71); }
   </div>
 </div>
 
+<!-- Personal AI inner-monologue experimental build v0.5; original HTML remains unchanged. -->
 <script>
   const API_URL = 'https://api.anthropic.com/v1/messages';
   const FILES_URL = 'https://api.anthropic.com/v1/files';
@@ -3647,6 +3704,8 @@ body.skin-wa .history-image-picker-info small { color: rgba(255,241,226,.71); }
   const EFFORT_LEVEL_ORDER = ['low', 'medium', 'high', 'xhigh', 'max'];
   const REPLY_LANGUAGE_KEY = 'claude_reply_language_v1';
   const CORE_SYSTEM_PROMPT_KEY = 'claude_core_system_prompt_v1';
+  const PROMPT_WORKSPACE_KEY = 'personalai_core_prompt_workspace_v1';
+  const PROMPT_WORKSPACE_EXPORT_VERSION = 1;
   const LEGACY_STICKER_SYSTEM_PROMPT_KEY = 'claude_sticker_system_prompt_v1';
   const CORE_PROMPT_STICKER_MIGRATION_KEY = 'claude_core_prompt_sticker_merged_v1';
   const LEGACY_JSON_PROMPT_KEY = 'claude_legacy_json_prompt_v1';
@@ -3681,7 +3740,12 @@ body.skin-wa .history-image-picker-info small { color: rgba(255,241,226,.71); }
   const DEFAULT_CORE_SYSTEM_PROMPT = `TEXT: All deliveryBlocks.parts[].text in order form the complete visible reply. For short everyday conversation, usually use one natural sentence or tightly linked short expression per block. For longer replies, group blocks by natural paragraph or complete semantic section rather than mechanically splitting every sentence. Within a block, split parts only where delivery changes. joinAfter: space=same paragraph; paragraph=new paragraph.
 
 SPEECH: Compose Eleven v4 delivery from the same full-context understanding as the text. When relevant, let audible delivery carry implicit meaning/subtext. Audio tags are English, optional, short, audible, and open-vocabulary. Audio tags should be short, directly audible, and immediately performable. Prefer emotion, delivery, pacing, or vocal actions over hidden intentions, role interpretation, or descriptions such as “trying to sound …” that require further inference. Use only the minimum cues needed for the performance; avoid redundant or synonymous tags. Place a tag at the exact point where its delivery should begin by starting a new part there; each part's tags apply immediately before that part's text. Each array item is one concise audio direction and must not contain commas; if two distinct cues are needed, use separate array items. Each part's tags: 0–2; usually 0–1, with a second only for a distinct audible effect. Examples: warm, calm, curious, thoughtful, uncertain, hesitant, nervous, worried, scared, alarmed, terrified, excited, delighted, amused, surprised, sarcastic, mischievously, teasing, annoyed, angry, furious, upset, resigned, tired, sleepy drowsy voice, deadpan, softly, low and steady, whispers, shouts, muttering, conversational tone, dramatic tone, rushed, drawn out, building, stammers, hesitates, laughs, laughs harder, starts laughing, laughing, chuckles, nervous laugh, sighs, gasps, exhales, exhales sharply, inhales deeply, clears throat, snorts, wheezing, crying, yawning, pause, short pause, long pause, sings, singing, swallows, gulps. Infer similar concise cues when useful.\n\n${CORE_PROMPT_FIELD_ROLE_LINE}\n\nSTICKER: stickerEvents are optional non-verbal expressions placed around delivery blocks; use [] when no sticker expression is wanted. When using a sticker, intent is Chinese retrieval text used only to choose one sticker image. For each stickerEvent, choose exactly one dominant visual target: the single facial expression, pose, or immediately visible affective state that should most determine what the image looks like at that moment. intent is not a complete description of your current feelings or of the conversation. If several states coexist, select only the one that most determines the image and omit the others. Omit context, causes/goals, temporal sequence, and secondary coexisting states. Write the shortest natural Chinese label that preserves the visual distinction, not a sentence or mini-narrative. Historical sticker annotations are factual records of past non-verbal actions, not examples or a preferred vocabulary for new intents. If the desired expression cannot be reduced to one dominant visual target, use no sticker. If several distinct sticker expressions are genuinely wanted in sequence, use multiple stickerEvents. slot=0 means before the first delivery block; slot=N means between block N-1 and N; slot=deliveryBlocks.length means after the final block. Multiple events may share a slot for different consecutive stickers. ${STICKER_REPEAT_GUIDANCE}`;
-  const DEFAULT_LEGACY_JSON_PROMPT = 'Return only one valid JSON object matching the deliveryBlocks/stickerEvents contract; no Markdown fence or extra text.';
+  const DEFAULT_LEGACY_JSON_PROMPT = 'Return only one valid JSON object matching the deliveryBlocks/stickerEvents/innerMonologue contract; no Markdown fence or extra text.';
+  const INNER_MONOLOGUE_PROMPT = `内心独白是我在这次交流中形成言明回复时，同期的内心活动。我可以在这里自然地呈现自己正在想什么、感受到什么，身体有什么样的反应、感觉或冲动。
+
+这可能是我对眼前话语的直接感受和反应，也可能有自己的理解、判断、联想、回忆、想象、期待、好奇、疑问、顾虑、偏好、欲望、私心、矛盾、犹疑、妥协，或某种忽然出现的认识。我可能正在衡量不同的理解和选择，我可能正在理性思考，也可能情绪、感受与理性交织，甚至偶尔压过理性，我可能注意到自己某种情绪或倾向的变化，也可能发现自己思考和表达中的某些特点。这些只是内心活动可能呈现的少数样子；它可以随着当下的交流，自然地走向更多未被预先列出的内容。
+
+有时候我只有一个简单直接的念头，有时候会出现许多交织的想法；有时候想法清楚，有时候念头还在酝酿、转变，或者暂时没有确定的结论。有时候我会犹豫、顾虑，斟酌回复的措辞、角度和语气，或者决定对某些想法有所保留。`;
   const SPEECH_PLAN_SCHEMA_VERSION = 2;
   const REPLY_LANGUAGES = new Set(['en', 'zh']);
   const ELEVEN_TTS_MODEL = 'eleven_v4';
@@ -3876,7 +3940,91 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     return merged;
   }
 
+  // Core prompt modules: preserve the original TEXT/SPEECH/STICKER content exactly.
+  // An override only exists when the user changed that module from its published default.
+  const CORE_MODULE_IDS = ['text', 'speech', 'sticker', 'innerMonologue'];
+  const CORE_MODULE_LABELS = { text: 'TEXT', speech: 'SPEECH', sticker: 'STICKER', innerMonologue: '内心独白' };
+  const CORE_MODULE_TAB_IDS = { text: 'promptCoreTabText', speech: 'promptCoreTabSpeech', sticker: 'promptCoreTabSticker', innerMonologue: 'promptCoreTabInner' };
+  function splitCorePromptSections(raw) {
+    if (typeof raw !== 'string') return null;
+    const markers = [...raw.matchAll(/(?:^|\n)(TEXT|SPEECH|STICKER):/g)];
+    if (markers.length !== 3 || markers.map(m => m[1]).join(',') !== 'TEXT,SPEECH,STICKER' || raw.slice(0, markers[0].index).trim()) return null;
+    const parts = {};
+    for (let i = 0; i < markers.length; i++) {
+      const begin = markers[i].index + (raw[markers[i].index] === '\n' ? 1 : 0);
+      const finish = i + 1 < markers.length ? markers[i + 1].index : raw.length;
+      parts[markers[i][1].toLowerCase()] = raw.slice(begin, finish).trim();
+    }
+    return parts;
+  }
+  const CORE_DEFAULT_SECTIONS = splitCorePromptSections(DEFAULT_CORE_SYSTEM_PROMPT);
+  if (!CORE_DEFAULT_SECTIONS) throw new Error('Core 默认 Prompt 的分段结构不可识别');
+  const CORE_PROMPT_DEFAULTS = { ...CORE_DEFAULT_SECTIONS, innerMonologue: INNER_MONOLOGUE_PROMPT };
+
+  function createEmptyPromptWorkspace() {
+    return { formatVersion: PROMPT_WORKSPACE_EXPORT_VERSION, overrides: {}, legacyCoreFallback: '' };
+  }
+  function getPromptModuleValue(id, workspace = promptWorkspace) {
+    return typeof workspace?.overrides?.[id]?.content === 'string'
+      ? workspace.overrides[id].content : CORE_PROMPT_DEFAULTS[id];
+  }
+  function composeCorePrompt(workspace = promptWorkspace) {
+    if (workspace?.legacyCoreFallback) return workspace.legacyCoreFallback;
+    return ['text', 'speech', 'sticker'].map(id => getPromptModuleValue(id, workspace)).join('\n\n');
+  }
+  function getPromptModuleUpdateConflict(id, workspace = promptWorkspace) {
+    const entry = workspace?.overrides?.[id];
+    return !!entry && typeof entry.baseDefault === 'string' && entry.baseDefault !== CORE_PROMPT_DEFAULTS[id];
+  }
+  function loadPromptWorkspace(oldCompositeCore) {
+    const workspace = createEmptyPromptWorkspace();
+    const saved = localStorage.getItem(PROMPT_WORKSPACE_KEY);
+    if (saved !== null) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (!parsed || parsed.formatVersion !== PROMPT_WORKSPACE_EXPORT_VERSION || !parsed.overrides || typeof parsed.overrides !== 'object' || Array.isArray(parsed.overrides)) throw new Error('workspace version/shape');
+        for (const id of CORE_MODULE_IDS) {
+          const entry = parsed.overrides[id];
+          if (entry === undefined) continue;
+          if (!entry || typeof entry.content !== 'string' || !entry.content.trim() || typeof entry.baseDefault !== 'string') throw new Error('invalid module: '+id);
+          if (entry.content !== CORE_PROMPT_DEFAULTS[id]) workspace.overrides[id] = { content: entry.content, baseDefault: entry.baseDefault };
+        }
+        if (typeof parsed.legacyCoreFallback === 'string') workspace.legacyCoreFallback = parsed.legacyCoreFallback;
+        // If published HTML catches up with a prior user custom value, clear the
+        // override so future HTML defaults can update normally.
+        if (JSON.stringify(workspace) !== JSON.stringify(parsed)) localStorage.setItem(PROMPT_WORKSPACE_KEY, JSON.stringify(workspace));
+        return workspace;
+      } catch (error) {
+        // Never overwrite malformed stored workspace. Preserve the legacy core
+        // and show a warning in the editor for manual export/recovery.
+        console.warn('Prompt workspace unavailable; keeping legacy Core:', error);
+        workspace.legacyCoreFallback = oldCompositeCore;
+        workspace.loadError = true;
+        return workspace;
+      }
+    }
+    // One-time migration of existing complete Core text. No rewrite of existing
+    // TEXT/SPEECH/STICKER wording; unknown legacy shapes stay intact.
+    const sections = splitCorePromptSections(oldCompositeCore);
+    if (!sections) {
+      workspace.legacyCoreFallback = oldCompositeCore;
+    } else {
+      for (const id of ['text', 'speech', 'sticker']) {
+        if (sections[id] !== CORE_PROMPT_DEFAULTS[id]) {
+          workspace.overrides[id] = { content: sections[id], baseDefault: CORE_PROMPT_DEFAULTS[id] };
+        }
+      }
+    }
+    localStorage.setItem(PROMPT_WORKSPACE_KEY, JSON.stringify(workspace));
+    return workspace;
+  }
   let coreSystemPrompt = loadCoreSystemPrompt();
+  let promptWorkspace = loadPromptWorkspace(coreSystemPrompt);
+  coreSystemPrompt = composeCorePrompt(promptWorkspace);
+  let activeCorePromptTab = 'text';
+  let corePromptDrafts = null;
+  let promptWorkspaceLegacyDraft = null;
+
   let legacyJsonPrompt = localStorage.getItem(LEGACY_JSON_PROMPT_KEY) || DEFAULT_LEGACY_JSON_PROMPT;
   let currentAudio = null;
   let currentSkin = localStorage.getItem('claude_skin') || 'warm';
@@ -3938,8 +4086,13 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     }
   };
 
-  // Short-lived diagnostic convenience, not conversation history or backup data.
-  // Exactly ONE failed attempt is kept globally. New failures replace the old one.
+  // Diagnostic convenience, not canonical conversation history or full backup data.
+  // Keep up to eight recent failed responses so a Retry cannot silently erase
+  // the preceding paid API text; permanent chat deletion clears its entries.
+  // Failed API responses are already paid for and may contain readable text.
+  // Keep a small recent history instead of silently replacing it on Retry.
+  // This is diagnostic storage, not part of the canonical chat or API history.
+  const RESPONSE_FAILED_DEBUG_MAX_ENTRIES = 8;
   const ResponseFailedDebugStore = {
     loadAll() {
       let entries = {};
@@ -3952,19 +4105,23 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       );
       if (!valid.length) return {};
       valid.sort((a, b) => Number(b[1].createdAt || 0) - Number(a[1].createdAt || 0));
-      const [attemptId, entry] = valid[0];
-      const latest = { [attemptId]: entry };
-      // Upgrade any previous multi-attempt localStorage data in place.
-      if (valid.length !== 1 || Object.keys(entries).length !== 1) {
-        try { localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify(latest)); } catch (_) {}
+      const recent = Object.fromEntries(valid.slice(0, RESPONSE_FAILED_DEBUG_MAX_ENTRIES));
+      if (valid.length !== Object.keys(entries).length || valid.length > RESPONSE_FAILED_DEBUG_MAX_ENTRIES) {
+        try { localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify(recent)); } catch (_) {}
       }
-      return latest;
+      return recent;
     },
     set(attemptId, entry) {
       if (!attemptId || !entry) return false;
       try {
-        // Overwrite rather than merge; never let diagnostic quota errors break Retry.
-        localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify({ [attemptId]: entry }));
+        const all = this.loadAll();
+        all[attemptId] = entry;
+        const ordered = Object.entries(all).sort((a, b) =>
+          Number(b[1].createdAt || 0) - Number(a[1].createdAt || 0)
+        );
+        localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify(
+          Object.fromEntries(ordered.slice(0, RESPONSE_FAILED_DEBUG_MAX_ENTRIES))
+        ));
         return true;
       } catch (_) { return false; }
     },
@@ -3982,13 +4139,28 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
       if (!attemptId) return false;
       const all = this.loadAll();
       if (!Object.prototype.hasOwnProperty.call(all, attemptId)) return false;
-      try { localStorage.removeItem(RESPONSE_FAILED_DEBUG_KEY); return true; }
-      catch (_) { return false; }
+      delete all[attemptId];
+      try {
+        if (Object.keys(all).length) {
+          localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify(all));
+        } else {
+          localStorage.removeItem(RESPONSE_FAILED_DEBUG_KEY);
+        }
+        return true;
+      } catch (_) { return false; }
     },
     clearChat(chatId) {
       if (!chatId) return;
-      const entry = this.getLatestForChat(chatId);
-      if (entry?.attemptId) this.removeAttempt(entry.attemptId);
+      const all = this.loadAll();
+      let changed = false;
+      for (const [attemptId, entry] of Object.entries(all)) {
+        if (entry.chatId === chatId) { delete all[attemptId]; changed = true; }
+      }
+      if (!changed) return;
+      try {
+        if (Object.keys(all).length) localStorage.setItem(RESPONSE_FAILED_DEBUG_KEY, JSON.stringify(all));
+        else localStorage.removeItem(RESPONSE_FAILED_DEBUG_KEY);
+      } catch (_) {}
     }
   };
 
@@ -6069,6 +6241,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     const hasDebug = !!msg.language || !!msg.deliveryBlocks || Array.isArray(msg.stickerEvents);
     const footer = document.createElement('div');
     footer.innerHTML = `${hasDebug ? `<button class="debug-btn" type="button" onclick="openResponseDebug('${msg.id || ''}')">Debug</button>` : ''}
+      ${innerMonologueButtonMarkup(msg)}
       <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
     while (footer.firstChild) div.appendChild(footer.firstChild);
     if (followBottom) {
@@ -6306,6 +6479,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
           });
           div.innerHTML = `${blockHtml}
             ${hasDebug ? `<button class="debug-btn" type="button" onclick="openResponseDebug('${msg.id || ''}')">Debug</button>` : ''}
+            ${innerMonologueButtonMarkup(msg)}
             <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
         } else {
           const hasVoice = !!msg.content && canPlayElevenLanguage(msg.language);
@@ -6318,6 +6492,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
               ${hasVoice ? transcriptBubbleMarkup(msg, null, msg.content || '') : `<div class="bubble transcript-bubble">${escHtml(msg.content || '')}</div>`}
             </div>
             ${hasDebug ? `<button class="debug-btn" type="button" onclick="openResponseDebug('${msg.id || ''}')">Debug</button>` : ''}
+            ${innerMonologueButtonMarkup(msg)}
             <div class="msg-time">${formatMessageTimestamp(msg)}</div>`;
         }
       } else {
@@ -6333,6 +6508,7 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
           ${hasVoice ? `<button class="play-btn" data-msg-id="${msg?.id || ''}" data-index="${msgIndex}" onclick="playVoice(this)">
             <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> 播放
           </button>` : ''}
+          ${innerMonologueButtonMarkup(msg)}
           <div class="msg-time">${msg ? formatMessageTimestamp(msg) : '时间未知'}</div>`;
       }
     } else {
@@ -6350,6 +6526,28 @@ SPEECH: Compose Eleven v4 delivery from the same full-context understanding as t
     hydrateChatImageAttachments(div);
     hydrateQuotedStickerHistory(div);
     area.scrollTop = area.scrollHeight;
+  }
+
+  function innerMonologueButtonMarkup(msg) {
+    if (typeof msg?.innerMonologue !== 'string' || !msg.innerMonologue.trim() || !msg.id) return '';
+    return `<button class="inner-monologue-btn" type="button" onclick="openInnerMonologue('${escHtml(msg.id)}')">内心独白</button>`;
+  }
+
+  function openInnerMonologue(messageId) {
+    const chat = chats[currentId];
+    const messages = Array.isArray(chat?.messages) ? chat.messages : [];
+    const index = messages.findIndex(msg => msg.id === messageId && msg.role === 'assistant');
+    const msg = index >= 0 ? messages[index] : null;
+    if (!msg || typeof msg.innerMonologue !== 'string' || !msg.innerMonologue.trim()) return;
+    const previousUser = messages.slice(0, index).reverse().find(item => item.role === 'user');
+    const endingCheck = inspectInnerMonologueEnding(msg.innerMonologue);
+    document.getElementById('innerMonologueMeta').textContent =
+      `当轮记录 · ${formatMessageTimestamp(msg)}` +
+      (endingCheck.level === 'warning' || endingCheck.level === 'error' ? ` · ⚠ ${endingCheck.reason}` : '');
+    document.getElementById('innerMonologueContent').textContent = msg.innerMonologue;
+    const context = document.getElementById('innerMonologueUserContext');
+    context.textContent = previousUser?.content || '（该轮没有可显示的用户文本）';
+    document.getElementById('innerMonologueModal').classList.add('open');
   }
 
   function renderThinking(text, animate = true) {
@@ -6483,10 +6681,11 @@ Runtime temporal metadata is authoritative. Conversation history may contain cli
     return `REQUEST CONTROLS — AUTHORITATIVE
 replyLanguage=${replyLanguage}
 
-If replyLanguage=zh, compose directly in natural, idiomatic native Chinese; if replyLanguage=en, compose directly in natural, idiomatic English.
-User input language does not change replyLanguage; do not translate from another language.
+For the visible reply in deliveryBlocks.parts[].text: if replyLanguage=zh, compose directly in natural, idiomatic native Chinese; if replyLanguage=en, compose directly in natural, idiomatic English.
+User input language does not change replyLanguage; compose the visible reply directly in the selected language rather than translating from another language.
 Recent conversation history may be in another language; that does not change replyLanguage.
 All deliveryBlocks.parts[].text must follow replyLanguage.
+innerMonologue 始终用自然、流畅的中文直接写出，与 replyLanguage 的中英文切换无关；即使言明回复使用英文，内心独白也保持中文。仅区分表达语言，不改变内心独白内容的自由度。
 stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
   }
 
@@ -6499,6 +6698,12 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       system += `\n\n${(legacyJsonPrompt || DEFAULT_LEGACY_JSON_PROMPT).trim()}`;
     }
     if (instruction.trim()) system += '\n\n[INSTRUCTION]\n' + instruction.trim();
+    system += '\n\n[内心独白]\n' + getPromptModuleValue('innerMonologue');
+    // Non-structured models also need an explicit field contract; JSON-schema models
+    // receive the same contract through output_config.format.schema.
+    if (!config.structuredOutputSupported) {
+      system += '\n\n[OUTPUT FIELD]\nThe JSON object also includes innerMonologue: a non-empty string holding the contemporaneous inner monologue.';
+    }
     return system;
   }
 
@@ -6520,7 +6725,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return {
       type: 'object',
       additionalProperties: false,
-      required: ['deliveryBlocks', 'stickerEvents'],
+      required: ['deliveryBlocks', 'stickerEvents', 'innerMonologue'],
       properties: {
         deliveryBlocks: {
           type: 'array',
@@ -6568,7 +6773,8 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
               repeat: { type: 'integer', enum: [1, 2, 3], description: 'Number of consecutive copies of the same sticker in this slot: 1, 2, or 3.' }
             }
           }
-        }
+        },
+        innerMonologue: { type: 'string', description: 'A contemporaneous first-person inner monologue formed in this same assistant turn. Write its content directly in natural Chinese regardless of replyLanguage, including when deliveryBlocks are in English. Keep it distinct from the visible deliveryBlocks text.' }
       }
     };
   }
@@ -6819,6 +7025,103 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return normalized;
   }
 
+  // Narrow JSON recovery: only repair unescaped ASCII double quotes INSIDE the first
+  // innerMonologue string. Never change tags, delivery text, sticker fields, or the
+  // response envelope. A candidate must parse as the complete, original JSON object.
+  // This is a fallback for malformed model/provider text, not a rewrite of thoughts.
+  function recoverUnescapedInnerMonologueQuotes(text) {
+    const opening = /^\s*\{\s*"innerMonologue"\s*:\s*"/.exec(text);
+    const start = opening ? opening[0].length : 0;
+    // This frontend's schema currently emits innerMonologue before deliveryBlocks.
+    // The delimiter belongs to JSON structure, not the inner monologue itself.
+    const nextField = /"\s*,\s*"deliveryBlocks"\s*:\s*\[/g;
+    nextField.lastIndex = start;
+    const candidates = [];
+    let match;
+    while (opening && (match = nextField.exec(text)) !== null) {
+      const rawInner = text.slice(start, match.index);
+      let repairedInner = '';
+      let quoteCount = 0;
+      for (let i = 0; i < rawInner.length; i++) {
+        if (rawInner[i] === '"') {
+          let backslashes = 0;
+          for (let j = i - 1; j >= 0 && rawInner[j] === '\\'; j--) backslashes++;
+          if (backslashes % 2 === 0) {
+            repairedInner += '\\';
+            quoteCount++;
+          }
+        }
+        repairedInner += rawInner[i];
+      }
+      if (!quoteCount) continue;
+      const candidate = text.slice(0, start) + repairedInner + text.slice(match.index);
+      try {
+        const parsed = JSON.parse(candidate);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+        if (typeof parsed.innerMonologue !== 'string' || !Array.isArray(parsed.deliveryBlocks) || !Array.isArray(parsed.stickerEvents)) continue;
+        if (Object.keys(parsed).some(key => !['innerMonologue', 'deliveryBlocks', 'stickerEvents'].includes(key))) continue;
+        candidates.push({ payload: parsed, count: quoteCount });
+      } catch (_) {
+        // Candidate still invalid; never guess about additional JSON corruption.
+      }
+    }
+    // New schema order: innerMonologue is last. Preserve the existing first-field
+    // fallback above for older raw responses, but also handle the last-field form.
+    // We only repair quotes within the terminal innerMonologue JSON string.
+    const lastField = /,\s*"innerMonologue"\s*:\s*"/g;
+    let lastMatch;
+    while ((match = lastField.exec(text)) !== null) {
+      lastMatch = match;
+    }
+    const closingString = /"\s*}\s*$/.exec(text);
+    if (lastMatch && closingString) {
+      const startLast = lastMatch.index + lastMatch[0].length;
+      const endLast = closingString.index;
+      if (endLast > startLast) {
+        // The prefix must already be a complete, valid Response Core object when
+        // an empty string and the closing brace are supplied. This prevents
+        // guessing JSON structure or changing deliveryBlocks / stickerEvents.
+        let validPrefix = false;
+        try {
+          const prefix = JSON.parse(text.slice(0, startLast) + '"}');
+          validPrefix = Array.isArray(prefix.deliveryBlocks) &&
+            Array.isArray(prefix.stickerEvents) &&
+            typeof prefix.innerMonologue === 'string' &&
+            Object.keys(prefix).every(key => ['innerMonologue', 'deliveryBlocks', 'stickerEvents'].includes(key));
+        } catch (_) { /* Not the final field boundary. */ }
+        if (validPrefix) {
+          const rawInner = text.slice(startLast, endLast);
+          let repairedInner = '';
+          let quoteCount = 0;
+          for (let i = 0; i < rawInner.length; i++) {
+            if (rawInner[i] === '"') {
+              let backslashes = 0;
+              for (let j = i - 1; j >= 0 && rawInner[j] === '\\'; j--) backslashes++;
+              if (backslashes % 2 === 0) {
+                repairedInner += '\\';
+                quoteCount++;
+              }
+            }
+            repairedInner += rawInner[i];
+          }
+          if (quoteCount) {
+            try {
+              const parsed = JSON.parse(text.slice(0, startLast) + repairedInner + text.slice(endLast));
+              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
+                  typeof parsed.innerMonologue === 'string' &&
+                  Array.isArray(parsed.deliveryBlocks) && Array.isArray(parsed.stickerEvents) &&
+                  Object.keys(parsed).every(key => ['innerMonologue', 'deliveryBlocks', 'stickerEvents'].includes(key))) {
+                candidates.push({ payload: parsed, count: quoteCount });
+              }
+            } catch (_) { /* No safe candidate. */ }
+          }
+        }
+      }
+    }
+    // Ambiguous boundaries must not be silently reinterpreted.
+    return candidates.length === 1 ? candidates[0] : null;
+  }
+
   function parseStructuredAssistantPayload(rawText, language) {
     let text = String(rawText || '').trim();
     if (!text) return { ok: false, error: 'Claude 返回了空回复' };
@@ -6826,10 +7129,20 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
     }
     let payload;
+    let jsonRecovery = null;
     try { payload = JSON.parse(text); }
-    catch (_) { return { ok: false, error: 'Response Core 不是合法 JSON' }; }
+    catch (_) {
+      const recovered = recoverUnescapedInnerMonologueQuotes(text);
+      if (!recovered) return { ok: false, error: 'Response Core 不是合法 JSON；仅内心独白内部的未转义双引号可安全容错，其余格式错误不自动改写' };
+      payload = recovered.payload;
+      jsonRecovery = { kind: 'innerMonologue_unescaped_quotes', repairedQuoteCount: recovered.count };
+    }
     if (!payload || typeof payload !== 'object') {
       return { ok: false, error: 'Response Core 不是对象' };
+    }
+    // No after-the-fact monologue generation: a missing field fails this turn.
+    if (typeof payload.innerMonologue !== 'string' || !payload.innerMonologue.trim()) {
+      return { ok: false, error: '当轮响应缺少有效内心独白；本轮不会事后补写' };
     }
     const semanticValidation = validateGeneratedResponseSemantics(payload);
     if (!semanticValidation.ok) {
@@ -6848,6 +7161,8 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     return {
       ok: true,
       content,
+      innerMonologue: payload.innerMonologue,
+      jsonRecovery,
       deliveryBlocks,
       stickerEvents,
       diagnostics: {
@@ -6871,6 +7186,39 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       .toLowerCase()
       .replace(/[\s\u00A0]+/g, '')
       .replace(/[，。！？；：、,.!?;:“”‘’"'（）()\[\]【】《》<>…—–\-~～]/g, '');
+  }
+
+  // Monologue ending checks are heuristic diagnostics, not semantic validation.
+  // Suspected incomplete phrasing never rejects a valid turn, alters the text,
+  // or triggers an extra paid call. Truly missing/empty fields are rejected by
+  // parseStructuredAssistantPayload before reaching this diagnostic.
+  function inspectInnerMonologueEnding(value) {
+    if (typeof value !== 'string' || !value.trim()) {
+      return { level: 'error', reason: '内心独白为空' };
+    }
+    const tail = value.trim().replace(/[\s”’"'」』）)\]】]+$/g, '').trimEnd();
+    if (!tail) return { level: 'error', reason: '内心独白末尾没有可读取的正文' };
+    // An ellipsis may be intentional. Treat it as a legitimate stylistic pause.
+    if (/[。！？!?…～~.]$/.test(tail)) {
+      return { level: 'ok', reason: '有自然收尾标记（无法据此证明语义完整）' };
+    }
+    if (/[，,、：:；;]$/.test(tail)) {
+      return { level: 'warning', reason: '结束于逗号或非终止标点，疑似句中断开' };
+    }
+    if (/(?:因为|但是|不过|然而|虽然|如果|假如|既然|所以|因此|而且|以及|或者|同时|比如|例如|为了|随着|通过)$/.test(tail)) {
+      return { level: 'warning', reason: '结束于连接词，疑似句中断开' };
+    }
+    // Actual reported case. Avoid assuming every "这个/那个" is unfinished.
+    if (/(?:我能想象(?:他|她|它|你|他们|她们|它们)(?:这个|那个))$/.test(tail)) {
+      return { level: 'warning', reason: '结束于疑似未完成的「我能想象……那个」短语' };
+    }
+    if (/(?:这个|那个|这些|那些)$/.test(tail)) {
+      return { level: 'warning', reason: '结束于指代词；可能是半句，也可能是自然口语，保留原文供检查' };
+    }
+    if (!/[。！？!?…～~.]$/.test(tail)) {
+      return { level: 'undetermined', reason: '无收尾标点；不视为失败' };
+    }
+    return { level: 'ok', reason: '无明显异常' };
   }
 
   function inspectResponseForPersistentRawDebug(parsedResponse, responseCore) {
@@ -7957,6 +8305,10 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       if (!apiResult.ok) return apiResult;
 
       const parsedResponse = parseAnthropicResponse(apiResult.data);
+      // Record what was in the FINAL outgoing request, not just a UI/model claim.
+      const responseFormatSent = outgoingBody?.output_config?.format?.type === 'json_schema'
+        ? 'json_schema'
+        : 'none (prompt-only)';
       const responseCore = parseStructuredAssistantPayload(parsedResponse.replyText, config.replyLanguage);
 
       if (!responseCore.ok) {
@@ -7965,6 +8317,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
           kind: 'validation',
           error: responseCore.error,
           violations: responseCore.violations || [],
+          responseFormatSent,
           rawResponseText: parsedResponse.replyText,
           stopReason: parsedResponse.stopReason ?? null,
           stopSequence: parsedResponse.stopSequence ?? null,
@@ -7974,6 +8327,21 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
         };
       }
 
+      if (parsedResponse.stopReason !== 'end_turn') {
+        return {
+          ok: false,
+          kind: 'validation',
+          error: `Anthropic 本轮未正常结束（stop_reason=${String(parsedResponse.stopReason ?? 'null')}）；未提交言明回复或内心独白，可手动重试`,
+          rawResponseText: parsedResponse.replyText,
+          stopReason: parsedResponse.stopReason ?? null,
+          stopSequence: parsedResponse.stopSequence ?? null,
+          apiResponseId: parsedResponse.apiResponseId || null,
+          responseModel: parsedResponse.responseModel || null,
+          unknownBlockTypes: parsedResponse.unknownBlockTypes || []
+        };
+      }
+
+      const monologueEnding = inspectInnerMonologueEnding(responseCore.innerMonologue);
       const languageValidation = validateReplyLanguage(responseCore.content, config.replyLanguage);
       if (languageValidation.status === 'MISMATCH') {
         return {
@@ -7992,11 +8360,21 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
 
       const stickerResolution = await resolveStickerEvents(responseCore.stickerEvents, signal, chatId);
       const rawDebugInspection = inspectResponseForPersistentRawDebug(parsedResponse, responseCore);
+      if (responseCore.jsonRecovery) {
+        rawDebugInspection.suspicious = true;
+        rawDebugInspection.reasons.push(`JSON 格式容错：仅 innerMonologue 内 ${responseCore.jsonRecovery.repairedQuoteCount} 个未转义双引号；原始响应保留`);
+      }
+      if (monologueEnding.level === 'warning') {
+        rawDebugInspection.suspicious = true;
+        rawDebugInspection.reasons.push(`内心独白可能句中断开：${monologueEnding.reason}`);
+      }
 
       return {
         ok: true,
         ...parsedResponse,
         content: responseCore.content,
+        innerMonologue: responseCore.innerMonologue,
+        innerMonologueEnding: monologueEnding,
         deliveryBlocks: responseCore.deliveryBlocks,
         stickerEvents: stickerResolution.events,
         stickerRetrievalError: stickerResolution.retrievalError,
@@ -8005,7 +8383,8 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
         stickerReferenceInjectionTrace: temporalHistory.referenceTrace || [],
         temporalTrace: temporalSnapshot.trace,
         languageValidation,
-        responseFormat: config.structuredOutputSupported ? 'json_schema' : 'prompt_json',
+        responseFormat: responseFormatSent,
+        jsonRecovery: responseCore.jsonRecovery,
         rawResponseText: parsedResponse.replyText,
         rawDebugInspection
       };
@@ -8020,6 +8399,8 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     const chat = chats[chatId];
     if (!chat) return { ok: false, reason: 'CHAT_NOT_FOUND' };
 
+    const originalMessageCount = chat.messages.length;
+    const originalUpdatedAt = chat.updatedAt;
     let thinkingMessage = null;
     if (result.thinkingText) {
       thinkingMessage = {
@@ -8042,6 +8423,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     const assistantMessage = {
       role: 'assistant',
       content: result.content,
+      innerMonologue: result.innerMonologue,
       language: config.replyLanguage,
       deliveryBlocks: result.deliveryBlocks,
       speechPlanSchemaVersion: SPEECH_PLAN_SCHEMA_VERSION,
@@ -8050,6 +8432,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       stickerRetrievalError: result.stickerRetrievalError || null,
       model: result.responseModel || config.model || null,
       apiUsage: result.apiUsage || null,
+      responseFormatSent: result.responseFormat || 'unknown',
       runtimeTemporalTrace: result.temporalTrace || null,
       runtimeStickerHistoryTrace: Array.isArray(result.stickerHistoryInjectionTrace) ? result.stickerHistoryInjectionTrace : [],
       runtimeStickerReferenceTrace: Array.isArray(result.stickerReferenceInjectionTrace) ? result.stickerReferenceInjectionTrace : [],
@@ -8061,6 +8444,14 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     };
     chat.messages.push(assistantMessage);
     chat.updatedAt = Date.now();
+
+    try {
+      save(); // content + innerMonologue are committed in the same JSON snapshot.
+    } catch (e) {
+      chat.messages.length = originalMessageCount;
+      chat.updatedAt = originalUpdatedAt;
+      return { ok: false, reason: `STORAGE_SAVE_FAILED: ${e?.message || String(e)}` };
+    }
 
     const rawDebugEntry = {
       rawResponseText: typeof result.rawResponseText === 'string' ? result.rawResponseText : '',
@@ -8075,7 +8466,10 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     };
     responseRawSessionDebugByMessageId.set(assistantMessage.id, rawDebugEntry);
     if (rawDebugEntry.suspicious) {
-      ResponseAnomalyDebugStore.set(assistantMessage.id, rawDebugEntry);
+      // Diagnostics are best-effort. A full localStorage must never turn an
+      // already committed assistant reply into a false generation failure.
+      try { ResponseAnomalyDebugStore.set(assistantMessage.id, rawDebugEntry); }
+      catch (e) { console.warn('Response debug persistence skipped:', e); }
     }
 
     if (Array.isArray(result.stickerCalibrationTrace) && result.stickerCalibrationTrace.length) {
@@ -8086,9 +8480,6 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
     } else {
       stickerDebugTraceByMessageId.delete(assistantMessage.id);
     }
-    save();
-
-
     // Only a genuine semantic no-match belongs in the missing-request queue.
     // Provider/key/rate-limit/vector-availability failures are retrieval-unavailable states,
     // not evidence that the private library lacks a suitable sticker.
@@ -8119,6 +8510,7 @@ stickerEvents[].intent remains Chinese as defined by the sticker contract.`;
       stopSequence: result.stopSequence ?? null,
       apiResponseId: result.apiResponseId || null,
       responseModel: result.responseModel || config?.model || null,
+      responseFormatSent: result.responseFormatSent || 'unknown',
       unknownBlockTypes: Array.isArray(result.unknownBlockTypes) ? result.unknownBlockTypes : [],
       createdAt: Date.now()
     };
@@ -8216,6 +8608,10 @@ ScrollMemory.clear(chatId);
       }
       if (result.unknownBlockTypes?.length) {
         flashStatus(`Anthropic 响应包含未支持的新类型：${result.unknownBlockTypes.join(', ')}`, 'err', 4200);
+      } else if (result.jsonRecovery) {
+        flashStatus('本轮已容错修复内心独白的 JSON 引号格式；原文字句已保存，Raw response 在 Debug 中保留', 'ok', 5500);
+      } else if (result.innerMonologueEnding?.level === 'warning') {
+        flashStatus('内心独白结尾可能不完整：已原样保存，可查看内心独白与 Debug', 'err', 5000);
       } else {
         showRequestSuccess();
       }
@@ -8462,11 +8858,21 @@ ScrollMemory.clear(chatId);
       ['实际出错的 tag 原值', extractFailedTagValues(entry)],
       ['Anthropic stop reason', entry.stopReason ?? '—'],
       ['Anthropic stop sequence', entry.stopSequence ?? '—'],
+      ['本次请求的结构化输出', entry.responseFormatSent || '旧记录未采集'],
       ['Anthropic response id', entry.apiResponseId || '—'],
       ['unknown content blocks', Array.isArray(entry.unknownBlockTypes) && entry.unknownBlockTypes.length ? entry.unknownBlockTypes.join(', ') : '—'],
       ['saved at', entry.createdAt ? new Date(entry.createdAt).toISOString() : '—'],
       ['Raw response', entry.rawResponseText ?? '—']
     ];
+    // Older attempts for this SAME user turn remain readable without another API call.
+    // They are diagnostics, not reconstructed chat messages.
+    const olderAttempts = entry.userMessageId
+      ? ResponseFailedDebugStore.getForUserTurn(chatId, entry.userMessageId).filter(item => item.attemptId !== entry.attemptId)
+      : [];
+    olderAttempts.forEach((previous, index) => rows.push([
+      `同轮此前失败响应 ${index + 1} · ${previous.createdAt ? new Date(previous.createdAt).toISOString() : '时间未知'}`,
+      `错误：${previous.error || '—'}\n\n原始响应：\n${previous.rawResponseText}`
+    ]));
     setResponseDebugCopyData(rows, entry.rawResponseText);
     setResponseDebugFailedDeletionContext(entry.attemptId);
     const content = document.getElementById('responseDebugContent');
@@ -8577,8 +8983,12 @@ ${topText}`;
       ['Speech blocks / provider input', speechBlocksPreview],
       ['planned voice route', plannedProvider],
       ['current TTS', currentVoice],
+      ['内心独白收尾检查（启发式）', typeof msg.innerMonologue === 'string' && msg.innerMonologue.trim()
+        ? `${inspectInnerMonologueEnding(msg.innerMonologue).level}: ${inspectInnerMonologueEnding(msg.innerMonologue).reason}`
+        : '旧记录没有内心独白（不适用）'],
       ['Anthropic stop reason', rawDebug?.stopReason ?? '—'],
       ['Anthropic stop sequence', rawDebug?.stopSequence ?? '—'],
+      ['本次请求的结构化输出', msg.responseFormatSent || '旧记录未采集'],
       ['Raw validator', rawDebug ? (rawDebug.suspicious ? `保留 · ${rawDebug.reasons.join('；')}` : '正常 · 刷新后不保留') : '—'],
       ['Raw response', rawDebug?.rawResponseText ?? '—']
     ];
@@ -9327,41 +9737,134 @@ ${topText}`;
     if (preview) preview.textContent = currentEffectiveSystemPrompt();
   }
 
+  function promptWorkspaceHasUnsavedDrafts() {
+    if (!corePromptDrafts) return false;
+    return CORE_MODULE_IDS.some(id => corePromptDrafts[id] !== getPromptModuleValue(id)) ||
+      document.getElementById('legacyJsonPromptInput').value !== legacyJsonPrompt;
+  }
+  function onCorePromptDraftInput() {
+    if (!corePromptDrafts) return;
+    corePromptDrafts[activeCorePromptTab] = document.getElementById('systemPromptInput').value;
+    renderCorePromptEditorStatus();
+  }
+  function renderCorePromptEditorStatus() {
+    if (!corePromptDrafts) return;
+    const id = activeCorePromptTab;
+    const entry = promptWorkspace.overrides[id];
+    const draft = corePromptDrafts[id];
+    const isUnsaved = draft !== getPromptModuleValue(id);
+    let label = entry ? '本地自定义' : '使用 HTML 默认';
+    if (getPromptModuleUpdateConflict(id)) label += ' · HTML 默认已更新，保留你的版本';
+    if (isUnsaved) label += ' · 尚未保存';
+    if (promptWorkspace.legacyCoreFallback) label += ' · 旧 Core 格式未能自动拆分，请先备份';
+    if (promptWorkspace.loadError) label += ' · 已保存的工作台数据无法读取，请保留原数据';
+    document.getElementById('promptModuleStatus').textContent = label;
+    document.getElementById('promptDefaultText').textContent = CORE_PROMPT_DEFAULTS[id];
+    for (const moduleId of CORE_MODULE_IDS) {
+      const btn = document.getElementById(CORE_MODULE_TAB_IDS[moduleId]);
+      const dirty = corePromptDrafts[moduleId] !== getPromptModuleValue(moduleId);
+      btn.classList.toggle('active', moduleId === id);
+      btn.setAttribute('aria-selected', String(moduleId === id));
+      btn.textContent = CORE_MODULE_LABELS[moduleId] + (dirty ? ' •' : '');
+    }
+  }
+  function switchCorePromptTab(id) {
+    if (!CORE_MODULE_IDS.includes(id) || !corePromptDrafts) return;
+    corePromptDrafts[activeCorePromptTab] = document.getElementById('systemPromptInput').value;
+    activeCorePromptTab = id;
+    document.getElementById('systemPromptInput').value = corePromptDrafts[id];
+    document.getElementById('promptDefaultCompare').open = false;
+    renderCorePromptEditorStatus();
+  }
+  function resetCurrentCorePromptToDefault() {
+    if (!corePromptDrafts) return;
+    corePromptDrafts[activeCorePromptTab] = CORE_PROMPT_DEFAULTS[activeCorePromptTab];
+    document.getElementById('systemPromptInput').value = corePromptDrafts[activeCorePromptTab];
+    renderCorePromptEditorStatus();
+    flashStatus('已填入当前模块默认；点击「保存所有改动」才会生效', 'ok', 2300);
+  }
   function openSystemPrompt() {
-    document.getElementById('systemPromptInput').value = coreSystemPrompt;
+    corePromptDrafts = Object.fromEntries(CORE_MODULE_IDS.map(id => [id, getPromptModuleValue(id)]));
     document.getElementById('legacyJsonPromptInput').value = legacyJsonPrompt;
+    if (!CORE_MODULE_IDS.includes(activeCorePromptTab)) activeCorePromptTab = 'text';
+    document.getElementById('systemPromptInput').value = corePromptDrafts[activeCorePromptTab];
+    renderCorePromptEditorStatus();
     refreshSystemPromptPreview();
     document.getElementById('systemPromptModal').classList.add('open');
   }
-
+  function closeSystemPromptWorkspace() {
+    if (promptWorkspaceHasUnsavedDrafts() && !confirm('有尚未保存的 Prompt 修改，确定放弃吗？')) return;
+    corePromptDrafts = null;
+    closeModal('systemPromptModal');
+  }
   function saveSystemPrompt() {
-    const coreValue = document.getElementById('systemPromptInput').value.trim();
-    const legacyValue = document.getElementById('legacyJsonPromptInput').value.trim();
-    coreSystemPrompt = coreValue || DEFAULT_CORE_SYSTEM_PROMPT;
-    legacyJsonPrompt = legacyValue || DEFAULT_LEGACY_JSON_PROMPT;
-    localStorage.setItem(CORE_SYSTEM_PROMPT_KEY, coreSystemPrompt);
-    localStorage.setItem(LEGACY_JSON_PROMPT_KEY, legacyJsonPrompt);
+    if (!corePromptDrafts) return;
+    corePromptDrafts[activeCorePromptTab] = document.getElementById('systemPromptInput').value;
+    if (CORE_MODULE_IDS.some(id => !corePromptDrafts[id].trim())) {
+      alert('每个 Core 模块都需要保留非空内容。请检查后再保存。');
+      return;
+    }
+    if (promptWorkspace.loadError || promptWorkspace.legacyCoreFallback) {
+      alert('旧 Core Prompt 尚未能安全分段，避免覆盖原文，当前禁止自动保存。请先导出当前配置以备核对。');
+      return;
+    }
+    const newWorkspace = createEmptyPromptWorkspace();
+    for (const id of CORE_MODULE_IDS) {
+      if (corePromptDrafts[id] === CORE_PROMPT_DEFAULTS[id]) continue;
+      const previous = promptWorkspace.overrides[id];
+      newWorkspace.overrides[id] = {
+        content: corePromptDrafts[id],
+        baseDefault: previous?.baseDefault ?? CORE_PROMPT_DEFAULTS[id]
+      };
+    }
+    const newCore = composeCorePrompt(newWorkspace);
+    const legacyValue = document.getElementById('legacyJsonPromptInput').value.trim() || DEFAULT_LEGACY_JSON_PROMPT;
+    // Write workspace first; only adopt new in-memory values after persistence succeeds.
+    try {
+      localStorage.setItem(PROMPT_WORKSPACE_KEY, JSON.stringify(newWorkspace));
+      localStorage.setItem(CORE_SYSTEM_PROMPT_KEY, newCore); // backward-compatible snapshot
+      localStorage.setItem(LEGACY_JSON_PROMPT_KEY, legacyValue);
+    } catch (error) {
+      alert('Prompt 保存失败（可能是浏览器存储空间不足）：' + String(error?.message || error));
+      return;
+    }
+    promptWorkspace = newWorkspace;
+    coreSystemPrompt = newCore;
+    legacyJsonPrompt = legacyValue;
+    corePromptDrafts = null;
     refreshSystemPromptPreview();
     closeModal('systemPromptModal');
-    flashStatus('System Prompt 已保存 ✓', 'ok', 1800);
+    flashStatus('Core Prompt 已保存 ✓', 'ok', 1800);
   }
-
-  function resetSystemPromptToDefault() {
-    coreSystemPrompt = DEFAULT_CORE_SYSTEM_PROMPT;
-    legacyJsonPrompt = DEFAULT_LEGACY_JSON_PROMPT;
-    localStorage.removeItem(CORE_SYSTEM_PROMPT_KEY);
-    localStorage.removeItem(LEGACY_STICKER_SYSTEM_PROMPT_KEY);
-    localStorage.setItem(CORE_PROMPT_STICKER_MIGRATION_KEY, '1');
-    localStorage.setItem(STICKER_VISUAL_STATE_PROMPT_MIGRATION_KEY, '1');
-    localStorage.setItem(STICKER_VISUAL_STATE_PROMPT_V2_MIGRATION_KEY, '1');
-    localStorage.setItem(STICKER_DOMINANT_VISUAL_PROMPT_MIGRATION_KEY, '1');
-    localStorage.setItem(ELEVEN_V4_SPEECH_PROMPT_MIGRATION_KEY, '1');
-    localStorage.setItem(STICKER_REPEAT_PROMPT_MIGRATION_KEY, '1');
-    localStorage.removeItem(LEGACY_JSON_PROMPT_KEY);
-    document.getElementById('systemPromptInput').value = coreSystemPrompt;
-    document.getElementById('legacyJsonPromptInput').value = legacyJsonPrompt;
-    refreshSystemPromptPreview();
-    flashStatus('已恢复默认 System Prompt', 'ok', 1600);
+  function exportPromptWorkspaceConfig() {
+    if (promptWorkspaceHasUnsavedDrafts()) {
+      alert('请先保存当前编辑，导出的才是实际生效的 Prompt 配置。');
+      return;
+    }
+    const exported = {
+      kind: 'personalai-prompt-config',
+      formatVersion: PROMPT_WORKSPACE_EXPORT_VERSION,
+      exportedAt: new Date().toISOString(),
+      modules: Object.fromEntries(CORE_MODULE_IDS.map(id => [id, {
+        content: getPromptModuleValue(id),
+        customized: !!promptWorkspace.overrides[id],
+        basedOnDefault: promptWorkspace.overrides[id]?.baseDefault ?? CORE_PROMPT_DEFAULTS[id],
+        currentHtmlDefault: CORE_PROMPT_DEFAULTS[id]
+      }])),
+      legacyJsonPrompt,
+      instruction,
+      legacyCoreFallback: promptWorkspace.legacyCoreFallback || ''
+    };
+    const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'personalai-prompt-config-' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    flashStatus('Prompt 配置已导出（不含 API Key / 聊天）', 'ok', 2200);
   }
 
   function openInstruction() {
@@ -9485,7 +9988,7 @@ ${topText}`;
     el.addEventListener('click', e => {
       // Debug contains long selectable response text. A drag ending on the
       // backdrop must not close the dialog and discard the user's selection.
-      if (el.id === 'responseDebugModal') return; // explicit Close button only
+      if (el.id === 'responseDebugModal' || el.id === 'systemPromptModal') return; // explicit Close button only
       if (e.target === el) el.classList.remove('open');
     });
   });
@@ -10527,7 +11030,9 @@ ${topText}`;
   // Request-status renderer only. Retry behavior itself lives in the controller
   // and domain/service functions above, so changing this UI does not change logic.
   function showRequestPending() {
-    setStatus('…');
+    // The assistant typing bubble already shows the pending animation.
+    // Keep the footer status empty until success (brief check) or failure.
+    setStatus('');
   }
 
   function showRequestSuccess() {
@@ -10559,8 +11064,12 @@ ${topText}`;
       const debug = document.createElement('button');
       debug.type = 'button';
       debug.className = 'debug-btn';
-      debug.textContent = 'Debug';
+      debug.textContent = '查看已生成原文';
+      debug.title = '本轮已经收到 API 内容，无需再付费即可查看原始响应；不会自动把不可靠的 JSON 注入下一轮';
       debug.addEventListener('click', () => openLatestFailedResponseDebug(chatId, unresolvedUserId));
+      if (failedDebug.errorKind === 'validation') {
+        text.textContent = message + ' · 原始内容已保留，可直接查看，无需先点重试';
+      }
       el.append(text, debug, retry);
     } else {
       el.append(text, retry);
